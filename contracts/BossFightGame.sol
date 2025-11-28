@@ -200,10 +200,13 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier - use hash directly with modulo for uniform distribution
-        // keccak256 produces uniformly distributed output, so modulo should be uniform
-        // Use the full 256-bit hash value directly
-        uint256 baseRoll = rand % 1_000_000_000;
+        // Determine item tier - use additional hash round to ensure uniform distribution
+        // Create a fresh hash using the previous hash + more entropy to break any patterns
+        bytes32 finalHash = keccak256(abi.encodePacked(rand, block.number, block.timestamp, player, nonce, totalBossesKilled));
+        
+        // Use the hash value directly with modulo
+        // The additional hash round should ensure uniform distribution
+        uint256 baseRoll = uint256(finalHash) % 1_000_000_000;
         uint8 baseTier = _rollBaseTier(baseRoll);
         
         // Use different bits from hash for rarity upgrade to ensure independence
