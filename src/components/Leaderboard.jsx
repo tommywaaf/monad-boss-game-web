@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAccount } from 'wagmi'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { useLeaderboard } from '../hooks/useLeaderboard'
 import { ITEM_TIERS } from '../config/gameContract'
 import './Leaderboard.css'
@@ -8,7 +8,8 @@ function Leaderboard() {
   const { leaderboardData, loading, refetchLeaderboard } = useLeaderboard()
   const [sortBy, setSortBy] = useState('highestTier') // rarityBoost, bossKills, highestTier
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const { address: currentAddress } = useAccount()
+  const { primaryWallet } = useDynamicContext()
+  const currentAddress = primaryWallet?.address
 
   const handleRefresh = async () => {
     setIsRefreshing(true)

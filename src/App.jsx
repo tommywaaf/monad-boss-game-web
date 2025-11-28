@@ -1,4 +1,4 @@
-import { useAccount, useChainId } from 'wagmi'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import WalletConnect from './components/WalletConnect'
 import BossFight from './components/BossFight'
 import Inventory from './components/Inventory'
@@ -9,8 +9,9 @@ import './App.css'
 
 // Frontend version: Updated for improved randomness testing
 function App() {
-  const { isConnected } = useAccount()
-  const chainId = useChainId()
+  const { primaryWallet } = useDynamicContext()
+  const isConnected = !!primaryWallet
+  const chainId = primaryWallet?.chain ? Number(primaryWallet.chain) : null
   const isMonadNetwork = chainId === 143
   
   // Hook to automatically fund Dynamic wallets when created
@@ -38,7 +39,7 @@ function App() {
             <div className="info-card">
               <h3>ℹ️ How to Play</h3>
               <ol>
-                <li>Connect your wallet (MetaMask or WalletConnect)</li>
+                <li>Connect your wallet or create a new one</li>
                 <li>Switch to Monad network (Chain ID: 143)</li>
                 <li>Attack the boss to earn items</li>
                 <li>Collect items to boost your success rate</li>
@@ -63,9 +64,20 @@ function App() {
             <div className="warning-card">
               <h3>⚠️ Wrong Network</h3>
               <p>Please switch to Monad network to play the game.</p>
-              <button className="switch-network-btn" onClick={() => open({ view: 'Networks' })}>
-                Switch to Monad
-              </button>
+              {primaryWallet?.connector?.supportsNetworkSwitching && (
+                <button 
+                  className="switch-network-btn" 
+                  onClick={async () => {
+                    try {
+                      await primaryWallet.switchNetwork({ networkChainId: 143 })
+                    } catch (error) {
+                      console.error('Failed to switch network:', error)
+                    }
+                  }}
+                >
+                  Switch to Monad
+                </button>
+              )}
             </div>
           </div>
         )}

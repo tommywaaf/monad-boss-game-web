@@ -1,32 +1,71 @@
-import { useState } from 'react'
-import { useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useState, useEffect, useRef } from 'react'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
+  const { primaryWallet } = useDynamicContext()
   const [toAddress, setToAddress] = useState('')
   const [error, setError] = useState('')
-  
-  const { writeContract, data: hash, isPending, isError } = useWriteContract()
-  
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  })
+  const [isPending, setIsPending] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [hash, setHash] = useState(null)
+  const walletClientRef = useRef(null)
+  const publicClientRef = useRef(null)
 
-  // Close and refresh on success
-  if (isSuccess && onSuccess) {
-    setTimeout(() => {
-      onSuccess()
-      onClose()
-    }, 1000)
-  }
+  // Initialize clients when wallet is available
+  useEffect(() => {
+    if (primaryWallet && isEthereumWallet(primaryWallet)) {
+      const initClients = async () => {
+        try {
+          const walletClient = await primaryWallet.getWalletClient()
+          const publicClient = await primaryWallet.getPublicClient()
+          walletClientRef.current = walletClient
+          publicClientRef.current = publicClient
+        } catch (error) {
+          console.error('Failed to initialize clients:', error)
+        }
+      }
+      initClients()
+    } else {
+      walletClientRef.current = null
+      publicClientRef.current = null
+    }
+  }, [primaryWallet])
+
+  // Watch for transaction confirmation
+  useEffect(() => {
+    if (hash && publicClientRef.current) {
+      const waitForReceipt = async () => {
+        try {
+          setIsConfirming(true)
+          const receipt = await publicClientRef.current.waitForTransactionReceipt({ hash })
+          setIsConfirming(false)
+          setIsSuccess(true)
+          if (onSuccess) {
+            setTimeout(() => {
+              onSuccess()
+              onClose()
+            }, 1000)
+          }
+        } catch (error) {
+          console.error('Transaction failed:', error)
+          setIsConfirming(false)
+          setError('Transaction failed. Please try again.')
+        }
+      }
+      waitForReceipt()
+    }
+  }, [hash, onSuccess, onClose])
 
   const validateAddress = (addr) => {
     // Basic Ethereum address validation
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
   }
 
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
     setError('')
     
     if (!toAddress) {
@@ -39,12 +78,26 @@ function TransferModal({ item, onClose, onSuccess }) {
       return
     }
 
-    writeContract({
-      address: GAME_CONTRACT_ADDRESS,
-      abi: GAME_CONTRACT_ABI,
-      functionName: 'transferItem',
-      args: [toAddress, BigInt(item.id)]
-    })
+    if (!walletClientRef.current) {
+      setError('Wallet not connected')
+      return
+    }
+
+    try {
+      setIsPending(true)
+      const txHash = await walletClientRef.current.writeContract({
+        address: GAME_CONTRACT_ADDRESS,
+        abi: GAME_CONTRACT_ABI,
+        functionName: 'transferItem',
+        args: [toAddress, BigInt(item.id)]
+      })
+      setHash(txHash)
+      setIsPending(false)
+    } catch (err) {
+      console.error('Transfer error:', err)
+      setError(err.message || 'Transaction failed. Please try again.')
+      setIsPending(false)
+    }
   }
 
   const tierInfo = ITEM_TIERS[item.tier]
@@ -84,7 +137,6 @@ function TransferModal({ item, onClose, onSuccess }) {
           />
           
           {error && <div className="error-message">{error}</div>}
-          {isError && <div className="error-message">Transaction failed. Please try again.</div>}
           
           {isSuccess && (
             <div className="success-message">
@@ -128,4 +180,3 @@ function TransferModal({ item, onClose, onSuccess }) {
 }
 
 export default TransferModal
-

@@ -1,10 +1,11 @@
-import { useAccount } from 'wagmi'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { ITEM_TIERS } from '../config/gameContract'
 import './RollDisplay.css'
 
 function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost = 0 }) {
   if (!rollData) return null
-  const { address } = useAccount()
+  const { primaryWallet } = useDynamicContext()
+  const address = primaryWallet?.address
 
   const { type, tier, baseRoll, baseTier, upgraded, successRoll, successChance, blockNumber, transactionHash, player } = rollData
 

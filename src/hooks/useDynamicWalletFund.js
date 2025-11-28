@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { useAccount } from 'wagmi'
 
 /**
  * Hook to detect when a Dynamic wallet is created and trigger Fireblocks funding
@@ -8,7 +7,8 @@ import { useAccount } from 'wagmi'
  */
 export function useDynamicWalletFund() {
   const { primaryWallet, user } = useDynamicContext()
-  const { address, isConnected } = useAccount()
+  const address = primaryWallet?.address
+  const isConnected = !!primaryWallet
   const hasFundedRef = useRef(false)
   const walletAddressRef = useRef(null)
 

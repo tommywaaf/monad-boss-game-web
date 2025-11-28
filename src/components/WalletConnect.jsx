@@ -1,18 +1,18 @@
-import { useAccount, useDisconnect, useChainId } from 'wagmi'
-import { useWeb3Modal } from '@web3modal/wagmi/react'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import './WalletConnect.css'
 
 function WalletConnect() {
-  const { address, isConnected, connector } = useAccount()
-  const { disconnect } = useDisconnect()
-  const { open } = useWeb3Modal()
-  const chainId = useChainId()
   const dynamicContext = useDynamicContext()
   const { setShowAuthFlow, primaryWallet, handleLogOut, handleLogout } = dynamicContext
   
   // Try both handleLogOut and handleLogout (docs show both variations)
   const logoutFunction = handleLogOut || handleLogout
+  
+  // Get wallet info from Dynamic
+  const address = primaryWallet?.address
+  const isConnected = !!primaryWallet
+  const chainId = primaryWallet?.chain ? Number(primaryWallet.chain) : null
 
   const truncateAddress = (addr) => {
     if (!addr) return ''
@@ -22,7 +22,7 @@ function WalletConnect() {
   const isMonadNetwork = chainId === 143
 
   // Check if user is connected via Dynamic embedded wallet
-  const isDynamicWallet = primaryWallet !== null
+  const isDynamicWallet = primaryWallet?.connector?.isEmbedded || false
 
   const handleCreateWallet = () => {
     // Open Dynamic auth flow to create embedded wallet
@@ -30,41 +30,21 @@ function WalletConnect() {
   }
 
   const handleConnectWallet = () => {
-    // Open Web3Modal for external wallets (MetaMask, WalletConnect, etc.)
-    open()
+    // Open Dynamic auth flow for connecting external wallets
+    setShowAuthFlow(true)
   }
 
   const handleDisconnect = async () => {
     try {
-      // If it's a Dynamic wallet, use handleLogOut which handles both Dynamic and Wagmi disconnection
-      if (isDynamicWallet && primaryWallet) {
-        console.log('Disconnecting Dynamic wallet...')
-        
-        // handleLogOut from Dynamic automatically disconnects from Wagmi via DynamicWagmiConnector
-        if (logoutFunction && typeof logoutFunction === 'function') {
-          console.log('Calling handleLogOut (this will disconnect from both Dynamic and Wagmi)...')
-          await logoutFunction()
-          console.log('Dynamic logout completed')
-          return // Exit early - handleLogOut handles everything
-        } else {
-          console.warn('No logout function available, falling back to Wagmi disconnect')
-        }
+      if (logoutFunction && typeof logoutFunction === 'function') {
+        console.log('Disconnecting wallet...')
+        await logoutFunction()
+        console.log('Wallet disconnected successfully')
+      } else {
+        console.warn('No logout function available')
       }
-      
-      // For external wallets (MetaMask, WalletConnect), use Wagmi disconnect
-      console.log('Disconnecting external wallet from Wagmi...', { connector: connector?.name })
-      
-      // Use hook disconnect for external wallets (safer than core disconnect)
-      disconnect()
-      
     } catch (error) {
       console.error('Error disconnecting wallet:', error)
-      // Fallback: try hook disconnect
-      try {
-        disconnect()
-      } catch (disconnectError) {
-        console.error('Disconnect failed:', disconnectError)
-      }
     }
   }
 
@@ -108,10 +88,16 @@ function WalletConnect() {
             </button>
           </div>
 
-          {!isDynamicWallet && (
+          {!isDynamicWallet && primaryWallet?.connector?.supportsNetworkSwitching && (
             <button 
               className="change-network-button"
-              onClick={() => open({ view: 'Networks' })}
+              onClick={async () => {
+                try {
+                  await primaryWallet.switchNetwork({ networkChainId: 143 })
+                } catch (error) {
+                  console.error('Failed to switch network:', error)
+                }
+              }}
             >
               Switch Network
             </button>

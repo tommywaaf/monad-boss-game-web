@@ -1,45 +1,62 @@
-import { useState, useEffect } from 'react'
-import { useReadContract, usePublicClient } from 'wagmi'
+import { useState, useEffect, useRef } from 'react'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI } from '../config/gameContract'
 
 export function useLeaderboard() {
+  const { primaryWallet } = useDynamicContext()
   const [leaderboardData, setLeaderboardData] = useState([])
   const [loading, setLoading] = useState(true)
-  const publicClient = usePublicClient()
+  const publicClientRef = useRef(null)
 
-  // Read player count
-  const { data: playerCount, refetch: refetchCount } = useReadContract({
-    address: GAME_CONTRACT_ADDRESS,
-    abi: GAME_CONTRACT_ABI,
-    functionName: 'getPlayerCount',
-  })
+  // Initialize public client when wallet is available
+  useEffect(() => {
+    if (primaryWallet && isEthereumWallet(primaryWallet)) {
+      const initClient = async () => {
+        try {
+          const publicClient = await primaryWallet.getPublicClient()
+          publicClientRef.current = publicClient
+        } catch (error) {
+          console.error('Failed to initialize public client:', error)
+        }
+      }
+      initClient()
+    } else {
+      publicClientRef.current = null
+    }
+  }, [primaryWallet])
 
   const fetchLeaderboard = async () => {
-    if (!publicClient) {
+    if (!publicClientRef.current) {
       setLoading(false)
       return
     }
-
-    // Refetch player count first
-    const countResult = await refetchCount()
-    const count = countResult.data ? Number(countResult.data) : Number(playerCount || 0)
-    
-    if (!count || count === 0) {
-      setLeaderboardData([])
-      setLoading(false)
-      return
-    }
-    
-    setLoading(true)
 
     try {
+      // Get player count
+      const playerCount = await publicClientRef.current.readContract({
+        address: GAME_CONTRACT_ADDRESS,
+        abi: GAME_CONTRACT_ABI,
+        functionName: 'getPlayerCount',
+      })
+      
+      const count = Number(playerCount || 0)
+      
+      if (!count || count === 0) {
+        setLeaderboardData([])
+        setLoading(false)
+        return
+      }
+      
+      setLoading(true)
+
       const players = []
 
       // Fetch up to 100 players
       for (let i = 0; i < Math.min(count, 100); i++) {
         try {
           // Get player address
-          const address = await publicClient.readContract({
+          const address = await publicClientRef.current.readContract({
             address: GAME_CONTRACT_ADDRESS,
             abi: GAME_CONTRACT_ABI,
             functionName: 'getPlayerAt',
@@ -47,7 +64,7 @@ export function useLeaderboard() {
           })
 
           // Get player stats
-          const stats = await publicClient.readContract({
+          const stats = await publicClientRef.current.readContract({
             address: GAME_CONTRACT_ADDRESS,
             abi: GAME_CONTRACT_ABI,
             functionName: 'getPlayerStats',
@@ -55,7 +72,7 @@ export function useLeaderboard() {
           })
 
           // Get inventory to calculate highest tier found
-          const inventory = await publicClient.readContract({
+          const inventory = await publicClientRef.current.readContract({
             address: GAME_CONTRACT_ADDRESS,
             abi: GAME_CONTRACT_ABI,
             functionName: 'getInventory',
@@ -90,10 +107,10 @@ export function useLeaderboard() {
   }
 
   useEffect(() => {
-    if (playerCount !== undefined && publicClient) {
+    if (publicClientRef.current) {
       fetchLeaderboard()
     }
-  }, [playerCount, publicClient])
+  }, [publicClientRef.current])
 
   const refetchLeaderboard = async () => {
     await fetchLeaderboard()
@@ -105,4 +122,3 @@ export function useLeaderboard() {
     refetchLeaderboard
   }
 }
-

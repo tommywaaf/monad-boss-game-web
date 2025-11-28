@@ -8,8 +8,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'web3modal': ['@web3modal/wagmi'],
-          'wagmi': ['wagmi', 'viem'],
+          'dynamic': ['@dynamic-labs/sdk-react-core', '@dynamic-labs/ethereum'],
+          'viem': ['viem'],
         },
       },
     },
@@ -20,9 +20,8 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: [
-      '@walletconnect/ethereum-provider',
-      '@web3modal/wagmi',
-      'wagmi',
+      '@dynamic-labs/sdk-react-core',
+      '@dynamic-labs/ethereum',
       'viem',
       'buffer',
     ],
