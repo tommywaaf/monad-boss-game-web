@@ -31,10 +31,14 @@ export function useGameContract() {
   const [isWriting, setIsWriting] = useState(false)
   const publicClientRef = useRef(null)
   const walletClientRef = useRef(null)
+  const initializedAddressRef = useRef(null)
 
   // Initialize clients when wallet is available
   useEffect(() => {
-    if (primaryWallet && isEthereumWallet(primaryWallet)) {
+    const currentAddress = primaryWallet?.address
+    
+    // Only re-initialize if wallet changed or address changed
+    if (primaryWallet && isEthereumWallet(primaryWallet) && currentAddress !== initializedAddressRef.current) {
       const initClients = async () => {
         try {
           console.log('[useGameContract] Initializing wallet clients...')
@@ -48,25 +52,22 @@ export function useGameContract() {
           
           publicClientRef.current = publicClient
           walletClientRef.current = walletClient
+          initializedAddressRef.current = currentAddress
           console.log('[useGameContract] Wallet clients initialized successfully')
-          
-          // Fetch contract data immediately after clients are ready
-          if (primaryWallet.address) {
-            console.log('[useGameContract] Fetching contract data after client init...')
-            fetchContractData()
-          }
         } catch (error) {
           console.error('[useGameContract] Failed to initialize clients:', error)
           publicClientRef.current = null
           walletClientRef.current = null
+          initializedAddressRef.current = null
         }
       }
       initClients()
-    } else {
+    } else if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
       publicClientRef.current = null
       walletClientRef.current = null
+      initializedAddressRef.current = null
     }
-  }, [primaryWallet, fetchContractData])
+  }, [primaryWallet?.address]) // Only depend on address, not the whole wallet object
 
   // Read contract data
   const fetchContractData = useCallback(async () => {
@@ -173,7 +174,8 @@ export function useGameContract() {
     }, 10000) // Poll every 10 seconds
     
     return () => clearInterval(interval)
-  }, [primaryWallet?.address, fetchContractData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryWallet?.address]) // Only depend on address, fetchContractData is stable
 
   // Watch for BossKilled events
   useEffect(() => {

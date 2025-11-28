@@ -17,28 +17,49 @@ function WalletConnect() {
   
   // Get chain ID using Dynamic's getNetwork utility
   useEffect(() => {
-    if (primaryWallet?.connector) {
-      getNetwork(primaryWallet.connector).then((network) => {
+    if (!primaryWallet?.connector) {
+      setChainId(null)
+      return
+    }
+
+    let cancelled = false
+    
+    const updateChainId = async () => {
+      try {
+        const network = await getNetwork(primaryWallet.connector)
+        if (cancelled) return
+        
         if (network) {
           const id = typeof network === 'number' ? network : network?.chainId || network
-          setChainId(Number(id))
+          const newChainId = Number(id)
+          // Only update if it actually changed
+          setChainId(prev => prev !== newChainId ? newChainId : prev)
         }
-      }).catch(() => {
+      } catch {
+        if (cancelled) return
         // Fallback to primaryWallet.chain if getNetwork fails
         if (primaryWallet?.chain) {
+          let newChainId = null
           if (typeof primaryWallet.chain === 'number') {
-            setChainId(primaryWallet.chain)
+            newChainId = primaryWallet.chain
           } else if (typeof primaryWallet.chain === 'string') {
-            setChainId(Number(primaryWallet.chain))
+            newChainId = Number(primaryWallet.chain)
           } else if (primaryWallet.chain?.chainId) {
-            setChainId(Number(primaryWallet.chain.chainId))
+            newChainId = Number(primaryWallet.chain.chainId)
+          }
+          if (newChainId !== null) {
+            setChainId(prev => prev !== newChainId ? newChainId : prev)
           }
         }
-      })
-    } else {
-      setChainId(null)
+      }
     }
-  }, [primaryWallet])
+    
+    updateChainId()
+    
+    return () => {
+      cancelled = true
+    }
+  }, [primaryWallet?.connector]) // Only depend on connector, not entire wallet
 
   const truncateAddress = (addr) => {
     if (!addr) return ''

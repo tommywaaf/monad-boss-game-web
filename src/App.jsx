@@ -17,61 +17,88 @@ function App() {
   
   // Get chain ID using Dynamic's getNetwork utility
   useEffect(() => {
-    if (primaryWallet?.connector) {
-      getNetwork(primaryWallet.connector).then((network) => {
+    if (!primaryWallet?.connector) {
+      setChainId(null)
+      return
+    }
+
+    let cancelled = false
+    
+    const updateChainId = async () => {
+      try {
+        const network = await getNetwork(primaryWallet.connector)
+        if (cancelled) return
+        
         if (network) {
           const id = typeof network === 'number' ? network : network?.chainId || network
-          setChainId(Number(id))
+          const newChainId = Number(id)
+          // Only update if it actually changed
+          setChainId(prev => prev !== newChainId ? newChainId : prev)
         }
-      }).catch(() => {
+      } catch {
+        if (cancelled) return
         // Fallback to primaryWallet.chain if getNetwork fails
         if (primaryWallet?.chain) {
+          let newChainId = null
           if (typeof primaryWallet.chain === 'number') {
-            setChainId(primaryWallet.chain)
+            newChainId = primaryWallet.chain
           } else if (typeof primaryWallet.chain === 'string') {
-            setChainId(Number(primaryWallet.chain))
+            newChainId = Number(primaryWallet.chain)
           } else if (primaryWallet.chain?.chainId) {
-            setChainId(Number(primaryWallet.chain.chainId))
+            newChainId = Number(primaryWallet.chain.chainId)
+          }
+          if (newChainId !== null) {
+            setChainId(prev => prev !== newChainId ? newChainId : prev)
           }
         }
-      })
-    } else {
-      setChainId(null)
+      }
     }
-  }, [primaryWallet])
+    
+    updateChainId()
+    
+    return () => {
+      cancelled = true
+    }
+  }, [primaryWallet?.connector]) // Only depend on connector, not entire wallet
   
   const isMonadNetwork = chainId === 143
   
-  // Automatically switch to Monad network when wallet connects
+  // Automatically switch to Monad network when wallet connects (only once)
   useEffect(() => {
-    if (isConnected && primaryWallet && !isMonadNetwork && !hasSwitchedRef.current) {
-      const switchToMonad = async () => {
-        try {
-          // Check if the connector supports network switching
-          if (primaryWallet.connector?.supportsNetworkSwitching?.()) {
-            console.log('Auto-switching to Monad network...')
-            await primaryWallet.switchNetwork({ networkChainId: 143 })
-            hasSwitchedRef.current = true
-          } else if (primaryWallet.switchNetwork) {
-            // Try direct switchNetwork method
-            console.log('Auto-switching to Monad network (direct method)...')
-            await primaryWallet.switchNetwork({ networkChainId: 143 })
-            hasSwitchedRef.current = true
-          }
-        } catch (error) {
-          console.error('Failed to auto-switch to Monad network:', error)
-          // Don't set hasSwitchedRef to true on error, so user can manually switch
-        }
+    if (!isConnected || !primaryWallet || isMonadNetwork || hasSwitchedRef.current) {
+      if (!isConnected) {
+        // Reset when disconnected
+        hasSwitchedRef.current = false
       }
-      
-      // Small delay to ensure wallet is fully initialized
-      const timer = setTimeout(switchToMonad, 500)
-      return () => clearTimeout(timer)
-    } else if (!isConnected) {
-      // Reset when disconnected
-      hasSwitchedRef.current = false
+      return
     }
-  }, [isConnected, primaryWallet, isMonadNetwork])
+
+    // Only attempt switch once per connection
+    hasSwitchedRef.current = true
+    
+    const switchToMonad = async () => {
+      try {
+        // Check if the connector supports network switching
+        if (primaryWallet.connector?.supportsNetworkSwitching?.()) {
+          console.log('Auto-switching to Monad network...')
+          await primaryWallet.switchNetwork({ networkChainId: 143 })
+        } else if (primaryWallet.switchNetwork) {
+          // Try direct switchNetwork method
+          console.log('Auto-switching to Monad network (direct method)...')
+          await primaryWallet.switchNetwork({ networkChainId: 143 })
+        }
+      } catch (error) {
+        console.error('Failed to auto-switch to Monad network:', error)
+        // Reset on error so user can try again manually
+        hasSwitchedRef.current = false
+      }
+    }
+    
+    // Small delay to ensure wallet is fully initialized
+    const timer = setTimeout(switchToMonad, 1000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, primaryWallet?.address]) // Only depend on address, not entire wallet or chainId
   
   // Hook to automatically fund Dynamic wallets when created
   useDynamicWalletFund()
