@@ -138,16 +138,35 @@ contract BossFightGame {
 
         // Enhanced pseudo-random seed with multiple entropy sources
         uint256 nonce = ++killNonce[player];
+        
+        // Get block hashes (use 0 if block is too old to avoid zero values)
+        bytes32 blockHash1 = blockhash(block.number - 1);
+        bytes32 blockHash2 = block.number >= 2 ? blockhash(block.number - 2) : bytes32(0);
+        
+        // Create multiple hash rounds for better distribution
+        uint256 rand1 = uint256(
+            keccak256(
+                abi.encodePacked(
+                    blockHash1,
+                    blockHash2,
+                    block.number,
+                    block.timestamp,
+                    player,
+                    nonce
+                )
+            )
+        );
+        
+        // Second hash round using first hash + additional entropy for better distribution
         uint256 rand = uint256(
             keccak256(
                 abi.encodePacked(
-                    blockhash(block.number - 1),  // Previous block hash
-                    blockhash(block.number - 2),  // Block hash from 2 blocks ago (more entropy)
-                    block.number,                  // Current block number
-                    block.timestamp,               // Block timestamp
-                    block.gaslimit,                // Block gas limit
-                    player,                        // Player address
-                    nonce                          // Player-specific nonce
+                    rand1,
+                    block.gaslimit,
+                    block.basefee,     // Base fee (varies per block)
+                    player,
+                    nonce,
+                    totalBossesKilled  // Global counter for additional entropy
                 )
             )
         );
@@ -161,7 +180,7 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier - use hash directly without right shift to avoid bias
+        // Determine item tier - use hash directly, ensure uniform distribution
         uint256 baseRoll = rand % 1_000_000_000;
         uint8 baseTier = _rollBaseTier(baseRoll);
         
@@ -189,22 +208,20 @@ contract BossFightGame {
     // Uses your 1:10, 1:100, ... table, approximated.
     // We do a sequence of checks from rarest to common:
     // If none of the rare ones hit, we fall back to tier 0 (Common).
-    function _rollBaseTier(uint256 rand) internal pure returns (uint8) {
-        // Use a 0..1e9 range for probabilities
-        uint256 r = rand % 1_000_000_000;
-
+    function _rollBaseTier(uint256 baseRoll) internal pure returns (uint8) {
+        // baseRoll is already in range 0..999,999,999 from caller
         // Check from rarest to more common to keep probabilities very low
-        if (r < 1) return 9;                 // ~1 in 1,000,000,000 Rainbow
-        if (r < 1_000_000_000 / 100_000_000) return 8; // rough 1:100,000,000 Black
-        if (r < 1_000_000_000 / 10_000_000) return 7;  // ~1:10,000,000 Brown
-        if (r < 1_000_000_000 / 1_000_000) return 6;   // ~1:1,000,000 Red
-        if (r < 1_000_000_000 / 100_000) return 5;     // ~1:100,000 Orange
-        if (r < 1_000_000_000 / 10_000) return 4;      // ~1:10,000 Purple
-        if (r < 1_000_000_000 / 1_000) return 3;       // ~1:1,000 Blue
-        if (r < 1_000_000_000 / 100) return 2;         // ~1:100 White
-        if (r < 1_000_000_000 / 10) return 1;          // ~1:10 Grey
+        if (baseRoll < 1) return 9;                 // ~1 in 1,000,000,000 Rainbow
+        if (baseRoll < 10) return 8;                // ~1:100,000,000 Black (9 values: 1-9)
+        if (baseRoll < 100) return 7;               // ~1:10,000,000 Brown (90 values: 10-99)
+        if (baseRoll < 1_000) return 6;             // ~1:1,000,000 Red (900 values: 100-999)
+        if (baseRoll < 10_000) return 5;           // ~1:100,000 Orange (9,000 values: 1,000-9,999)
+        if (baseRoll < 100_000) return 4;           // ~1:10,000 Purple (90,000 values: 10,000-99,999)
+        if (baseRoll < 1_000_000) return 3;         // ~1:1,000 Blue (900,000 values: 100,000-999,999)
+        if (baseRoll < 10_000_000) return 2;        // ~1:100 White (9,000,000 values: 1,000,000-9,999,999)
+        if (baseRoll < 100_000_000) return 1;       // ~1:10 Grey (90,000,000 values: 10,000,000-99,999,999)
 
-        // Catch-all common
+        // Catch-all common (900,000,000 values: 100,000,000-999,999,999)
         return 0;
     }
 
