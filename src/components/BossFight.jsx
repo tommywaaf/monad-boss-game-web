@@ -40,6 +40,13 @@ function BossFight() {
       }, 5000)
     }
   }, [lastEvent, clearLastEvent])
+
+  // Close roll display when starting a new attack
+  useEffect(() => {
+    if (isKilling && showRollDisplay) {
+      setShowRollDisplay(false)
+    }
+  }, [isKilling, showRollDisplay])
   
   const handleNotificationClick = () => {
     if (rollData) {
