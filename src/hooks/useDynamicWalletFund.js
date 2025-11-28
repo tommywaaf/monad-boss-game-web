@@ -64,7 +64,7 @@ export function useDynamicWalletFund() {
 }
 
 /**
- * Call the Cloudflare Function to fund the wallet via Fireblocks
+ * Call the Cloudflare Function to fund the wallet via Fireblocks api
  */
 async function fundWallet(address) {
   try {
