@@ -1,10 +1,12 @@
 import { useAccount, useDisconnect, useChainId } from 'wagmi'
 import { useWeb3Modal } from '@web3modal/wagmi/react'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { disconnect as wagmiDisconnect } from '@wagmi/core'
+import { config } from '../config/wagmiConfig'
 import './WalletConnect.css'
 
 function WalletConnect() {
-  const { address, isConnected } = useAccount()
+  const { address, isConnected, connector } = useAccount()
   const { disconnect } = useDisconnect()
   const { open } = useWeb3Modal()
   const chainId = useChainId()
@@ -36,40 +38,59 @@ function WalletConnect() {
 
   const handleDisconnect = async () => {
     try {
+      // If it's a Dynamic wallet, logout from Dynamic first
       if (isDynamicWallet && primaryWallet) {
-        // For Dynamic wallets, disconnect in the correct order
-        console.log('Disconnecting Dynamic wallet...', { primaryWallet, handleLogOut })
+        console.log('Disconnecting Dynamic wallet...')
         
-        // Method 1: Disconnect the primary wallet first
+        // Disconnect the primary wallet
         if (primaryWallet && typeof primaryWallet.disconnect === 'function') {
           console.log('Calling primaryWallet.disconnect()...')
-          await primaryWallet.disconnect()
+          try {
+            await primaryWallet.disconnect()
+          } catch (e) {
+            console.warn('primaryWallet.disconnect error:', e)
+          }
         }
         
-        // Method 2: Then logout from Dynamic (this clears the session)
-        // Try both handleLogOut and handleLogout (docs show both variations)
+        // Logout from Dynamic (this clears the session)
         if (logoutFunction && typeof logoutFunction === 'function') {
           console.log('Calling logout function...')
-          await logoutFunction()
-        } else {
-          console.warn('No logout function available. Available methods:', Object.keys(dynamicContext))
+          try {
+            await logoutFunction()
+          } catch (e) {
+            console.warn('logoutFunction error:', e)
+          }
         }
-        
-        // Method 3: Finally disconnect from Wagmi
-        console.log('Calling Wagmi disconnect()...')
-        disconnect()
-      } else {
-        // For external wallets (MetaMask, WalletConnect), use Wagmi disconnect
-        console.log('Disconnecting external wallet...')
-        disconnect()
       }
+      
+      // Always disconnect from Wagmi (works for both Dynamic and external wallets)
+      console.log('Disconnecting from Wagmi...', { connector: connector?.name, isConnected })
+      
+      // Use core disconnect which is more reliable
+      try {
+        await wagmiDisconnect(config)
+        console.log('Wagmi disconnected successfully')
+      } catch (e) {
+        console.warn('Core disconnect failed, trying hook disconnect:', e)
+        // Fallback: use hook disconnect
+        try {
+          disconnect()
+        } catch (hookError) {
+          console.error('Hook disconnect also failed:', hookError)
+        }
+      }
+      
     } catch (error) {
       console.error('Error disconnecting wallet:', error)
-      // Fallback: always try Wagmi disconnect
+      // Fallback: always try both disconnect methods
       try {
-        disconnect()
-      } catch (disconnectError) {
-        console.error('Error with Wagmi disconnect:', disconnectError)
+        await wagmiDisconnect(config)
+      } catch (e1) {
+        try {
+          disconnect()
+        } catch (e2) {
+          console.error('All disconnect methods failed:', e2)
+        }
       }
     }
   }
