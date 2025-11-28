@@ -41,11 +41,42 @@ The backup phrase flow is part of Dynamic's normal wallet creation process. The 
 
 ## Testing
 
+### Local Testing Script
+
+You can test the Fireblocks integration locally before deploying:
+
+1. Add your Fireblocks credentials to `.env` file:
+   ```
+   FIREBLOCKS_API_KEY=your_api_key
+   FIREBLOCKS_SECRET_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----
+   FIREBLOCKS_SOURCE_VAULT_ID=0
+   FIREBLOCKS_ASSET_ID=ETH
+   ```
+
+2. Run the test script:
+   ```bash
+   npm run test:fireblocks <wallet_address>
+   ```
+   
+   Example:
+   ```bash
+   npm run test:fireblocks 0x1234567890123456789012345678901234567890
+   ```
+
+3. The script will:
+   - Verify your credentials are set
+   - Generate a JWT token
+   - Create a test transaction
+   - Show the transaction details or error messages
+
+### Production Testing
+
 1. Create a new Dynamic wallet
 2. Complete the authentication and backup phrase flow
-3. Check the browser console for funding status
-4. Check Fireblocks dashboard for the transaction
-5. Verify the wallet received 1 MON
+3. Check the browser console for funding status (look for `[Fireblocks]` logs)
+4. Check Cloudflare Functions logs in the dashboard
+5. Check Fireblocks dashboard for the transaction
+6. Verify the wallet received 1 MON
 
 ## Troubleshooting
 
