@@ -6,6 +6,7 @@ import Leaderboard from './components/Leaderboard'
 import { GAME_CONTRACT_ADDRESS } from './config/gameContract'
 import './App.css'
 
+// Frontend version: Updated for improved randomness testing
 function App() {
   const { isConnected } = useAccount()
   const chainId = useChainId()
