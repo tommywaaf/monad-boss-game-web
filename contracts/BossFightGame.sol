@@ -136,11 +136,19 @@ contract BossFightGame {
 
         address player = msg.sender;
 
-        // pseudo-random seed
+        // Enhanced pseudo-random seed with multiple entropy sources
         uint256 nonce = ++killNonce[player];
         uint256 rand = uint256(
             keccak256(
-                abi.encodePacked(blockhash(block.number - 1), player, nonce)
+                abi.encodePacked(
+                    blockhash(block.number - 1),  // Previous block hash
+                    blockhash(block.number - 2),  // Block hash from 2 blocks ago (more entropy)
+                    block.number,                  // Current block number
+                    block.timestamp,               // Block timestamp
+                    block.gaslimit,                // Block gas limit
+                    player,                        // Player address
+                    nonce                          // Player-specific nonce
+                )
             )
         );
 
@@ -153,12 +161,18 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier
-        uint256 tierRand = rand >> 16;
-        uint8 baseTier = _rollBaseTier(tierRand);
-        uint256 baseRoll = tierRand % 1_000_000_000;
+        // Determine item tier - use hash directly without right shift to avoid bias
+        uint256 baseRoll = rand % 1_000_000_000;
+        uint8 baseTier = _rollBaseTier(baseRoll);
         
-        uint8 finalTier = _applyRarityUpgrade(player, baseTier, rand >> 64);
+        // Use different bits from hash for rarity upgrade to ensure independence
+        uint256 upgradeRand = uint256(
+            keccak256(
+                abi.encodePacked(rand, player, nonce)
+            )
+        ) % 10000;
+        
+        uint8 finalTier = _applyRarityUpgrade(player, baseTier, upgradeRand);
         bool upgraded = finalTier > baseTier;
 
         // Mint the item internally and add to inventory (with auto-replace)
@@ -195,14 +209,14 @@ contract BossFightGame {
     }
 
     // Applies rarity boost as a chance to upgrade one tier.
-    function _applyRarityUpgrade(address player, uint8 baseTier, uint256 rand) internal view returns (uint8) {
+    function _applyRarityUpgrade(address player, uint8 baseTier, uint256 upgradeRand) internal view returns (uint8) {
         (uint16 rarityBoostTotal, ) = getTotalBoosts(player);
         if (baseTier >= 9 || rarityBoostTotal == 0) {
             return baseTier;
         }
 
-        uint256 r = rand % 10000; // 0..9999
-        if (r < rarityBoostTotal) {
+        // upgradeRand is already 0..9999 from caller
+        if (upgradeRand < rarityBoostTotal) {
             // One-tier upgrade
             return baseTier + 1;
         }

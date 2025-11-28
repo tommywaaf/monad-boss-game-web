@@ -151,12 +151,27 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
               <code className="fair-value">{transactionHash ? `${transactionHash.slice(0, 10)}...${transactionHash.slice(-8)}` : 'N/A'}</code>
             </div>
             <div className="fair-value-row">
+              <span className="fair-label">Block Gas Limit:</span>
+              <code className="fair-value">block.gaslimit</code>
+            </div>
+            <div className="fair-value-row">
               <span className="fair-label">Nonce:</span>
               <code className="fair-value">Your kill count (increments per kill)</code>
             </div>
             <div className="fair-formula">
               <p className="formula-text">
-                <strong>Formula:</strong> keccak256(blockhash(block.number - 1) + address + nonce)
+                <strong>Enhanced Formula:</strong>
+              </p>
+              <p className="formula-text" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+                keccak256(<br/>
+                &nbsp;&nbsp;blockhash(block.number - 1) +<br/>
+                &nbsp;&nbsp;blockhash(block.number - 2) +<br/>
+                &nbsp;&nbsp;block.number +<br/>
+                &nbsp;&nbsp;block.timestamp +<br/>
+                &nbsp;&nbsp;block.gaslimit +<br/>
+                &nbsp;&nbsp;address +<br/>
+                &nbsp;&nbsp;nonce<br/>
+                )
               </p>
             </div>
           </div>
