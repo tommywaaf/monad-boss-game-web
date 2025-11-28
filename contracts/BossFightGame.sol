@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+// Version: Simplified randomness - removed complex mixing operations for better distribution
+
 /// @notice Prototype, NOT production-secure randomness.
 /// Good enough for testing and playing with Fireblocks / MetaMask, etc.
 contract BossFightGame {
@@ -198,16 +200,10 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier - use hash with additional mixing to ensure uniform distribution
-        // XOR with rotated versions to break any patterns, then modulo
-        uint256 mixedRand = rand;
-        mixedRand = mixedRand ^ (rand >> 32);
-        mixedRand = mixedRand ^ (rand << 32);
-        mixedRand = mixedRand ^ uint256(keccak256(abi.encodePacked(rand, nonce)));
-        
-        // Use modulo to get 0-999,999,999 range
-        // The additional mixing should ensure uniform distribution
-        uint256 baseRoll = mixedRand % 1_000_000_000;
+        // Determine item tier - use hash directly with modulo for uniform distribution
+        // keccak256 produces uniformly distributed output, so modulo should be uniform
+        // Use the full 256-bit hash value directly
+        uint256 baseRoll = rand % 1_000_000_000;
         uint8 baseTier = _rollBaseTier(baseRoll);
         
         // Use different bits from hash for rarity upgrade to ensure independence
