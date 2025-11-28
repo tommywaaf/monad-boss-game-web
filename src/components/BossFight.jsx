@@ -6,7 +6,7 @@ import RollDisplay from './RollDisplay'
 import './BossFight.css'
 
 function BossFight() {
-  const { killBoss, isKilling, txStatus, txHash, isConfirming, isConfirmed, lastEvent, clearLastEvent, rarityBoost, globalBossesKilled, rakeFeeMon } = useGameContract()
+  const { killBoss, isKilling, txStatus, txHash, isConfirming, isConfirmed, txError, resetTransaction, lastEvent, clearLastEvent, rarityBoost, globalBossesKilled, rakeFeeMon } = useGameContract()
   const feeReady = rakeFeeMon && rakeFeeMon !== '0'
   const [notification, setNotification] = useState(null)
   const [showRollDisplay, setShowRollDisplay] = useState(false)
@@ -92,11 +92,13 @@ function BossFight() {
         </span>
       </button>
 
-      {isKilling && (
+      {(isKilling || txStatus === 'failed') && (
         <div className="transaction-status">
-          <div className="status-spinner">
-            <div className="spinner"></div>
-          </div>
+          {txStatus !== 'failed' && (
+            <div className="status-spinner">
+              <div className="spinner"></div>
+            </div>
+          )}
           <div className="status-content">
             <h3 className="status-title">⚔️ Processing Boss Attack</h3>
             <div className="status-messages">
@@ -140,6 +142,23 @@ function BossFight() {
                   <p className="status-detail">Listening for BossKilled event from contract</p>
                 </>
               )}
+              {txStatus === 'failed' && (
+                <>
+                  <p className="status-message active failed-text">❌ Transaction Failed</p>
+                  <p className="status-detail">
+                    {txError?.message || 'The transaction was rejected or failed. Please try again.'}
+                  </p>
+                  <button 
+                    className="retry-button"
+                    onClick={() => {
+                      resetTransaction()
+                      killBoss()
+                    }}
+                  >
+                    🔄 Try Again
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -180,6 +199,7 @@ function BossFight() {
           onClose={closeRollDisplay}
           onAttackAgain={killBoss}
           isKilling={isKilling}
+          rarityBoost={rarityBoost}
         />
       )}
 

@@ -1,10 +1,12 @@
+import { useAccount } from 'wagmi'
 import { ITEM_TIERS } from '../config/gameContract'
 import './RollDisplay.css'
 
-function RollDisplay({ rollData, onClose, onAttackAgain, isKilling }) {
+function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost = 0 }) {
   if (!rollData) return null
+  const { address } = useAccount()
 
-  const { type, tier, baseRoll, baseTier, upgraded, successRoll, successChance } = rollData
+  const { type, tier, baseRoll, baseTier, upgraded, successRoll, successChance, blockNumber, transactionHash, player } = rollData
 
   // Define tier ranges (based on contract logic)
   const tierRanges = [
@@ -131,8 +133,63 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling }) {
 
         <div className="provably-fair">
           <h4>🔒 Provably Fair</h4>
-          <p>Roll generated from: blockhash + your address + nonce</p>
+          <div className="fair-values">
+            <div className="fair-value-row">
+              <span className="fair-label">Block Number:</span>
+              <code className="fair-value">{blockNumber ? `#${Number(blockNumber).toLocaleString()}` : 'N/A'}</code>
+            </div>
+            <div className="fair-value-row">
+              <span className="fair-label">Block Hash:</span>
+              <code className="fair-value">blockhash({blockNumber ? `block.number - 1` : 'N/A'})</code>
+            </div>
+            <div className="fair-value-row">
+              <span className="fair-label">Your Address:</span>
+              <code className="fair-value">{player ? `${player.slice(0, 6)}...${player.slice(-4)}` : address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'N/A'}</code>
+            </div>
+            <div className="fair-value-row">
+              <span className="fair-label">Transaction Hash:</span>
+              <code className="fair-value">{transactionHash ? `${transactionHash.slice(0, 10)}...${transactionHash.slice(-8)}` : 'N/A'}</code>
+            </div>
+            <div className="fair-value-row">
+              <span className="fair-label">Nonce:</span>
+              <code className="fair-value">Your kill count (increments per kill)</code>
+            </div>
+            <div className="fair-formula">
+              <p className="formula-text">
+                <strong>Formula:</strong> keccak256(blockhash(block.number - 1) + address + nonce)
+              </p>
+            </div>
+          </div>
           <p className="warning-text">⚠️ Uses pseudo-random (not VRF) - fine for testing</p>
+        </div>
+
+        <div className="drop-rates-info">
+          <h4>📊 Drop Rate Information</h4>
+          <div className="drop-rates-grid">
+            {ITEM_TIERS.map((tierInfo, idx) => {
+              const prob = idx === 0 ? '~90%' : idx === 1 ? '~9%' : idx === 2 ? '~0.9%' : idx === 3 ? '~0.09%' : idx === 4 ? '~0.009%' : idx === 5 ? '~0.0009%' : idx === 6 ? '~0.00009%' : idx === 7 ? '~0.000009%' : idx === 8 ? '~0.0000009%' : '~0.00000009%'
+              const oneIn = idx === 0 ? 'N/A' : idx === 1 ? '1 in 10' : idx === 2 ? '1 in 100' : idx === 3 ? '1 in 1,000' : idx === 4 ? '1 in 10,000' : idx === 5 ? '1 in 100,000' : idx === 6 ? '1 in 1M' : idx === 7 ? '1 in 10M' : idx === 8 ? '1 in 100M' : '1 in 1B'
+              const isCurrentTier = tier === idx
+              return (
+                <div 
+                  key={idx} 
+                  className={`drop-rate-item ${isCurrentTier ? 'current-tier' : ''}`}
+                  style={{ borderColor: tierInfo.color }}
+                >
+                  <div className="drop-rate-tier" style={{ color: tierInfo.color }}>
+                    {tierInfo.name}
+                  </div>
+                  <div className="drop-rate-prob">{prob}</div>
+                  <div className="drop-rate-odds">{oneIn}</div>
+                </div>
+              )
+            })}
+          </div>
+          {rarityBoost > 0 && (
+            <p className="rarity-boost-hint">
+              ✨ Your rarity boost: <strong>+{rarityBoost.toFixed(1)}%</strong> chance to upgrade items by 1 tier!
+            </p>
+          )}
         </div>
 
         {onAttackAgain && (

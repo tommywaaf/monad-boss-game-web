@@ -6,12 +6,12 @@ import { formatEther } from 'viem'
 
 export function useGameContract() {
   const { address } = useAccount()
-  const { writeContract, data: txHash, isPending: isWriting, reset } = useWriteContract()
+  const { writeContract, data: txHash, isPending: isWriting, error: writeError, reset } = useWriteContract()
   const [lastEvent, setLastEvent] = useState(null)
-  const [txStatus, setTxStatus] = useState(null) // 'preparing' | 'pending' | 'submitted' | 'confirming' | 'confirmed' | 'waiting-event'
+  const [txStatus, setTxStatus] = useState(null) // 'preparing' | 'pending' | 'submitted' | 'confirming' | 'confirmed' | 'waiting-event' | 'failed'
   
   // Wait for transaction receipt
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+  const { isLoading: isConfirming, isSuccess: isConfirmed, isError: isReceiptError, error: receiptError } = useWaitForTransactionReceipt({
     hash: txHash,
     query: {
       enabled: !!txHash,
@@ -67,7 +67,10 @@ export function useGameContract() {
           itemId: log.args.itemId?.toString(),
           baseRoll: log.args.baseRoll?.toString(),
           baseTier: Number(log.args.baseTier),
-          upgraded: log.args.upgraded
+          upgraded: log.args.upgraded,
+          blockNumber: log.blockNumber?.toString(),
+          transactionHash: log.transactionHash,
+          player: log.args.player
         })
         refetchInventory()
         refetchBoosts()
@@ -78,11 +81,17 @@ export function useGameContract() {
 
   // Track transaction status
   useEffect(() => {
+    // Check for errors first
+    if (writeError || isReceiptError) {
+      setTxStatus('failed')
+      return
+    }
+
     if (isWriting && !txHash) {
       setTxStatus('preparing')
     } else if (isWriting && txHash) {
       setTxStatus('pending')
-    } else if (txHash && !isConfirming && !isConfirmed) {
+    } else if (txHash && !isConfirming && !isConfirmed && !isReceiptError) {
       setTxStatus('submitted')
     } else if (txHash && isConfirming) {
       setTxStatus('confirming')
@@ -92,10 +101,10 @@ export function useGameContract() {
       setTimeout(() => {
         setTxStatus('waiting-event')
       }, 500)
-    } else if (!isWriting && !txHash) {
+    } else if (!isWriting && !txHash && !writeError) {
       setTxStatus(null)
     }
-  }, [isWriting, txHash, isConfirming, isConfirmed])
+  }, [isWriting, txHash, isConfirming, isConfirmed, writeError, isReceiptError])
 
   // Reset status when event is received
   useEffect(() => {
@@ -129,19 +138,26 @@ export function useGameContract() {
   const rarityBoost = boosts ? Number(boosts[0]) / 100 : 0 // Convert bps to percentage
   const rakeFeeMon = rakeFeeWei ? formatEther(rakeFeeWei) : '0'
 
+  const handleReset = useCallback(() => {
+    setTxStatus(null)
+    reset()
+  }, [reset])
+
   return {
     inventory: inventoryItems,
     rarityBoost,
     rakeFeeMon,
     globalBossesKilled: globalKills ? Number(globalKills) : 0,
     killBoss,
-    isKilling: isWriting || isConfirming || !!txStatus,
+    isKilling: (isWriting || isConfirming || !!txStatus) && txStatus !== 'failed',
     txStatus,
     txHash,
     isConfirming,
     isConfirmed,
+    txError: writeError || receiptError,
     lastEvent,
     clearLastEvent: () => setLastEvent(null),
+    resetTransaction: handleReset,
     refetchInventory,
   }
 }

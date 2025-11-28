@@ -239,15 +239,75 @@
   padding: 1.5rem;
   border-radius: 12px;
   border: 1px solid rgba(255, 152, 0, 0.3);
+  margin-top: 1.5rem;
 }
 
 .provably-fair h4 {
-  margin: 0 0 0.75rem 0;
+  margin: 0 0 1rem 0;
+  color: #ff9800;
+  font-size: 1.1rem;
+}
+
+.fair-values {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.fair-value-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 152, 0, 0.1);
+}
+
+.fair-value-row:last-of-type {
+  border-bottom: none;
+}
+
+.fair-label {
+  color: #ccc;
+  font-size: 0.9rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.fair-value {
+  background: rgba(255, 152, 0, 0.15);
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: #ffb74d;
+  word-break: break-all;
+  text-align: right;
+  flex: 1.5;
+  margin-left: 1rem;
+}
+
+.fair-formula {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  border-left: 3px solid #ff9800;
+}
+
+.formula-text {
+  margin: 0;
+  color: #fff;
+  font-size: 0.9rem;
+  font-family: 'Courier New', monospace;
+}
+
+.formula-text strong {
   color: #ff9800;
 }
 
 .provably-fair p {
-  margin: 0.5rem 0;
+  margin: 0.5rem 0 0 0;
   color: #ccc;
   font-size: 0.9rem;
 }
@@ -255,6 +315,78 @@
 .warning-text {
   color: #ff9800 !important;
   font-style: italic;
+  margin-top: 1rem !important;
+}
+
+.drop-rates-info {
+  background: rgba(156, 39, 176, 0.1);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid rgba(156, 39, 176, 0.3);
+  margin-top: 1.5rem;
+}
+
+.drop-rates-info h4 {
+  margin: 0 0 1rem 0;
+  color: #ba68c8;
+  font-size: 1.1rem;
+}
+
+.drop-rates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.drop-rate-item {
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid;
+  border-radius: 8px;
+  padding: 0.75rem;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.drop-rate-item.current-tier {
+  background: rgba(156, 39, 176, 0.2);
+  box-shadow: 0 0 15px currentColor;
+  transform: scale(1.05);
+}
+
+.drop-rate-tier {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.drop-rate-prob {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.drop-rate-odds {
+  color: #aaa;
+  font-size: 0.8rem;
+}
+
+.rarity-boost-hint {
+  margin: 1rem 0 0 0;
+  padding: 0.75rem;
+  background: rgba(156, 39, 176, 0.2);
+  border-radius: 8px;
+  color: #ce93d8;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.rarity-boost-hint strong {
+  color: #ba68c8;
+  font-size: 1.1rem;
 }
 
 .roll-actions {
@@ -314,6 +446,27 @@
   .attack-again-button {
     font-size: 1rem;
     padding: 0.875rem 1.5rem;
+  }
+
+  .fair-value-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .fair-value {
+    margin-left: 0;
+    width: 100%;
+    text-align: left;
+  }
+
+  .drop-rates-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .drop-rate-item {
+    padding: 0.5rem;
   }
 }
 
