@@ -9,7 +9,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           'dynamic': ['@dynamic-labs/sdk-react-core', '@dynamic-labs/ethereum'],
-          'viem': ['viem'],
         },
       },
     },
@@ -22,10 +21,9 @@ export default defineConfig({
     include: [
       '@dynamic-labs/sdk-react-core',
       '@dynamic-labs/ethereum',
-      'viem',
       'buffer',
     ],
-    exclude: [],
+    exclude: ['viem'], // Let viem be bundled normally to avoid initialization issues
     esbuildOptions: {
       target: 'es2020',
     },

@@ -2,7 +2,19 @@ import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { formatEther, parseEther } from 'viem'
+
+// Helper functions to avoid viem bundling issues
+const formatEther = (value) => {
+  if (typeof value === 'bigint') {
+    return (Number(value) / 1e18).toString()
+  }
+  return (Number(value) / 1e18).toString()
+}
+
+const parseEther = (value) => {
+  const num = parseFloat(value)
+  return BigInt(Math.floor(num * 1e18))
+}
 
 export function useGameContract() {
   const { primaryWallet } = useDynamicContext()
