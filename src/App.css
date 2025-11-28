@@ -1,42 +1,257 @@
-#root {
-  max-width: 1280px;
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.app::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Top Navigation Bar */
+.app-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(15, 12, 41, 0.95);
+  backdrop-filter: blur(20px);
+  border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.navbar-content {
+  max-width: 1800px;
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.navbar-left {
+  display: flex;
+  align-items: center;
 }
 
-@keyframes logo-spin {
+.navbar-title {
+  font-size: 1.5rem;
+  margin: 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app-main {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 2rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  position: relative;
+  z-index: 1;
+  flex: 1;
+}
+
+.game-section {
+  width: 100%;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
   from {
-    transform: rotate(0deg);
+    opacity: 0;
+    transform: translateY(30px);
   }
   to {
-    transform: rotate(360deg);
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+/* Desktop Layout */
+.game-grid {
+  display: grid;
+  grid-template-columns: 450px 1fr;
+  gap: 2.5rem;
+  align-items: start;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .game-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .navbar-content {
+    padding: 1rem 1.5rem;
   }
 }
 
-.card {
-  padding: 2em;
+/* Mobile */
+@media (max-width: 768px) {
+  .navbar-content {
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .navbar-title {
+    font-size: 1.2rem;
+  }
+  
+  .app-main {
+    padding: 1rem;
+    gap: 1.5rem;
+  }
+  
+  .game-grid {
+    gap: 1.25rem;
+  }
 }
 
-.read-the-docs {
+.info-card, .warning-card {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2rem;
+  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.warning-card {
+  border-color: rgba(255, 152, 0, 0.5);
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.info-card h3, .warning-card h3 {
+  margin-top: 0;
+  color: #667eea;
+}
+
+.warning-card h3 {
+  color: #ff9800;
+}
+
+.info-card ol, .warning-card ol {
+  text-align: left;
+  color: #ccc;
+  line-height: 2;
+}
+
+.info-card li, .warning-card li {
+  margin: 0.5rem 0;
+}
+
+.info-card code, .warning-card code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  color: #4caf50;
+}
+
+.game-features {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 12px;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+.game-features h4 {
+  margin-top: 0;
+  color: #667eea;
+}
+
+.game-features ul {
+  text-align: left;
+  list-style: none;
+  padding: 0;
+  color: #ccc;
+  line-height: 2;
+}
+
+.deploy-instructions {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+}
+
+.deploy-instructions h4 {
+  margin-top: 0;
+  color: #4caf50;
+}
+
+.switch-network-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 12px;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+
+.app-footer {
+  margin-top: auto;
+  padding-top: 3rem;
+  text-align: center;
   color: #888;
+}
+
+@media (max-width: 1024px) {
+  .game-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .app {
+    padding: 1rem;
+  }
+  
+  .app-header h1 {
+    font-size: 2rem;
+  }
+  
+  .subtitle {
+    font-size: 1rem;
+  }
+  
+  .info-card, .warning-card {
+    padding: 1.5rem;
+  }
 }

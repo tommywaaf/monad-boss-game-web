@@ -1,0 +1,184 @@
+.boss-kill-stats {
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.25) 0%, rgba(255, 87, 34, 0.2) 100%);
+  padding: 2rem;
+  border-radius: 16px;
+  border: 2px solid rgba(255, 152, 0, 0.6);
+  margin-top: 1rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+.boss-kill-stats h3 {
+  margin: 0 0 1.5rem 0;
+  color: #ffb74d;
+  font-weight: 700;
+  font-size: 1.4rem;
+  text-align: center;
+}
+
+.stats-explanation {
+  color: #ffffff;
+}
+
+.intro-text {
+  margin: 0 0 1rem 0;
+  line-height: 1.6;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.stats-explanation ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stats-explanation li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.stats-explanation li:hover {
+  background: rgba(0, 0, 0, 0.4);
+  transform: translateX(5px);
+}
+
+.tier-name {
+  flex: 0 0 auto;
+}
+
+.tier-name strong {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.tier-info {
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 0.95rem;
+  margin-left: 1rem;
+}
+
+/* Tier-specific colors with badge style */
+.stats-explanation li .tier-name strong {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  text-shadow: none;
+}
+
+.stats-explanation li:nth-child(1) .tier-name strong {
+  color: #9E9E9E; /* Common - Grey */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(2) .tier-name strong {
+  color: #757575; /* Grey */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(3) .tier-name strong {
+  color: #424242; /* White - dark text on white bg */
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.stats-explanation li:nth-child(4) .tier-name strong {
+  color: #2196F3; /* Blue */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(5) .tier-name strong {
+  color: #9C27B0; /* Purple */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(6) .tier-name strong {
+  color: #FF9800; /* Orange */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(7) .tier-name strong {
+  color: #F44336; /* Red */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(8) .tier-name strong {
+  color: #795548; /* Brown */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(9) .tier-name strong {
+  color: #212121; /* Black */
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.stats-explanation li:nth-child(10) .tier-name strong {
+  background-image: linear-gradient(90deg, #9400D3, #4B0082, #0000FF, #00FF00, #FF7F00, #FF0000, #FF1493);
+  background-color: rgba(255, 255, 255, 0.95);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-weight: 800;
+  font-size: 1.15rem;
+  animation: rainbow-glow 3s ease-in-out infinite;
+  position: relative;
+}
+
+.stats-explanation li:nth-child(10) .tier-name strong::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 4px;
+  z-index: -1;
+}
+
+@keyframes rainbow-glow {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.3); }
+}
+
+.hint {
+  font-size: 0.95rem;
+  color: #e0e0e0;
+  font-style: italic;
+  margin-top: 1rem;
+}
+
+.hint-important {
+  font-size: 1rem;
+  color: #ffcc80;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: rgba(255, 152, 0, 0.2);
+  border-radius: 8px;
+  border-left: 4px solid #ffb74d;
+}
+
+@media (max-width: 768px) {
+  .stats-explanation li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .tier-info {
+    margin-left: 0;
+    font-size: 0.85rem;
+  }
+}
+

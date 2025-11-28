@@ -7,21 +7,35 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.js --network monad",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "simulate": "node scripts/simulate.js",
+    "simulate:1k": "node scripts/simulate.js 1000",
+    "simulate:10k": "node scripts/simulate.js 10000",
+    "simulate:100k": "node scripts/simulate.js 100000"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.90.11",
+    "@web3modal/wagmi": "^5.1.11",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "viem": "^2.40.3",
+    "wagmi": "^3.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "dotenv": "^16.6.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "hardhat": "^2.27.1",
     "vite": "^7.2.4"
   }
 }
