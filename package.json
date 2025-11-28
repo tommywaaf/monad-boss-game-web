@@ -11,6 +11,7 @@
     "compile": "hardhat compile",
     "deploy": "hardhat run scripts/deploy.js --network monad",
     "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "verify": "hardhat run scripts/verify.js --network monad",
     "simulate": "node scripts/simulate.js",
     "simulate:1k": "node scripts/simulate.js 1000",
     "simulate:10k": "node scripts/simulate.js 10000",

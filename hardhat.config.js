@@ -20,6 +20,14 @@ export default {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
     },
   },
+  sourcify: {
+    enabled: true,
+    apiUrl: "https://sourcify-api-monad.blockvision.org/",
+    browserUrl: "https://monadvision.com/",
+  },
+  etherscan: {
+    enabled: false,
+  },
   paths: {
     sources: "./contracts",
     tests: "./test",

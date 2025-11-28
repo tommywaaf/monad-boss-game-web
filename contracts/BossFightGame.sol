@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-// Version: Simplified randomness - removed complex mixing operations for better distribution
+// Version: Fixed randomness - use full hash value instead of bit extraction for uniform distribution
 
 /// @notice Prototype, NOT production-secure randomness.
 /// Good enough for testing and playing with Fireblocks / MetaMask, etc.
@@ -200,16 +200,20 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier - use hash bytes extraction to avoid modulo bias
-        // Extract 9 bytes (72 bits) from hash which gives us 0 to 2^72-1 range
-        // This avoids potential bias from modulo operations on very large numbers
+        // Determine item tier - use full hash value with proper range reduction
+        // Create final hash with all entropy sources
         bytes32 finalHash = keccak256(abi.encodePacked(rand, block.number, block.timestamp, player, nonce, totalBossesKilled));
         
-        // Extract first 9 bytes (bytes 0-8) from the 32-byte hash
-        // Shift right by 23 bytes (184 bits) to get the first 9 bytes, then mask to 72 bits
+        // Use the full 256-bit hash value, but reduce to our range properly
+        // Instead of extracting bits, use the full value modulo our range
+        // This ensures we use all entropy from the hash
         uint256 hashValue = uint256(finalHash);
-        uint256 baseRoll = (hashValue >> 184) & 0xFFFFFFFFFFFFFFFFFFFF; // Mask to 72 bits (9 bytes)
-        baseRoll = baseRoll % 1_000_000_000; // Final modulo to 0-999,999,999
+        
+        // Use rejection sampling approach: take modulo, but if result is in biased range, re-hash
+        // For simplicity and gas efficiency, use direct modulo with large range
+        // Since 1_000_000_000 is much smaller than 2^256, we can use modulo directly
+        // The bias is negligible (less than 1 in 10^60)
+        uint256 baseRoll = hashValue % 1_000_000_000;
         
         uint8 baseTier = _rollBaseTier(baseRoll);
         
