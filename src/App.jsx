@@ -11,7 +11,19 @@ import './App.css'
 function App() {
   const { primaryWallet } = useDynamicContext()
   const isConnected = !!primaryWallet
-  const chainId = primaryWallet?.chain ? Number(primaryWallet.chain) : null
+  
+  // Get chain ID - Dynamic may expose it as a number, string, or object
+  let chainId = null
+  if (primaryWallet?.chain) {
+    if (typeof primaryWallet.chain === 'number') {
+      chainId = primaryWallet.chain
+    } else if (typeof primaryWallet.chain === 'string') {
+      chainId = Number(primaryWallet.chain)
+    } else if (primaryWallet.chain?.chainId) {
+      chainId = Number(primaryWallet.chain.chainId)
+    }
+  }
+  
   const isMonadNetwork = chainId === 143
   
   // Hook to automatically fund Dynamic wallets when created

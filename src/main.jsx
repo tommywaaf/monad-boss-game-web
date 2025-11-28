@@ -12,15 +12,55 @@ if (!dynamicEnvironmentId) {
   console.warn('VITE_DYNAMIC_ENVIRONMENT_ID is not set. Dynamic embedded wallets will not work.')
 }
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <DynamicContextProvider
-      settings={{
-        environmentId: dynamicEnvironmentId,
-        walletConnectors: [EthereumWalletConnectors],
-      }}
-    >
-      <App />
-    </DynamicContextProvider>
-  </StrictMode>,
-)
+// Only render if we have an environment ID, otherwise show error
+if (!dynamicEnvironmentId) {
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh', 
+        flexDirection: 'column',
+        color: '#fff',
+        background: '#0f0c29',
+        fontFamily: 'system-ui, sans-serif',
+        padding: '2rem',
+        textAlign: 'center'
+      }}>
+        <h1 style={{ color: '#f44336', marginBottom: '1rem' }}>⚠️ Configuration Required</h1>
+        <p style={{ marginBottom: '0.5rem' }}>VITE_DYNAMIC_ENVIRONMENT_ID is not set.</p>
+        <p style={{ marginBottom: '1rem', opacity: 0.8 }}>Please set this environment variable to use the app.</p>
+        <div style={{ 
+          background: '#1a1a2e', 
+          padding: '1rem', 
+          borderRadius: '8px',
+          textAlign: 'left',
+          maxWidth: '600px',
+          marginTop: '1rem'
+        }}>
+          <p style={{ marginBottom: '0.5rem' }}><strong>To fix:</strong></p>
+          <ol style={{ marginLeft: '1.5rem', lineHeight: '1.8' }}>
+            <li>Create a <code style={{ background: '#2a2a3e', padding: '2px 6px', borderRadius: '4px' }}>.env</code> file in the project root</li>
+            <li>Add: <code style={{ background: '#2a2a3e', padding: '2px 6px', borderRadius: '4px' }}>VITE_DYNAMIC_ENVIRONMENT_ID=your_environment_id</code></li>
+            <li>Get your Environment ID from: <a href="https://app.dynamic.xyz/dashboard/developer/api" target="_blank" rel="noopener" style={{ color: '#667eea' }}>Dynamic Dashboard</a></li>
+            <li>Restart the dev server</li>
+          </ol>
+        </div>
+      </div>
+    </StrictMode>
+  )
+} else {
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <DynamicContextProvider
+        settings={{
+          environmentId: dynamicEnvironmentId,
+          walletConnectors: [EthereumWalletConnectors],
+        }}
+      >
+        <App />
+      </DynamicContextProvider>
+    </StrictMode>,
+  )
+}

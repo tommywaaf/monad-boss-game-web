@@ -25,6 +25,7 @@ export default defineConfig({
       'viem',
       'buffer',
     ],
+    exclude: [],
     esbuildOptions: {
       target: 'es2020',
     },

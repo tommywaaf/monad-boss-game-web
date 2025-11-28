@@ -12,7 +12,18 @@ function WalletConnect() {
   // Get wallet info from Dynamic
   const address = primaryWallet?.address
   const isConnected = !!primaryWallet
-  const chainId = primaryWallet?.chain ? Number(primaryWallet.chain) : null
+  
+  // Get chain ID - Dynamic may expose it as a number, string, or object
+  let chainId = null
+  if (primaryWallet?.chain) {
+    if (typeof primaryWallet.chain === 'number') {
+      chainId = primaryWallet.chain
+    } else if (typeof primaryWallet.chain === 'string') {
+      chainId = Number(primaryWallet.chain)
+    } else if (primaryWallet.chain?.chainId) {
+      chainId = Number(primaryWallet.chain.chainId)
+    }
+  }
 
   const truncateAddress = (addr) => {
     if (!addr) return ''
