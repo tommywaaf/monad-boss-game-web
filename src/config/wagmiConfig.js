@@ -31,6 +31,3 @@ createWeb3Modal({
   enableOnramp: false // Optional - enable on-ramp
 })
 
-// 4. Reconnect on page load
-reconnect(config)
-
