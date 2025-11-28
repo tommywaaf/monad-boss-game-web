@@ -1,7 +1,7 @@
 import { ITEM_TIERS } from '../config/gameContract'
 import './RollDisplay.css'
 
-function RollDisplay({ rollData, onClose }) {
+function RollDisplay({ rollData, onClose, onAttackAgain }) {
   if (!rollData) return null
 
   const { type, tier, baseRoll, baseTier, upgraded, successRoll, successChance } = rollData
@@ -134,6 +134,17 @@ function RollDisplay({ rollData, onClose }) {
           <p>Roll generated from: blockhash + your address + nonce</p>
           <p className="warning-text">⚠️ Uses pseudo-random (not VRF) - fine for testing</p>
         </div>
+
+        {onAttackAgain && (
+          <div className="roll-actions">
+            <button className="attack-again-button" onClick={() => {
+              onClose()
+              onAttackAgain()
+            }}>
+              ⚔️ Attack Boss Again
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

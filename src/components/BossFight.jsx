@@ -115,7 +115,11 @@ function BossFight() {
       )}
       
       {showRollDisplay && (
-        <RollDisplay rollData={rollData} onClose={closeRollDisplay} />
+        <RollDisplay 
+          rollData={rollData} 
+          onClose={closeRollDisplay}
+          onAttackAgain={killBoss}
+        />
       )}
 
       <div className="global-stats">

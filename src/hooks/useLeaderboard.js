@@ -52,12 +52,27 @@ export function useLeaderboard() {
               args: [address]
             })
 
+            // Get inventory to calculate highest tier found
+            const inventory = await publicClient.readContract({
+              address: GAME_CONTRACT_ADDRESS,
+              abi: GAME_CONTRACT_ABI,
+              functionName: 'getInventory',
+              args: [address]
+            })
+
+            // Calculate highest tier from inventory
+            let highestTier = -1
+            if (inventory && inventory.length > 0) {
+              highestTier = Math.max(...inventory.map(item => Number(item.tier)))
+            }
+
             players.push({
               address: address,
               rarityBoost: Number(stats[0]) / 100, // Convert bps to percentage
               successBoost: Number(stats[1]) / 100,
               bossKills: Number(stats[2]),
-              inventorySize: Number(stats[3])
+              inventorySize: Number(stats[3]),
+              highestTier: highestTier
             })
           } catch (error) {
             console.error(`Error fetching player ${i}:`, error)

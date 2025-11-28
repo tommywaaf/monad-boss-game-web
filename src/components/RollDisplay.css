@@ -257,6 +257,36 @@
   font-style: italic;
 }
 
+.roll-actions {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.attack-again-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 700;
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.attack-again-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+}
+
+.attack-again-button:active {
+  transform: translateY(0);
+}
+
 @media (max-width: 768px) {
   .roll-display-content {
     width: 95%;
@@ -273,6 +303,11 @@
   
   .roll-display-content h2 {
     font-size: 1.5rem;
+  }
+  
+  .attack-again-button {
+    font-size: 1rem;
+    padding: 0.875rem 1.5rem;
   }
 }
 

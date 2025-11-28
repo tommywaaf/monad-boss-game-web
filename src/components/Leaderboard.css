@@ -101,7 +101,7 @@
 
 .table-header {
   display: grid;
-  grid-template-columns: 60px 1fr 150px 120px;
+  grid-template-columns: 60px 1fr 130px 120px 100px;
   padding: 1rem;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
@@ -112,7 +112,7 @@
 
 .table-row {
   display: grid;
-  grid-template-columns: 60px 1fr 150px 120px;
+  grid-template-columns: 60px 1fr 130px 120px 100px;
   padding: 1rem;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
@@ -184,12 +184,14 @@
   
   .table-header,
   .table-row {
-    grid-template-columns: 50px 1fr 100px;
+    grid-template-columns: 50px 1fr 80px;
     font-size: 0.85rem;
   }
   
-  .table-header span:nth-child(4),
-  .table-row span:nth-child(4) {
+  .table-header span:nth-child(3),
+  .table-row span:nth-child(3),
+  .table-header span:nth-child(5),
+  .table-row span:nth-child(5) {
     display: none;
   }
 }
