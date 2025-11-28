@@ -131,6 +131,27 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
           </div>
         </div>
 
+        {onAttackAgain && (
+          <div className="roll-actions">
+            <button 
+              className="attack-again-button" 
+              onClick={() => {
+                // Close modal immediately
+                onClose()
+                // Start the attack - use requestAnimationFrame to ensure modal closes first
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    onAttackAgain()
+                  })
+                })
+              }}
+              disabled={isKilling}
+            >
+              {isKilling ? '⚔️ Attacking...' : '⚔️ Attack Boss Again'}
+            </button>
+          </div>
+        )}
+
         <div className="provably-fair">
           <h4>🔒 Provably Fair</h4>
           <div className="fair-values">
@@ -206,27 +227,6 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
             </p>
           )}
         </div>
-
-        {onAttackAgain && (
-          <div className="roll-actions">
-            <button 
-              className="attack-again-button" 
-              onClick={() => {
-                // Close modal immediately
-                onClose()
-                // Start the attack - use requestAnimationFrame to ensure modal closes first
-                requestAnimationFrame(() => {
-                  requestAnimationFrame(() => {
-                    onAttackAgain()
-                  })
-                })
-              }}
-              disabled={isKilling}
-            >
-              {isKilling ? '⚔️ Attacking...' : '⚔️ Attack Boss Again'}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   )
