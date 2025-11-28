@@ -11,8 +11,8 @@ const projectId = '563c100c26ea5e8412df52383cde520a'
 const metadata = {
     name: 'Monad Boss Game',
     description: 'Crypto Boss Game on Monad Network',
-    url: 'https://killhitstudios.com',
-    icons: ['https://killhitstudios.com/icon.png'],
+    url: 'https://www.killhitstudios.com', // Match actual domain (with www)
+    icons: ['https://www.killhitstudios.com/icon.png'],
   }
 
 const chains = [monad]
