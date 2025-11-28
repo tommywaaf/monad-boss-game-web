@@ -1,5 +1,6 @@
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { useDynamicContext, getNetwork } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { useEffect, useState } from 'react'
 import './WalletConnect.css'
 
 function WalletConnect() {
@@ -12,18 +13,32 @@ function WalletConnect() {
   // Get wallet info from Dynamic
   const address = primaryWallet?.address
   const isConnected = !!primaryWallet
+  const [chainId, setChainId] = useState(null)
   
-  // Get chain ID - Dynamic may expose it as a number, string, or object
-  let chainId = null
-  if (primaryWallet?.chain) {
-    if (typeof primaryWallet.chain === 'number') {
-      chainId = primaryWallet.chain
-    } else if (typeof primaryWallet.chain === 'string') {
-      chainId = Number(primaryWallet.chain)
-    } else if (primaryWallet.chain?.chainId) {
-      chainId = Number(primaryWallet.chain.chainId)
+  // Get chain ID using Dynamic's getNetwork utility
+  useEffect(() => {
+    if (primaryWallet?.connector) {
+      getNetwork(primaryWallet.connector).then((network) => {
+        if (network) {
+          const id = typeof network === 'number' ? network : network?.chainId || network
+          setChainId(Number(id))
+        }
+      }).catch(() => {
+        // Fallback to primaryWallet.chain if getNetwork fails
+        if (primaryWallet?.chain) {
+          if (typeof primaryWallet.chain === 'number') {
+            setChainId(primaryWallet.chain)
+          } else if (typeof primaryWallet.chain === 'string') {
+            setChainId(Number(primaryWallet.chain))
+          } else if (primaryWallet.chain?.chainId) {
+            setChainId(Number(primaryWallet.chain.chainId))
+          }
+        }
+      })
+    } else {
+      setChainId(null)
     }
-  }
+  }, [primaryWallet])
 
   const truncateAddress = (addr) => {
     if (!addr) return ''
@@ -99,18 +114,28 @@ function WalletConnect() {
             </button>
           </div>
 
-          {!isDynamicWallet && primaryWallet?.connector?.supportsNetworkSwitching && (
+          {!isMonadNetwork && (
             <button 
               className="change-network-button"
               onClick={async () => {
                 try {
-                  await primaryWallet.switchNetwork({ networkChainId: 143 })
+                  console.log('Switching to Monad network...')
+                  // Try connector method first
+                  if (primaryWallet?.connector?.supportsNetworkSwitching?.()) {
+                    await primaryWallet.connector.switchNetwork({ networkChainId: 143 })
+                  } else if (primaryWallet?.switchNetwork) {
+                    // Try direct wallet method
+                    await primaryWallet.switchNetwork({ networkChainId: 143 })
+                  } else {
+                    console.error('Network switching not supported by this wallet')
+                  }
                 } catch (error) {
                   console.error('Failed to switch network:', error)
+                  alert(`Failed to switch network: ${error.message || error}`)
                 }
               }}
             >
-              Switch Network
+              Switch to Monad
             </button>
           )}
         </div>

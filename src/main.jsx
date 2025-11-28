@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { DynamicContextProvider } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider, mergeNetworks } from '@dynamic-labs/sdk-react-core'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
 import './index.css'
 import App from './App.jsx'
@@ -10,6 +10,21 @@ const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
 
 if (!dynamicEnvironmentId) {
   console.warn('VITE_DYNAMIC_ENVIRONMENT_ID is not set. Dynamic embedded wallets will not work.')
+}
+
+// Monad network configuration for Dynamic
+const monadNetwork = {
+  blockExplorerUrls: ['https://explorer.monad.xyz'],
+  chainId: 143,
+  name: 'Monad',
+  rpcUrls: ['https://rpc.monad.xyz/'],
+  iconUrls: [],
+  nativeCurrency: {
+    name: 'Monad',
+    symbol: 'MON',
+    decimals: 18,
+  },
+  networkId: 143,
 }
 
 // Only render if we have an environment ID, otherwise show error
@@ -57,6 +72,20 @@ if (!dynamicEnvironmentId) {
         settings={{
           environmentId: dynamicEnvironmentId,
           walletConnectors: [EthereumWalletConnectors],
+          overrides: {
+            evmNetworks: (networks) => {
+              // Merge Monad network with dashboard networks, putting Monad first
+              const merged = mergeNetworks([monadNetwork], networks)
+              // Ensure Monad is first in the list (default network)
+              const monadIndex = merged.findIndex(n => n.chainId === 143)
+              if (monadIndex > 0) {
+                const monad = merged.splice(monadIndex, 1)[0]
+                merged.unshift(monad)
+              }
+              return merged
+            },
+          },
+          walletConnectPreferredChains: ['eip155:143'], // Prefer Monad for WalletConnect
         }}
       >
         <App />
