@@ -8,7 +8,7 @@ function WalletConnect() {
   const { disconnect } = useDisconnect()
   const { open } = useWeb3Modal()
   const chainId = useChainId()
-  const { setShowAuthFlow, primaryWallet } = useDynamicContext()
+  const { setShowAuthFlow, primaryWallet, handleLogout } = useDynamicContext()
 
   const truncateAddress = (addr) => {
     if (!addr) return ''
@@ -28,6 +28,16 @@ function WalletConnect() {
   const handleConnectWallet = () => {
     // Open Web3Modal for external wallets (MetaMask, WalletConnect, etc.)
     open()
+  }
+
+  const handleDisconnect = async () => {
+    if (isDynamicWallet) {
+      // For Dynamic wallets, use handleLogout
+      await handleLogout()
+    } else {
+      // For external wallets (MetaMask, WalletConnect), use Wagmi disconnect
+      disconnect()
+    }
   }
 
   return (
@@ -64,7 +74,7 @@ function WalletConnect() {
             <span className="address">{truncateAddress(address)}</span>
             <button 
               className="disconnect-button"
-              onClick={() => disconnect()}
+              onClick={handleDisconnect}
             >
               Disconnect
             </button>
