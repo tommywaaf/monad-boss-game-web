@@ -36,9 +36,26 @@ export async function onRequestPost(context) {
     const sourceVaultId = env.FIREBLOCKS_SOURCE_VAULT_ID || '0'
     const assetId = env.FIREBLOCKS_ASSET_ID || 'ETH' // Change to 'MON' if available in Fireblocks
 
+    console.log('[Fireblocks] Environment check:', {
+      hasApiKey: !!apiKey,
+      hasApiSecret: !!apiSecret,
+      sourceVaultId,
+      assetId
+    })
+
     if (!apiKey || !apiSecret) {
+      console.error('[Fireblocks] Missing credentials:', {
+        hasApiKey: !!apiKey,
+        hasApiSecret: !!apiSecret
+      })
       return new Response(
-        JSON.stringify({ error: 'Fireblocks credentials not configured' }),
+        JSON.stringify({ 
+          error: 'Fireblocks credentials not configured',
+          details: {
+            hasApiKey: !!apiKey,
+            hasApiSecret: !!apiSecret
+          }
+        }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       )
     }
@@ -47,6 +64,7 @@ export async function onRequestPost(context) {
     const fireblocksUrl = 'https://api.fireblocks.io/v1/transactions'
 
     // Create transaction payload
+    // For one-time addresses, Fireblocks uses a different format
     const transactionPayload = {
       assetId: assetId,
       amount: '1', // 1 MON (or 1 ETH if using ETH asset)
@@ -65,10 +83,15 @@ export async function onRequestPost(context) {
       // Check Fireblocks API docs for Monad network configuration
     }
 
+    console.log('[Fireblocks] Creating transaction with payload:', JSON.stringify(transactionPayload, null, 2))
+
     // Generate JWT token for Fireblocks authentication
+    console.log('[Fireblocks] Generating JWT token...')
     const token = await generateFireblocksJWT(apiKey, apiSecret, '/v1/transactions', transactionPayload)
+    console.log('[Fireblocks] JWT token generated successfully')
 
     // Create Fireblocks transaction
+    console.log('[Fireblocks] Sending request to Fireblocks API...')
     const response = await fetch(fireblocksUrl, {
       method: 'POST',
       headers: {
@@ -78,15 +101,30 @@ export async function onRequestPost(context) {
       },
       body: JSON.stringify(transactionPayload),
     })
+    
+    console.log('[Fireblocks] Response status:', response.status)
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('Fireblocks API error:', errorText)
+      console.error('[Fireblocks] API error response:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      })
+      
+      let errorDetails
+      try {
+        errorDetails = JSON.parse(errorText)
+      } catch {
+        errorDetails = { message: errorText }
+      }
+      
       return new Response(
         JSON.stringify({ 
           error: 'Failed to create Fireblocks transaction',
-          details: errorText,
-          status: response.status
+          details: errorDetails,
+          status: response.status,
+          statusText: response.statusText
         }),
         { status: response.status, headers: { 'Content-Type': 'application/json' } }
       )
