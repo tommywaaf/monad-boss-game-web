@@ -3,6 +3,7 @@ import WalletConnect from './components/WalletConnect'
 import BossFight from './components/BossFight'
 import Inventory from './components/Inventory'
 import Leaderboard from './components/Leaderboard'
+import { useDynamicWalletFund } from './hooks/useDynamicWalletFund'
 import { GAME_CONTRACT_ADDRESS } from './config/gameContract'
 import './App.css'
 
@@ -11,6 +12,9 @@ function App() {
   const { isConnected } = useAccount()
   const chainId = useChainId()
   const isMonadNetwork = chainId === 143
+  
+  // Hook to automatically fund Dynamic wallets when created
+  useDynamicWalletFund()
 
   const isContractDeployed = GAME_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000'
 

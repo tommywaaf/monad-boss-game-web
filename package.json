@@ -25,6 +25,7 @@
     "@walletconnect/ethereum-provider": "^2.13.0",
     "@web3modal/wagmi": "^5.1.11",
     "buffer": "^6.0.3",
+    "jose": "^5.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "viem": "^2.40.3",
