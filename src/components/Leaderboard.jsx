@@ -5,9 +5,16 @@ import { ITEM_TIERS } from '../config/gameContract'
 import './Leaderboard.css'
 
 function Leaderboard() {
-  const { leaderboardData, loading } = useLeaderboard()
+  const { leaderboardData, loading, refetchLeaderboard } = useLeaderboard()
   const [sortBy, setSortBy] = useState('highestTier') // rarityBoost, bossKills, highestTier
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const { address: currentAddress } = useAccount()
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await refetchLeaderboard()
+    setTimeout(() => setIsRefreshing(false), 500)
+  }
 
   const sortedData = [...leaderboardData].sort((a, b) => {
     if (sortBy === 'highestTier') {
@@ -28,7 +35,8 @@ function Leaderboard() {
     <div className="leaderboard">
       <div className="leaderboard-header">
         <h2>🏆 Leaderboard</h2>
-        <div className="sort-buttons">
+        <div className="leaderboard-header-right">
+          <div className="sort-buttons">
           <button 
             className={sortBy === 'highestTier' ? 'active' : ''}
             onClick={() => setSortBy('highestTier')}
@@ -46,6 +54,19 @@ function Leaderboard() {
             onClick={() => setSortBy('bossKills')}
           >
             Boss Kills
+          </button>
+          </div>
+          <button 
+            className="refresh-leaderboard-button"
+            onClick={handleRefresh}
+            disabled={isRefreshing || loading}
+            title="Refresh leaderboard"
+          >
+            {isRefreshing ? (
+              <span className="refresh-spinner">⟳</span>
+            ) : (
+              <span>⟳</span>
+            )}
           </button>
         </div>
       </div>

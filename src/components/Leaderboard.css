@@ -53,9 +53,58 @@
   font-size: 1.8rem;
 }
 
+.leaderboard-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .sort-buttons {
   display: flex;
   gap: 0.5rem;
+}
+
+.refresh-leaderboard-button {
+  background: rgba(102, 126, 234, 0.2);
+  border: 2px solid rgba(102, 126, 234, 0.5);
+  color: #667eea;
+  font-size: 1.5rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.refresh-leaderboard-button:hover:not(:disabled) {
+  background: rgba(102, 126, 234, 0.3);
+  border-color: #667eea;
+  transform: rotate(180deg) scale(1.1);
+  box-shadow: 0 0 15px rgba(102, 126, 234, 0.5);
+}
+
+.refresh-leaderboard-button:active:not(:disabled) {
+  transform: rotate(180deg) scale(0.95);
+}
+
+.refresh-leaderboard-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.refresh-spinner {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .sort-buttons button {
@@ -172,14 +221,26 @@
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .leaderboard-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
   
   .sort-buttons {
-    width: 100%;
-    flex-direction: column;
+    flex: 1;
+    flex-wrap: wrap;
   }
   
   .sort-buttons button {
-    width: 100%;
+    flex: 1;
+    min-width: 100px;
+  }
+
+  .refresh-leaderboard-button {
+    width: 36px;
+    height: 36px;
+    font-size: 1.3rem;
   }
   
   .table-header,

@@ -158,7 +158,7 @@ contract BossFightGame {
         );
         
         // Second hash round using first hash + additional entropy for better distribution
-        uint256 rand = uint256(
+        uint256 rand2 = uint256(
             keccak256(
                 abi.encodePacked(
                     rand1,
@@ -167,6 +167,24 @@ contract BossFightGame {
                     player,
                     nonce,
                     totalBossesKilled  // Global counter for additional entropy
+                )
+            )
+        );
+        
+        // Mix the hashes with XOR and additional hash round to ensure uniform distribution
+        // This breaks any potential patterns in the hash values
+        uint256 mixed = rand1 ^ rand2;
+        
+        // Final hash round with mixed value to ensure uniform distribution
+        uint256 rand = uint256(
+            keccak256(
+                abi.encodePacked(
+                    mixed,
+                    block.number,
+                    block.timestamp,
+                    player,
+                    nonce,
+                    totalBossesKilled
                 )
             )
         );
@@ -180,8 +198,16 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier - use hash directly, ensure uniform distribution
-        uint256 baseRoll = rand % 1_000_000_000;
+        // Determine item tier - use hash with additional mixing to ensure uniform distribution
+        // XOR with rotated versions to break any patterns, then modulo
+        uint256 mixedRand = rand;
+        mixedRand = mixedRand ^ (rand >> 32);
+        mixedRand = mixedRand ^ (rand << 32);
+        mixedRand = mixedRand ^ uint256(keccak256(abi.encodePacked(rand, nonce)));
+        
+        // Use modulo to get 0-999,999,999 range
+        // The additional mixing should ensure uniform distribution
+        uint256 baseRoll = mixedRand % 1_000_000_000;
         uint8 baseTier = _rollBaseTier(baseRoll);
         
         // Use different bits from hash for rarity upgrade to ensure independence
