@@ -119,7 +119,7 @@ async function createFireblocksTransaction() {
         id: sourceVaultId.toString(),
       },
       destination: {
-        type: 'EXTERNAL_WALLET',
+        type: 'ONE_TIME_ADDRESS',
         oneTimeAddress: {
           address: testAddress,
         },

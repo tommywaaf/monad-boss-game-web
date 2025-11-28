@@ -83,12 +83,22 @@ function BossFight() {
 
       <button 
         className="attack-button"
-        onClick={killBoss}
+        onClick={() => {
+          console.log('[BossFight] Attack button clicked')
+          console.log('[BossFight] isKilling:', isKilling)
+          console.log('[BossFight] feeReady:', feeReady)
+          console.log('[BossFight] rakeFeeMon:', rakeFeeMon)
+          if (!isKilling && feeReady) {
+            killBoss()
+          } else {
+            console.warn('[BossFight] Button click ignored - isKilling:', isKilling, 'feeReady:', feeReady)
+          }
+        }}
         disabled={isKilling || !feeReady}
       >
         {isKilling ? '⚔️ Attacking...' : '⚔️ Attack Boss'}
         <span className="attack-subtext">
-          Cost: {feeReady ? `${rakeFeeMon} MON` : '...'}
+          Cost: {feeReady ? `${rakeFeeMon} MON` : 'Loading fee...'}
         </span>
       </button>
 

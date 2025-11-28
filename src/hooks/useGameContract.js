@@ -37,12 +37,22 @@ export function useGameContract() {
     if (primaryWallet && isEthereumWallet(primaryWallet)) {
       const initClients = async () => {
         try {
+          console.log('[useGameContract] Initializing wallet clients...')
           const publicClient = await primaryWallet.getPublicClient()
           const walletClient = await primaryWallet.getWalletClient()
+          
+          if (!publicClient || !walletClient) {
+            console.error('[useGameContract] Failed to get clients:', { publicClient: !!publicClient, walletClient: !!walletClient })
+            return
+          }
+          
           publicClientRef.current = publicClient
           walletClientRef.current = walletClient
+          console.log('[useGameContract] Wallet clients initialized successfully')
         } catch (error) {
-          console.error('Failed to initialize clients:', error)
+          console.error('[useGameContract] Failed to initialize clients:', error)
+          publicClientRef.current = null
+          walletClientRef.current = null
         }
       }
       initClients()
@@ -192,8 +202,19 @@ export function useGameContract() {
   }, [lastEvent, txStatus])
 
   const killBoss = useCallback(async () => {
-    if (!walletClientRef.current || !publicClientRef.current || !rakeFeeMon || rakeFeeMon === '0') {
-      console.error('Wallet or fee not ready')
+    // Check if wallet is connected
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
+      console.error('[killBoss] No wallet connected')
+      setTxError(new Error('Please connect your wallet first'))
+      setTxStatus('failed')
+      return
+    }
+
+    // Check if fee is ready
+    if (!rakeFeeMon || rakeFeeMon === '0') {
+      console.error('[killBoss] Rake fee not loaded')
+      setTxError(new Error('Fee not loaded. Please wait...'))
+      setTxStatus('failed')
       return
     }
 
@@ -202,19 +223,48 @@ export function useGameContract() {
       setIsWriting(true)
       setTxError(null)
 
-      const hash = await walletClientRef.current.writeContract({
+      // Ensure clients are initialized (refresh if needed)
+      let walletClient = walletClientRef.current
+      let publicClient = publicClientRef.current
+
+      if (!walletClient || !publicClient) {
+        console.log('[killBoss] Clients not ready, initializing...')
+        walletClient = await primaryWallet.getWalletClient()
+        publicClient = await primaryWallet.getPublicClient()
+        
+        if (!walletClient || !publicClient) {
+          throw new Error('Failed to initialize wallet clients. Please try again.')
+        }
+        
+        walletClientRef.current = walletClient
+        publicClientRef.current = publicClient
+      }
+
+      console.log('[killBoss] Writing contract transaction...')
+      console.log('[killBoss] Contract:', GAME_CONTRACT_ADDRESS)
+      console.log('[killBoss] Function: killBoss')
+      console.log('[killBoss] Value:', parseEther(rakeFeeMon).toString(), 'wei')
+
+      // Write contract - this should trigger Dynamic's signature modal
+      const hash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
         functionName: 'killBoss',
         value: parseEther(rakeFeeMon),
+        account: primaryWallet.address,
       })
 
+      console.log('[killBoss] Transaction hash:', hash)
       setTxHash(hash)
       setTxStatus('submitted')
+      setIsWriting(false)
       setIsConfirming(true)
 
       // Wait for transaction receipt
-      const receipt = await publicClientRef.current.waitForTransactionReceipt({ hash })
+      console.log('[killBoss] Waiting for transaction receipt...')
+      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+      console.log('[killBoss] Transaction receipt:', receipt)
+      
       setIsConfirming(false)
       setIsConfirmed(true)
       setTxStatus('confirmed')
@@ -224,13 +274,14 @@ export function useGameContract() {
         setTxStatus('waiting-event')
       }, 500)
     } catch (error) {
-      console.error('Error killing boss:', error)
+      console.error('[killBoss] Error:', error)
       setTxError(error)
       setTxStatus('failed')
       setIsWriting(false)
       setIsConfirming(false)
+      setIsConfirmed(false)
     }
-  }, [rakeFeeMon])
+  }, [primaryWallet, rakeFeeMon])
 
   const handleReset = useCallback(() => {
     setTxStatus(null)
