@@ -10,6 +10,7 @@ export default {
         enabled: true,
         runs: 200,
       },
+      viaIR: true, // Enable IR-based code generator to avoid "stack too deep" errors
     },
   },
   networks: {

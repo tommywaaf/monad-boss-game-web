@@ -200,13 +200,17 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier - use additional hash round to ensure uniform distribution
-        // Create a fresh hash using the previous hash + more entropy to break any patterns
+        // Determine item tier - use hash bytes extraction to avoid modulo bias
+        // Extract 9 bytes (72 bits) from hash which gives us 0 to 2^72-1 range
+        // This avoids potential bias from modulo operations on very large numbers
         bytes32 finalHash = keccak256(abi.encodePacked(rand, block.number, block.timestamp, player, nonce, totalBossesKilled));
         
-        // Use the hash value directly with modulo
-        // The additional hash round should ensure uniform distribution
-        uint256 baseRoll = uint256(finalHash) % 1_000_000_000;
+        // Extract first 9 bytes (bytes 0-8) from the 32-byte hash
+        // Shift right by 23 bytes (184 bits) to get the first 9 bytes, then mask to 72 bits
+        uint256 hashValue = uint256(finalHash);
+        uint256 baseRoll = (hashValue >> 184) & 0xFFFFFFFFFFFFFFFFFFFF; // Mask to 72 bits (9 bytes)
+        baseRoll = baseRoll % 1_000_000_000; // Final modulo to 0-999,999,999
+        
         uint8 baseTier = _rollBaseTier(baseRoll);
         
         // Use different bits from hash for rarity upgrade to ensure independence
