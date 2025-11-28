@@ -140,8 +140,14 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling }) {
             <button 
               className="attack-again-button" 
               onClick={() => {
+                // Close modal immediately
                 onClose()
-                onAttackAgain()
+                // Start the attack - use requestAnimationFrame to ensure modal closes first
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    onAttackAgain()
+                  })
+                })
               }}
               disabled={isKilling}
             >
