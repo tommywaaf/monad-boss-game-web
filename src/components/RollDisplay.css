@@ -287,6 +287,12 @@
   transform: translateY(0);
 }
 
+.attack-again-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 @media (max-width: 768px) {
   .roll-display-content {
     width: 95%;

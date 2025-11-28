@@ -6,7 +6,7 @@ import RollDisplay from './RollDisplay'
 import './BossFight.css'
 
 function BossFight() {
-  const { killBoss, isKilling, lastEvent, clearLastEvent, rarityBoost, globalBossesKilled, rakeFeeMon } = useGameContract()
+  const { killBoss, isKilling, txStatus, txHash, isConfirming, isConfirmed, lastEvent, clearLastEvent, rarityBoost, globalBossesKilled, rakeFeeMon } = useGameContract()
   const feeReady = rakeFeeMon && rakeFeeMon !== '0'
   const [notification, setNotification] = useState(null)
   const [showRollDisplay, setShowRollDisplay] = useState(false)
@@ -85,6 +85,59 @@ function BossFight() {
         </span>
       </button>
 
+      {isKilling && (
+        <div className="transaction-status">
+          <div className="status-spinner">
+            <div className="spinner"></div>
+          </div>
+          <div className="status-content">
+            <h3 className="status-title">⚔️ Processing Boss Attack</h3>
+            <div className="status-messages">
+              {txStatus === 'preparing' && (
+                <>
+                  <p className="status-message active">📝 Preparing transaction...</p>
+                  <p className="status-detail">Building transaction data and calculating gas</p>
+                </>
+              )}
+              {txStatus === 'pending' && (
+                <>
+                  <p className="status-message active">👛 Waiting for wallet confirmation...</p>
+                  <p className="status-detail">Please confirm the transaction in your wallet</p>
+                </>
+              )}
+              {txStatus === 'submitted' && txHash && (
+                <>
+                  <p className="status-message active">✅ Transaction submitted!</p>
+                  <p className="status-detail">Hash: <code className="tx-hash">{txHash.slice(0, 10)}...{txHash.slice(-8)}</code></p>
+                  <p className="status-message">⏳ Waiting for block confirmation...</p>
+                </>
+              )}
+              {txStatus === 'confirming' && (
+                <>
+                  <p className="status-message active">⏳ Waiting for block confirmation...</p>
+                  <p className="status-detail">Transaction is being mined on the blockchain</p>
+                  {txHash && (
+                    <p className="status-detail">Hash: <code className="tx-hash">{txHash.slice(0, 10)}...{txHash.slice(-8)}</code></p>
+                  )}
+                </>
+              )}
+              {txStatus === 'confirmed' && (
+                <>
+                  <p className="status-message active">✅ Transaction confirmed!</p>
+                  <p className="status-detail">Block confirmed, processing boss kill...</p>
+                </>
+              )}
+              {txStatus === 'waiting-event' && (
+                <>
+                  <p className="status-message active">🎲 Waiting for boss kill event...</p>
+                  <p className="status-detail">Listening for BossKilled event from contract</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {notification && (
         <div 
           className={`notification ${notification.type}`}
@@ -119,6 +172,7 @@ function BossFight() {
           rollData={rollData} 
           onClose={closeRollDisplay}
           onAttackAgain={killBoss}
+          isKilling={isKilling}
         />
       )}
 

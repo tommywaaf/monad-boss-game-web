@@ -1,4 +1,4 @@
-import { useReadContract, useWriteContract, useWatchContractEvent } from 'wagmi'
+import { useReadContract, useWriteContract, useWatchContractEvent, useWaitForTransactionReceipt } from 'wagmi'
 import { useAccount } from 'wagmi'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
 import { useState, useEffect, useCallback } from 'react'
@@ -6,8 +6,17 @@ import { formatEther } from 'viem'
 
 export function useGameContract() {
   const { address } = useAccount()
-  const { writeContract, isPending: isWriting } = useWriteContract()
+  const { writeContract, data: txHash, isPending: isWriting, reset } = useWriteContract()
   const [lastEvent, setLastEvent] = useState(null)
+  const [txStatus, setTxStatus] = useState(null) // 'preparing' | 'pending' | 'submitted' | 'confirming' | 'confirmed' | 'waiting-event'
+  
+  // Wait for transaction receipt
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: txHash,
+    query: {
+      enabled: !!txHash,
+    }
+  })
 
   // Read inventory
   const { data: inventory, refetch: refetchInventory } = useReadContract({
@@ -67,8 +76,41 @@ export function useGameContract() {
     }
   })
 
+  // Track transaction status
+  useEffect(() => {
+    if (isWriting && !txHash) {
+      setTxStatus('preparing')
+    } else if (isWriting && txHash) {
+      setTxStatus('pending')
+    } else if (txHash && !isConfirming && !isConfirmed) {
+      setTxStatus('submitted')
+    } else if (txHash && isConfirming) {
+      setTxStatus('confirming')
+    } else if (txHash && isConfirmed) {
+      setTxStatus('confirmed')
+      // After confirmation, wait a bit for events
+      setTimeout(() => {
+        setTxStatus('waiting-event')
+      }, 500)
+    } else if (!isWriting && !txHash) {
+      setTxStatus(null)
+    }
+  }, [isWriting, txHash, isConfirming, isConfirmed])
+
+  // Reset status when event is received
+  useEffect(() => {
+    if (lastEvent && txStatus === 'waiting-event') {
+      // Event received, reset transaction tracking
+      setTimeout(() => {
+        setTxStatus(null)
+        reset()
+      }, 1000)
+    }
+  }, [lastEvent, txStatus, reset])
+
   const killBoss = useCallback(() => {
     if (!rakeFeeWei) return
+    setTxStatus('preparing')
     writeContract({
       address: GAME_CONTRACT_ADDRESS,
       abi: GAME_CONTRACT_ABI,
@@ -93,7 +135,11 @@ export function useGameContract() {
     rakeFeeMon,
     globalBossesKilled: globalKills ? Number(globalKills) : 0,
     killBoss,
-    isKilling: isWriting,
+    isKilling: isWriting || isConfirming || !!txStatus,
+    txStatus,
+    txHash,
+    isConfirming,
+    isConfirmed,
     lastEvent,
     clearLastEvent: () => setLastEvent(null),
     refetchInventory,

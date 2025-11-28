@@ -1,7 +1,7 @@
 import { ITEM_TIERS } from '../config/gameContract'
 import './RollDisplay.css'
 
-function RollDisplay({ rollData, onClose, onAttackAgain }) {
+function RollDisplay({ rollData, onClose, onAttackAgain, isKilling }) {
   if (!rollData) return null
 
   const { type, tier, baseRoll, baseTier, upgraded, successRoll, successChance } = rollData
@@ -137,11 +137,15 @@ function RollDisplay({ rollData, onClose, onAttackAgain }) {
 
         {onAttackAgain && (
           <div className="roll-actions">
-            <button className="attack-again-button" onClick={() => {
-              onClose()
-              onAttackAgain()
-            }}>
-              ⚔️ Attack Boss Again
+            <button 
+              className="attack-again-button" 
+              onClick={() => {
+                onClose()
+                onAttackAgain()
+              }}
+              disabled={isKilling}
+            >
+              {isKilling ? '⚔️ Attacking...' : '⚔️ Attack Boss Again'}
             </button>
           </div>
         )}
