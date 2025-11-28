@@ -7,6 +7,13 @@ import './Inventory.css'
 function Inventory() {
   const { inventory, refetchInventory } = useGameContract()
   const [selectedItem, setSelectedItem] = useState(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await refetchInventory()
+    setTimeout(() => setIsRefreshing(false), 500)
+  }
 
   // Sort inventory by tier (highest first)
   const sortedInventory = [...inventory].sort((a, b) => b.tier - a.tier)
@@ -21,7 +28,21 @@ function Inventory() {
     <div className="inventory">
       <div className="inventory-header">
         <h2>🎒 Inventory</h2>
-        <span className="inventory-count">{inventory.length} / 20</span>
+        <div className="inventory-header-right">
+          <span className="inventory-count">{inventory.length} / 20</span>
+          <button 
+            className="refresh-inventory-button"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            title="Refresh inventory"
+          >
+            {isRefreshing ? (
+              <span className="refresh-spinner">⟳</span>
+            ) : (
+              <span>⟳</span>
+            )}
+          </button>
+        </div>
       </div>
 
       {inventory.length === 0 ? (
