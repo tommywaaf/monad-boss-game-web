@@ -9,11 +9,11 @@ const projectId = '563c100c26ea5e8412df52383cde520a'
 
 // 2. Create wagmiConfig
 const metadata = {
-  name: 'Monad Boss Game',
-  description: 'Crypto Boss Game on Monad Network',
-  url: 'https://monad-boss-game.xyz', // Update with your domain
-  icons: ['https://avatars.githubusercontent.com/u/37784886']
-}
+    name: 'Monad Boss Game',
+    description: 'Crypto Boss Game on Monad Network',
+    url: 'https://killhitstudios.com',
+    icons: ['https://killhitstudios.com/icon.png'],
+  }
 
 const chains = [monad]
 
