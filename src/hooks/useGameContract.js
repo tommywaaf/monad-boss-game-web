@@ -20,7 +20,7 @@ export function useGameContract() {
   const { primaryWallet } = useDynamicContext()
   const [inventory, setInventory] = useState([])
   const [rarityBoost, setRarityBoost] = useState(0)
-  const [rakeFeeMon, setRakeFeeMon] = useState('0')
+  const [rakeFeeMon, setRakeFeeMon] = useState('Loading...')
   const [globalBossesKilled, setGlobalBossesKilled] = useState(0)
   const [lastEvent, setLastEvent] = useState(null)
   const [txStatus, setTxStatus] = useState(null)
@@ -49,6 +49,12 @@ export function useGameContract() {
           publicClientRef.current = publicClient
           walletClientRef.current = walletClient
           console.log('[useGameContract] Wallet clients initialized successfully')
+          
+          // Fetch contract data immediately after clients are ready
+          if (primaryWallet.address) {
+            console.log('[useGameContract] Fetching contract data after client init...')
+            fetchContractData()
+          }
         } catch (error) {
           console.error('[useGameContract] Failed to initialize clients:', error)
           publicClientRef.current = null
@@ -60,13 +66,41 @@ export function useGameContract() {
       publicClientRef.current = null
       walletClientRef.current = null
     }
-  }, [primaryWallet])
+  }, [primaryWallet, fetchContractData])
 
   // Read contract data
   const fetchContractData = useCallback(async () => {
-    if (!publicClientRef.current || !primaryWallet?.address) return
+    if (!publicClientRef.current) {
+      console.log('[fetchContractData] Public client not ready yet')
+      return
+    }
+    
+    if (!primaryWallet?.address) {
+      console.log('[fetchContractData] No wallet address')
+      return
+    }
+
+    if (GAME_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
+      console.error('[fetchContractData] Contract address not set!')
+      return
+    }
 
     try {
+      console.log('[fetchContractData] Fetching contract data...')
+      console.log('[fetchContractData] Contract address:', GAME_CONTRACT_ADDRESS)
+      console.log('[fetchContractData] Wallet address:', primaryWallet.address)
+      
+      // Read rake fee first (most important for button state)
+      console.log('[fetchContractData] Reading RAKE_FEE...')
+      const rakeFeeWei = await publicClientRef.current.readContract({
+        address: GAME_CONTRACT_ADDRESS,
+        abi: GAME_CONTRACT_ABI,
+        functionName: 'RAKE_FEE',
+      })
+      const feeMon = formatEther(rakeFeeWei)
+      console.log('[fetchContractData] Rake fee loaded:', feeMon, 'MON')
+      setRakeFeeMon(feeMon)
+
       // Read inventory
       const inventoryData = await publicClientRef.current.readContract({
         address: GAME_CONTRACT_ADDRESS,
@@ -88,14 +122,6 @@ export function useGameContract() {
       })
       setRarityBoost(Number(boostsData[0]) / 100) // Convert bps to percentage
 
-      // Read rake fee
-      const rakeFeeWei = await publicClientRef.current.readContract({
-        address: GAME_CONTRACT_ADDRESS,
-        abi: GAME_CONTRACT_ABI,
-        functionName: 'RAKE_FEE',
-      })
-      setRakeFeeMon(formatEther(rakeFeeWei))
-
       // Read global kills
       const globalKills = await publicClientRef.current.readContract({
         address: GAME_CONTRACT_ADDRESS,
@@ -103,19 +129,50 @@ export function useGameContract() {
         functionName: 'totalBossesKilled',
       })
       setGlobalBossesKilled(Number(globalKills))
+      
+      console.log('[fetchContractData] Contract data loaded successfully')
     } catch (error) {
-      console.error('Error fetching contract data:', error)
+      console.error('[fetchContractData] Error fetching contract data:', error)
+      console.error('[fetchContractData] Error details:', {
+        message: error.message,
+        contractAddress: GAME_CONTRACT_ADDRESS,
+        hasPublicClient: !!publicClientRef.current,
+        hasAddress: !!primaryWallet?.address
+      })
     }
   }, [primaryWallet?.address])
 
-  // Fetch data on mount and when address changes
+  // Fetch data on mount and when address changes (with retry logic)
   useEffect(() => {
-    if (primaryWallet?.address && publicClientRef.current) {
-      fetchContractData()
-      // Set up polling for contract data
-      const interval = setInterval(fetchContractData, 10000) // Poll every 10 seconds
-      return () => clearInterval(interval)
+    if (!primaryWallet?.address) {
+      console.log('[useGameContract] No wallet address, skipping fetch')
+      return
     }
+    
+    if (!publicClientRef.current) {
+      console.log('[useGameContract] Public client not ready, will retry after init')
+      // Retry after a short delay if client isn't ready
+      const retryTimer = setTimeout(() => {
+        if (publicClientRef.current && primaryWallet?.address) {
+          console.log('[useGameContract] Retrying fetch after client init')
+          fetchContractData()
+        }
+      }, 1000)
+      return () => clearTimeout(retryTimer)
+    }
+
+    // Client is ready, fetch data
+    console.log('[useGameContract] Fetching contract data (address changed)')
+    fetchContractData()
+    
+    // Set up polling for contract data
+    const interval = setInterval(() => {
+      if (publicClientRef.current && primaryWallet?.address) {
+        fetchContractData()
+      }
+    }, 10000) // Poll every 10 seconds
+    
+    return () => clearInterval(interval)
   }, [primaryWallet?.address, fetchContractData])
 
   // Watch for BossKilled events

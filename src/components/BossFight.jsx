@@ -7,7 +7,8 @@ import './BossFight.css'
 
 function BossFight() {
   const { killBoss, isKilling, txStatus, txHash, isConfirming, isConfirmed, txError, resetTransaction, lastEvent, clearLastEvent, rarityBoost, globalBossesKilled, rakeFeeMon } = useGameContract()
-  const feeReady = rakeFeeMon && rakeFeeMon !== '0'
+  const feeReady = rakeFeeMon && rakeFeeMon !== '0' && rakeFeeMon !== 'Loading...'
+  const isLoadingFee = !rakeFeeMon || rakeFeeMon === '0' || rakeFeeMon === 'Loading...'
   const [notification, setNotification] = useState(null)
   const [showRollDisplay, setShowRollDisplay] = useState(false)
   const [rollData, setRollData] = useState(null)
@@ -98,7 +99,11 @@ function BossFight() {
       >
         {isKilling ? '⚔️ Attacking...' : '⚔️ Attack Boss'}
         <span className="attack-subtext">
-          Cost: {feeReady ? `${rakeFeeMon} MON` : 'Loading fee...'}
+          {isLoadingFee ? (
+            <span style={{ opacity: 0.7 }}>⏳ Loading fee...</span>
+          ) : (
+            `Cost: ${rakeFeeMon} MON`
+          )}
         </span>
       </button>
 
