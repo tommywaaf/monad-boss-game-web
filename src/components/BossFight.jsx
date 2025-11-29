@@ -30,18 +30,11 @@ function BossFight() {
       
       processedEventRef.current = eventKey
       
-      // Show roll display immediately
+      // Show roll display immediately - this opens the modal automatically
       setRollData(lastEvent)
       setShowRollDisplay(true)
       
-      // AUTO-REFRESH INVENTORY: When roll display shows (when "You rolled:" appears)
-      // This is exactly when the manual button works, so trigger it here with 100ms delay
-      if (lastEvent.type === 'success' && lastEvent.itemId) {
-        setTimeout(() => {
-          refetchInventory()
-        }, 100)
-      }
-      
+      // Show notification
       if (lastEvent.type === 'success') {
         const tier = ITEM_TIERS[lastEvent.tier]
         setNotification({
@@ -55,6 +48,14 @@ function BossFight() {
           type: 'failed',
           message: 'Boss escaped! Click to see why.'
         })
+      }
+      
+      // AUTO-REFRESH INVENTORY: When roll display shows (when "You rolled:" appears)
+      // Trigger refresh 100ms after the modal is shown
+      if (lastEvent.type === 'success' && lastEvent.itemId) {
+        setTimeout(() => {
+          refetchInventory()
+        }, 100)
       }
       
       // Clear notification after 5 seconds
@@ -77,10 +78,12 @@ function BossFight() {
   }, [lastEvent, clearLastEvent, refetchInventory])
 
 
-  // Close roll display when starting a new attack
+  // Close roll display when starting a new attack (but only if it's actually showing)
   useEffect(() => {
     if (isKilling && showRollDisplay) {
       setShowRollDisplay(false)
+      // Reset processed event ref so new events can be processed
+      processedEventRef.current = null
     }
   }, [isKilling, showRollDisplay])
   
