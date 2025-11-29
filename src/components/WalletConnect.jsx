@@ -3,6 +3,17 @@ import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { useEffect, useState } from 'react'
 import './WalletConnect.css'
 
+// Helper to format balance
+const formatBalance = (balance) => {
+  if (!balance) return '0.00'
+  // Convert from wei to MON (18 decimals)
+  const balanceNum = Number(balance) / 1e18
+  if (balanceNum < 0.0001) {
+    return balanceNum.toExponential(2)
+  }
+  return balanceNum.toFixed(4)
+}
+
 function WalletConnect() {
   const dynamicContext = useDynamicContext()
   const { setShowAuthFlow, primaryWallet, handleLogOut, handleLogout } = dynamicContext
@@ -14,6 +25,8 @@ function WalletConnect() {
   const address = primaryWallet?.address
   const isConnected = !!primaryWallet
   const [chainId, setChainId] = useState(null)
+  const [balance, setBalance] = useState(null)
+  const [copySuccess, setCopySuccess] = useState(false)
   
   // Get chain ID using Dynamic's getNetwork utility
   useEffect(() => {
@@ -61,12 +74,71 @@ function WalletConnect() {
     }
   }, [primaryWallet?.connector]) // Only depend on connector, not entire wallet
 
-  const truncateAddress = (addr) => {
-    if (!addr) return ''
-    return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-  }
+  // Fetch balance when wallet is connected and on Monad network
+  useEffect(() => {
+    if (!isConnected || !primaryWallet || !isEthereumWallet(primaryWallet) || chainId !== 143) {
+      setBalance(null)
+      return
+    }
+
+    let cancelled = false
+
+    const fetchBalance = async () => {
+      try {
+        const publicClient = await primaryWallet.getPublicClient()
+        if (cancelled || !publicClient || !address) return
+
+        const balanceWei = await publicClient.getBalance({ address })
+        if (!cancelled) {
+          setBalance(balanceWei)
+        }
+      } catch (error) {
+        console.error('Error fetching balance:', error)
+        if (!cancelled) {
+          setBalance(null)
+        }
+      }
+    }
+
+    fetchBalance()
+    
+    // Poll balance every 10 seconds
+    const interval = setInterval(fetchBalance, 10000)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [isConnected, primaryWallet, address, chainId])
 
   const isMonadNetwork = chainId === 143
+
+  const handleCopyAddress = async () => {
+    if (!address) return
+    
+    try {
+      await navigator.clipboard.writeText(address)
+      setCopySuccess(true)
+      setTimeout(() => setCopySuccess(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy address:', error)
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = address
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        setCopySuccess(true)
+        setTimeout(() => setCopySuccess(false), 2000)
+      } catch (err) {
+        console.error('Fallback copy failed:', err)
+      }
+      document.body.removeChild(textArea)
+    }
+  }
 
   // Check if user is connected via Dynamic embedded wallet
   const isDynamicWallet = primaryWallet?.connector?.isEmbedded || false
@@ -125,14 +197,31 @@ function WalletConnect() {
             )}
           </div>
           
-          <div className="address-display">
-            <span className="address">{truncateAddress(address)}</span>
-            <button 
-              className="disconnect-button"
-              onClick={handleDisconnect}
-            >
-              Disconnect
-            </button>
+          <div className="wallet-details">
+            {isMonadNetwork && balance !== null && (
+              <div className="balance-display">
+                <span className="balance-label">Balance:</span>
+                <span className="balance-value">{formatBalance(balance)} MON</span>
+              </div>
+            )}
+            <div className="address-display">
+              <button
+                className="address-button"
+                onClick={handleCopyAddress}
+                title="Click to copy address"
+              >
+                <span className="address">{address}</span>
+                {copySuccess && (
+                  <span className="copy-success">✓ Copied!</span>
+                )}
+              </button>
+              <button 
+                className="disconnect-button"
+                onClick={handleDisconnect}
+              >
+                Disconnect
+              </button>
+            </div>
           </div>
 
           {!isMonadNetwork && (
