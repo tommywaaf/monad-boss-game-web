@@ -1,13 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useGameContract } from '../hooks/useGameContract'
 import { ITEM_TIERS } from '../config/gameContract'
 import ItemModal from './ItemModal'
 import './Inventory.css'
 
 function Inventory() {
-  const { inventory, refetchInventory } = useGameContract()
+  const { inventory, refetchInventory, lastEvent } = useGameContract()
   const [selectedItem, setSelectedItem] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // Automatically refresh inventory when boss is defeated
+  useEffect(() => {
+    if (lastEvent && lastEvent.type === 'success') {
+      console.log('[Inventory] Boss defeated, refreshing inventory...')
+      // Small delay to ensure contract state is updated
+      const timer = setTimeout(() => {
+        refetchInventory()
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [lastEvent, refetchInventory])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)

@@ -76,11 +76,24 @@ function WalletConnect() {
 
   // Fetch balance when wallet is connected and on Monad network
   useEffect(() => {
-    if (!isConnected || !primaryWallet || !isEthereumWallet(primaryWallet) || chainId !== 143) {
+    // Only clear balance if we're explicitly on a different network (not when chainId is null/loading)
+    if (!isConnected || !primaryWallet || !isEthereumWallet(primaryWallet)) {
       setBalance(null)
       return
     }
 
+    // If chainId is explicitly set and not 143, clear balance
+    if (chainId !== null && chainId !== 143) {
+      setBalance(null)
+      return
+    }
+
+    // If chainId is still loading (null), don't clear balance - wait for it to load
+    if (chainId === null) {
+      return
+    }
+
+    // Now we know chainId === 143, fetch balance
     let cancelled = false
 
     const fetchBalance = async () => {
@@ -94,9 +107,7 @@ function WalletConnect() {
         }
       } catch (error) {
         console.error('Error fetching balance:', error)
-        if (!cancelled) {
-          setBalance(null)
-        }
+        // Don't clear balance on error, just log it
       }
     }
 
