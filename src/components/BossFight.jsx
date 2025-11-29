@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useGameContract } from '../hooks/useGameContract'
 import { ITEM_TIERS } from '../config/gameContract'
 import BossKillStats from './BossKillStats'
@@ -6,7 +6,7 @@ import RollDisplay from './RollDisplay'
 import './BossFight.css'
 
 function BossFight() {
-  const { killBoss, isKilling, txStatus, txHash, isConfirming, isConfirmed, txError, resetTransaction, lastEvent, clearLastEvent, rarityBoost, globalBossesKilled, rakeFeeMon } = useGameContract()
+  const { killBoss, isKilling, txStatus, txHash, isConfirming, isConfirmed, txError, resetTransaction, lastEvent, clearLastEvent, rarityBoost, globalBossesKilled, rakeFeeMon, refetchInventory } = useGameContract()
   const feeReady = rakeFeeMon && rakeFeeMon !== '0' && rakeFeeMon !== 'Loading...'
   const isLoadingFee = !rakeFeeMon || rakeFeeMon === '0' || rakeFeeMon === 'Loading...'
   const [notification, setNotification] = useState(null)
@@ -54,6 +54,40 @@ function BossFight() {
       }
     }
   }, [lastEvent, clearLastEvent])
+
+  // Trigger inventory refresh when roll display is shown (when "You rolled:" appears)
+  // This is when the blockchain data is ready and displayed - same timing as manual button
+  const rollDisplayProcessedRef = useRef(null)
+  useEffect(() => {
+    if (showRollDisplay && rollData && rollData.type === 'success' && rollData.transactionHash) {
+      const eventKey = `${rollData.transactionHash}-${rollData.itemId}`
+      
+      // Only process once per event
+      if (rollDisplayProcessedRef.current === eventKey) {
+        return
+      }
+      
+      console.log('[BossFight] ✅ Roll display shown with "You rolled:" - triggering inventory refresh in 100ms...', {
+        itemId: rollData.itemId,
+        transactionHash: rollData.transactionHash
+      })
+      
+      rollDisplayProcessedRef.current = eventKey
+      
+      // 100ms delay - exactly what user requested, same timing as when they manually click
+      const timer = setTimeout(async () => {
+        console.log('[BossFight] 🔄 Triggering inventory refresh now (100ms delay completed)')
+        try {
+          await refetchInventory()
+          console.log('[BossFight] ✅ Inventory refresh completed!')
+        } catch (error) {
+          console.error('[BossFight] ❌ Error refreshing inventory:', error)
+        }
+      }, 100)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [showRollDisplay, rollData, refetchInventory])
 
   // Close roll display when starting a new attack
   useEffect(() => {
