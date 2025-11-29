@@ -1,0 +1,329 @@
+.withdraw-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.withdraw-modal-content {
+  background: rgba(20, 20, 30, 0.98);
+  border-radius: 20px;
+  max-width: 480px;
+  width: 90%;
+  position: relative;
+  border: 2px solid #836FFF;
+  padding: 2rem;
+  animation: slideUp 0.3s ease-out;
+  box-shadow: 0 20px 60px rgba(131, 111, 255, 0.3);
+}
+
+.withdraw-modal-content .modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #888;
+  font-size: 1.5rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.withdraw-modal-content .modal-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.withdraw-modal-content h2 {
+  margin: 0 0 1.5rem 0;
+  text-align: center;
+  color: #836FFF;
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.withdraw-balance-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(131, 111, 255, 0.15), rgba(131, 111, 255, 0.05));
+  border: 1px solid rgba(131, 111, 255, 0.3);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.withdraw-balance-display .balance-label {
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.withdraw-balance-display .balance-amount {
+  color: #836FFF;
+  font-size: 1.2rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+}
+
+.withdraw-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.withdraw-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.withdraw-form label {
+  color: #ccc;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.withdraw-form input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 0.875rem 1rem;
+  color: white;
+  font-size: 1rem;
+  font-family: 'Courier New', monospace;
+  transition: all 0.3s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.withdraw-form input:focus {
+  outline: none;
+  border-color: #836FFF;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(131, 111, 255, 0.2);
+}
+
+.withdraw-form input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.withdraw-form input::placeholder {
+  color: #555;
+}
+
+/* Remove spinner buttons from number input */
+.withdraw-form input[type="number"]::-webkit-outer-spin-button,
+.withdraw-form input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.withdraw-form input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.amount-input-wrapper {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.amount-input-wrapper input {
+  flex: 1;
+}
+
+.max-button {
+  background: linear-gradient(135deg, #836FFF, #6B5BCC);
+  border: none;
+  border-radius: 10px;
+  padding: 0 1.25rem;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.max-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #9580FF, #836FFF);
+  transform: translateY(-1px);
+}
+
+.max-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid rgba(244, 67, 54, 0.5);
+  color: #ff6b6b;
+  padding: 0.875rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
+.success-message {
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.5);
+  color: #69f0ae;
+  padding: 0.875rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.confirming-message {
+  background: rgba(255, 152, 0, 0.15);
+  border: 1px solid rgba(255, 152, 0, 0.5);
+  color: #ffb74d;
+  padding: 0.875rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.tx-hash-display {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #888;
+  text-align: center;
+}
+
+.tx-hash-display a {
+  color: #836FFF;
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+}
+
+.tx-hash-display a:hover {
+  text-decoration: underline;
+}
+
+.withdraw-warning {
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.25);
+  padding: 1rem;
+  border-radius: 10px;
+  color: #ffb74d;
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.withdraw-warning strong {
+  color: #ffa726;
+}
+
+.withdraw-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.withdraw-actions button {
+  flex: 1;
+  padding: 1rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.withdraw-actions .cancel-button {
+  background: rgba(255, 255, 255, 0.08);
+  color: #aaa;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.withdraw-actions .cancel-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ccc;
+}
+
+.withdraw-actions .withdraw-button {
+  background: linear-gradient(135deg, #836FFF 0%, #6B5BCC 100%);
+  color: white;
+}
+
+.withdraw-actions .withdraw-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(131, 111, 255, 0.4);
+}
+
+.withdraw-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+@media (max-width: 480px) {
+  .withdraw-modal-content {
+    width: 95%;
+    padding: 1.5rem;
+    border-radius: 16px;
+  }
+
+  .withdraw-modal-content h2 {
+    font-size: 1.5rem;
+  }
+
+  .withdraw-balance-display {
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: center;
+  }
+
+  .amount-input-wrapper {
+    flex-direction: column;
+  }
+
+  .max-button {
+    padding: 0.75rem;
+  }
+
+  .withdraw-actions {
+    flex-direction: column;
+  }
+}
+

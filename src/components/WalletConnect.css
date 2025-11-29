@@ -166,6 +166,30 @@
   font-family: 'Courier New', monospace;
 }
 
+.withdraw-btn {
+  background: linear-gradient(135deg, #836FFF, #6B5BCC);
+  color: white;
+  border: none;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  margin-left: 0.25rem;
+}
+
+.withdraw-btn:hover {
+  background: linear-gradient(135deg, #9580FF, #836FFF);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(131, 111, 255, 0.4);
+}
+
+.withdraw-btn:active {
+  transform: translateY(0);
+}
+
 .address-display {
   display: flex;
   align-items: center;

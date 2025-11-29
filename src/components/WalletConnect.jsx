@@ -1,6 +1,7 @@
 import { useDynamicContext, getNetwork } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { useEffect, useState } from 'react'
+import WithdrawModal from './WithdrawModal'
 import './WalletConnect.css'
 
 // Helper to format balance
@@ -27,6 +28,7 @@ function WalletConnect() {
   const [chainId, setChainId] = useState(null)
   const [balance, setBalance] = useState(null)
   const [copySuccess, setCopySuccess] = useState(false)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   
   // Get chain ID using Dynamic's getNetwork utility
   useEffect(() => {
@@ -213,6 +215,13 @@ function WalletConnect() {
               <div className="balance-display">
                 <span className="balance-label">Balance:</span>
                 <span className="balance-value">{formatBalance(balance)} MON</span>
+                <button 
+                  className="withdraw-btn"
+                  onClick={() => setShowWithdrawModal(true)}
+                  title="Withdraw MON"
+                >
+                  Withdraw
+                </button>
               </div>
             )}
             <div className="address-display">
@@ -260,6 +269,13 @@ function WalletConnect() {
             </button>
           )}
         </div>
+      )}
+
+      {showWithdrawModal && (
+        <WithdrawModal 
+          onClose={() => setShowWithdrawModal(false)}
+          currentBalance={balance}
+        />
       )}
     </div>
   )
