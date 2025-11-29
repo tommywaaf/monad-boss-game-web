@@ -13,46 +13,43 @@ function Inventory() {
   // Use a ref to track the last processed event to avoid duplicate refreshes
   const lastProcessedEventRef = useRef(null)
   
+  // Watch for lastEvent changes - this is the same event that triggers the modal
   useEffect(() => {
-    if (lastEvent && lastEvent.type === 'success') {
-      // Check if we've already processed this event
+    // Only process success events with all required fields
+    if (lastEvent && lastEvent.type === 'success' && lastEvent.transactionHash && lastEvent.itemId) {
       const eventKey = `${lastEvent.transactionHash}-${lastEvent.itemId}`
+      
+      // Skip if we've already processed this exact event
       if (lastProcessedEventRef.current === eventKey) {
-        console.log('[Inventory] Event already processed, skipping...')
         return
       }
       
-      console.log('[Inventory] ✅ Boss defeated event detected! Refreshing inventory...', {
+      console.log('[Inventory] 🎯 NEW Boss defeated event! Auto-refreshing inventory...', {
         itemId: lastEvent.itemId,
-        transactionHash: lastEvent.transactionHash
+        transactionHash: lastEvent.transactionHash,
+        tier: lastEvent.tier
       })
+      
       lastProcessedEventRef.current = eventKey
       setIsRefreshing(true)
       
-      // Since the blockchain is ready when the modal shows up (user confirmed this),
-      // refresh immediately - no delay needed
-      const refreshInventory = async () => {
-        console.log('[Inventory] 🔄 Refreshing inventory now...')
-        await refetchInventory()
-        setIsRefreshing(false)
-        console.log('[Inventory] ✅ Inventory refresh completed')
+      // Call refetchInventory - EXACTLY the same as the manual button does
+      const refresh = async () => {
+        try {
+          console.log('[Inventory] 🔄 Auto-refresh: calling refetchInventory()...')
+          await refetchInventory()
+          console.log('[Inventory] ✅ Auto-refresh completed!')
+        } catch (error) {
+          console.error('[Inventory] ❌ Auto-refresh error:', error)
+        } finally {
+          setIsRefreshing(false)
+        }
       }
       
-      // Call immediately
-      refreshInventory()
-      
-      // Also set a backup refresh in case the first one fails
-      const backupTimer = setTimeout(() => {
-        console.log('[Inventory] 🔄 Backup refresh (500ms)...')
-        refreshInventory()
-      }, 500)
-      
-      return () => {
-        clearTimeout(backupTimer)
-        setIsRefreshing(false)
-      }
+      // Refresh immediately - same timing as manual button
+      refresh()
     }
-  }, [lastEvent?.transactionHash, lastEvent?.itemId]) // Depend on specific properties that change when new event occurs
+  }, [lastEvent, refetchInventory]) // Depend on entire lastEvent object
 
   const handleRefresh = async () => {
     setIsRefreshing(true)

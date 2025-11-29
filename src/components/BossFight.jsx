@@ -15,6 +15,8 @@ function BossFight() {
 
   useEffect(() => {
     if (lastEvent) {
+      console.log('[BossFight] lastEvent detected, showing modal:', lastEvent)
+      
       // Show roll display immediately
       setRollData(lastEvent)
       setShowRollDisplay(true)
@@ -34,11 +36,22 @@ function BossFight() {
         })
       }
       
-      // Clear notification after 5 seconds
-      setTimeout(() => {
+      // Clear notification after 5 seconds, but DON'T clear lastEvent yet
+      // Let Inventory component process it first
+      const notificationTimer = setTimeout(() => {
         setNotification(null)
-        clearLastEvent()
       }, 5000)
+      
+      // Clear lastEvent after a longer delay to ensure Inventory has processed it
+      const clearEventTimer = setTimeout(() => {
+        console.log('[BossFight] Clearing lastEvent after delay')
+        clearLastEvent()
+      }, 10000) // 10 seconds instead of 5
+      
+      return () => {
+        clearTimeout(notificationTimer)
+        clearTimeout(clearEventTimer)
+      }
     }
   }, [lastEvent, clearLastEvent])
 
