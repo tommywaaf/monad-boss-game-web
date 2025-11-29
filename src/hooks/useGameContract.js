@@ -109,10 +109,12 @@ export function useGameContract() {
         functionName: 'getInventory',
         args: [primaryWallet.address],
       })
-      setInventory(inventoryData.map(item => ({
+      const newInventory = inventoryData.map(item => ({
         tier: Number(item.tier),
         id: item.id.toString()
-      })))
+      }))
+      console.log('[fetchContractData] Inventory updated:', newInventory.length, 'items')
+      setInventory(newInventory)
 
       // Read boosts
       const boostsData = await publicClientRef.current.readContract({

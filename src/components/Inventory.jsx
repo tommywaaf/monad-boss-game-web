@@ -12,14 +12,38 @@ function Inventory() {
   // Automatically refresh inventory when boss is defeated
   useEffect(() => {
     if (lastEvent && lastEvent.type === 'success') {
-      console.log('[Inventory] Boss defeated, refreshing inventory...')
-      // Small delay to ensure contract state is updated
-      const timer = setTimeout(() => {
+      console.log('[Inventory] Boss defeated, refreshing inventory...', lastEvent)
+      setIsRefreshing(true)
+      
+      // Try multiple times with increasing delays to ensure we catch the update
+      // Sometimes the contract state takes a moment to propagate on-chain
+      const timers = []
+      
+      // First attempt: immediate (contract might already be updated)
+      timers.push(setTimeout(() => {
+        console.log('[Inventory] First refresh attempt (500ms)...')
         refetchInventory()
-      }, 1000)
-      return () => clearTimeout(timer)
+      }, 500))
+      
+      // Second attempt: after 1.5 seconds
+      timers.push(setTimeout(() => {
+        console.log('[Inventory] Second refresh attempt (1.5s)...')
+        refetchInventory()
+      }, 1500))
+      
+      // Third attempt: after 3 seconds (should definitely be updated by now)
+      timers.push(setTimeout(() => {
+        console.log('[Inventory] Third refresh attempt (3s)...')
+        refetchInventory()
+        setIsRefreshing(false)
+      }, 3000))
+      
+      return () => {
+        timers.forEach(timer => clearTimeout(timer))
+        setIsRefreshing(false)
+      }
     }
-  }, [lastEvent, refetchInventory])
+  }, [lastEvent?.itemId, lastEvent?.transactionHash, refetchInventory]) // Use specific event properties to avoid unnecessary re-runs
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
