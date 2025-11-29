@@ -1,7 +1,15 @@
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  createElement
+} from 'react'
 
 // Helper functions to avoid viem bundling issues
 const formatEther = (value) => {
@@ -520,11 +528,7 @@ function useProvideGameContract() {
 
 export function GameContractProvider({ children }) {
   const value = useProvideGameContract()
-  return (
-    <GameContractContext.Provider value={value}>
-      {children}
-    </GameContractContext.Provider>
-  )
+  return createElement(GameContractContext.Provider, { value }, children)
 }
 
 export function useGameContract() {
