@@ -328,10 +328,143 @@ export function useGameContract() {
       setIsConfirmed(true)
       setTxStatus('confirmed')
 
-      // Wait a bit for events
-      setTimeout(() => {
-        setTxStatus('waiting-event')
-      }, 500)
+      // Check receipt logs for BossKilled event immediately
+      console.log('[killBoss] Checking receipt logs for BossKilled event...')
+      console.log('[killBoss] Receipt logs:', receipt.logs)
+      
+      let bossKilledEvent = null
+      
+      // Try to find and decode BossKilled event from receipt logs
+      for (const log of receipt.logs) {
+        // Check if log is from our contract
+        if (log.address?.toLowerCase() !== GAME_CONTRACT_ADDRESS.toLowerCase()) {
+          continue
+        }
+        
+        try {
+          // Decode the event log
+          const decoded = publicClient.decodeEventLog({
+            abi: GAME_CONTRACT_ABI,
+            data: log.data,
+            topics: log.topics,
+          })
+          
+          console.log('[killBoss] Decoded log:', decoded)
+          
+          if (decoded.eventName === 'BossKilled') {
+            // Verify it's for this player
+            if (decoded.args.player?.toLowerCase() === primaryWallet.address?.toLowerCase()) {
+              bossKilledEvent = decoded
+              break
+            }
+          }
+        } catch (error) {
+          // Not a BossKilled event or can't decode, continue
+          continue
+        }
+      }
+
+      if (bossKilledEvent) {
+        console.log('[killBoss] ✅ BossKilled event found in receipt:', bossKilledEvent)
+        
+        setLastEvent({
+          type: 'success',
+          tier: Number(bossKilledEvent.args.tier),
+          itemId: bossKilledEvent.args.itemId?.toString(),
+          baseRoll: bossKilledEvent.args.baseRoll?.toString(),
+          baseTier: Number(bossKilledEvent.args.baseTier),
+          upgraded: bossKilledEvent.args.upgraded,
+          blockNumber: receipt.blockNumber?.toString(),
+          transactionHash: hash,
+          player: bossKilledEvent.args.player
+        })
+        
+        // Refresh contract data
+        fetchContractData()
+        
+        // Reset transaction status
+        setTimeout(() => {
+          setTxStatus(null)
+          setTxHash(null)
+          setIsWriting(false)
+          setIsConfirming(false)
+          setIsConfirmed(false)
+          setTxError(null)
+        }, 1000)
+        
+        return // Event found, we're done
+      } else {
+        console.log('[killBoss] BossKilled event not found in receipt logs, will wait for event watcher or poll')
+      }
+
+      // If event not in receipt, query for it directly using getLogs
+      console.log('[killBoss] Querying for BossKilled event from transaction...')
+      try {
+        const bossKilledAbi = GAME_CONTRACT_ABI.find(item => item.name === 'BossKilled' && item.type === 'event')
+        
+        if (bossKilledAbi) {
+          const events = await publicClient.getLogs({
+            address: GAME_CONTRACT_ADDRESS,
+            event: bossKilledAbi,
+            args: {
+              player: primaryWallet.address
+            },
+            fromBlock: receipt.blockNumber,
+            toBlock: receipt.blockNumber,
+          })
+          
+          const playerEvent = events.find(e => 
+            e.transactionHash?.toLowerCase() === hash.toLowerCase()
+          )
+          
+          if (playerEvent) {
+            console.log('[killBoss] ✅ BossKilled event found via getLogs:', playerEvent)
+            
+            setLastEvent({
+              type: 'success',
+              tier: Number(playerEvent.args.tier),
+              itemId: playerEvent.args.itemId?.toString(),
+              baseRoll: playerEvent.args.baseRoll?.toString(),
+              baseTier: Number(playerEvent.args.baseTier),
+              upgraded: playerEvent.args.upgraded,
+              blockNumber: receipt.blockNumber?.toString(),
+              transactionHash: hash,
+              player: playerEvent.args.player
+            })
+            
+            // Refresh contract data
+            fetchContractData()
+            
+            // Reset transaction status
+            setTimeout(() => {
+              setTxStatus(null)
+              setTxHash(null)
+              setIsWriting(false)
+              setIsConfirming(false)
+              setIsConfirmed(false)
+              setTxError(null)
+            }, 1000)
+            
+            return // Event found
+          } else {
+            console.log('[killBoss] BossKilled event not found via getLogs for this transaction')
+          }
+        }
+      } catch (error) {
+        console.error('[killBoss] Error querying for event:', error)
+      }
+
+      // If event still not found, wait for event watcher
+      setTxStatus('waiting-event')
+      
+      // Fallback: Refresh data after a delay if event doesn't arrive
+      setTimeout(async () => {
+        if (txStatus === 'waiting-event') {
+          console.log('[killBoss] Event not received, refreshing contract data as fallback...')
+          await fetchContractData()
+          // At least the inventory will be updated even if event display doesn't show
+        }
+      }, 2000)
     } catch (error) {
       console.error('[killBoss] Error:', error)
       setTxError(error)

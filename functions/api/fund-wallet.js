@@ -64,10 +64,11 @@ export async function onRequestPost(context) {
     const fireblocksUrl = 'https://api.fireblocks.io/v1/transactions'
 
     // Create transaction payload
-    // For one-time addresses, Fireblocks uses a different format
+    // Match the format from the working Python script
+    // For one-time addresses, use ONE_TIME_ADDRESS type (per Fireblocks API docs)
     const transactionPayload = {
       assetId: assetId,
-      amount: '1', // 1 MON (or 1 ETH if using ETH asset)
+      amount: '0.1', // 0.1 ETH/MON
       source: {
         type: 'VAULT_ACCOUNT',
         id: sourceVaultId.toString(),
@@ -78,9 +79,9 @@ export async function onRequestPost(context) {
           address: address,
         },
       },
-      note: `Welcome bonus: 1 ${assetId} to new Dynamic wallet ${address}`,
-      // Add network-specific parameters if needed for Monad
-      // Check Fireblocks API docs for Monad network configuration
+      note: `Welcome bonus: 0.1 ${assetId} to new Dynamic wallet ${address}`,
+      // Optional: Add gas price if needed (matching Python script uses 0.1 gwei)
+      // Note: gasPrice might need to be in a different format for REST API
     }
 
     console.log('[Fireblocks] Creating transaction with payload:', JSON.stringify(transactionPayload, null, 2))

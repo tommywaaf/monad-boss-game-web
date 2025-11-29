@@ -110,10 +110,10 @@ async function createFireblocksTransaction() {
   try {
     const fireblocksUrl = 'https://api.fireblocks.io/v1/transactions'
 
-    // Create transaction payload
+    // Create transaction payload - matching working Python script format
     const transactionPayload = {
       assetId: assetId,
-      amount: '1', // 1 MON (or 1 ETH if using ETH asset)
+      amount: '0.0', // Match working script amount
       source: {
         type: 'VAULT_ACCOUNT',
         id: sourceVaultId.toString(),
@@ -124,7 +124,9 @@ async function createFireblocksTransaction() {
           address: testAddress,
         },
       },
-      note: `Test transaction: 1 ${assetId} to ${testAddress}`,
+      note: `Test transaction: 0.00001 ${assetId} to ${testAddress}`,
+      // Optional: Add gas price if needed
+      // gasPrice: '0.1',
     }
 
     console.log('📦 Transaction Payload:')
