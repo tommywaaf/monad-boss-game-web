@@ -19,6 +19,7 @@ const parseEther = (value) => {
 export function useGameContract() {
   const { primaryWallet } = useDynamicContext()
   const [inventory, setInventory] = useState([])
+  const [inventoryVersion, setInventoryVersion] = useState(0) // Force re-render when inventory changes
   const [rarityBoost, setRarityBoost] = useState(0)
   const [rakeFeeMon, setRakeFeeMon] = useState('Loading...')
   const [globalBossesKilled, setGlobalBossesKilled] = useState(0)
@@ -109,12 +110,20 @@ export function useGameContract() {
         functionName: 'getInventory',
         args: [primaryWallet.address],
       })
+      // Create a new array with new object references to ensure React detects the change
       const newInventory = inventoryData.map(item => ({
         tier: Number(item.tier),
         id: item.id.toString()
       }))
       console.log('[fetchContractData] Inventory updated:', newInventory.length, 'items')
+      console.log('[fetchContractData] New inventory items:', newInventory.map(i => `#${i.id}`).join(', '))
+      
+      // Force React to detect the change by always creating a new array
+      // This ensures the component re-renders even if the data is the same
       setInventory(newInventory)
+      // Increment version to force re-render
+      setInventoryVersion(prev => prev + 1)
+      console.log('[fetchContractData] setInventory() called - React should re-render Inventory component')
 
       // Read boosts
       const boostsData = await publicClientRef.current.readContract({
@@ -484,6 +493,7 @@ export function useGameContract() {
 
   return {
     inventory,
+    inventoryVersion, // Expose version to force re-renders when inventory changes
     rarityBoost,
     rakeFeeMon,
     globalBossesKilled,

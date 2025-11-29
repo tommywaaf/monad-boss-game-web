@@ -5,11 +5,16 @@ import ItemModal from './ItemModal'
 import './Inventory.css'
 
 function Inventory() {
-  const { inventory, refetchInventory, lastEvent } = useGameContract()
+  const { inventory, refetchInventory, lastEvent, inventoryVersion } = useGameContract()
   const [selectedItem, setSelectedItem] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // REMOVED: Auto-refresh is now handled in BossFight.jsx to avoid duplicate calls
+
+  // Debug: Log when inventory changes
+  useEffect(() => {
+    console.log('[Inventory] Inventory state changed:', inventory.length, 'items')
+  }, [inventory])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -70,12 +75,12 @@ function Inventory() {
               })}
           </div>
 
-          <div className="inventory-grid">
+          <div className="inventory-grid" key={`inventory-${inventoryVersion}`}>
             {sortedInventory.map((item, index) => {
               const tierInfo = ITEM_TIERS[item.tier]
               return (
                 <div 
-                  key={item.id}
+                  key={`${item.id}-${inventoryVersion}`}
                   className="inventory-item"
                   style={{ 
                     borderColor: tierInfo.color,

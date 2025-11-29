@@ -63,9 +63,11 @@ function BossFight() {
           // 100ms delay, then call it - same as manual button
           setTimeout(async () => {
             try {
+              console.log('[BossFight] 🔄 Calling refetchInventory() now...')
               await refetchInventory()
+              console.log('[BossFight] ✅ refetchInventory() completed - UI should update now')
             } catch (error) {
-              console.error('[BossFight] Error refreshing inventory:', error)
+              console.error('[BossFight] ❌ Error refreshing inventory:', error)
               // Remove from set on error so we can retry
               refreshedItemsRef.current.delete(itemId)
             }
