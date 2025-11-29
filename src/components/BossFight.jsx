@@ -51,10 +51,24 @@ function BossFight() {
       }
       
       // AUTO-REFRESH INVENTORY: When roll display shows (when "You rolled:" appears)
-      // Trigger refresh 100ms after the modal is shown
+      // Call it EXACTLY like the manual button does
       if (lastEvent.type === 'success' && lastEvent.itemId) {
-        setTimeout(() => {
-          refetchInventory()
+        console.log('[BossFight] ✅ Boss defeated! Will auto-refresh inventory in 100ms')
+        console.log('[BossFight] refetchInventory available:', !!refetchInventory, 'type:', typeof refetchInventory)
+        
+        // 100ms delay, then call it EXACTLY like manual button
+        setTimeout(async () => {
+          console.log('[BossFight] 🔄 NOW calling refetchInventory() - same as manual button click')
+          try {
+            if (refetchInventory) {
+              await refetchInventory()
+              console.log('[BossFight] ✅✅✅ refetchInventory() completed - inventory should be updated!')
+            } else {
+              console.error('[BossFight] ❌ refetchInventory is undefined!')
+            }
+          } catch (error) {
+            console.error('[BossFight] ❌ Error in refetchInventory:', error)
+          }
         }, 100)
       }
       
