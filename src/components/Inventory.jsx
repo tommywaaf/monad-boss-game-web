@@ -12,18 +12,25 @@ function Inventory() {
 
   // REMOVED: Auto-refresh is now handled in BossFight.jsx to avoid duplicate calls
 
-  // Watch for inventory changes - use inventoryVersion to force re-render
+  // Track previous version to detect changes
+  const prevVersionRef = useRef(0)
+  
+  // Force re-render when inventoryVersion changes - same pattern as manual button
+  useEffect(() => {
+    if (inventoryVersion !== prevVersionRef.current) {
+      console.log('[Inventory] 🔄 inventoryVersion changed:', prevVersionRef.current, '->', inventoryVersion, '- forcing re-render')
+      prevVersionRef.current = inventoryVersion
+      // Force a state update to trigger re-render (like setIsRefreshing does in manual button)
+      setIsRefreshing(true)
+      // Immediately set it back so UI doesn't show loading
+      setTimeout(() => setIsRefreshing(false), 0)
+    }
+  }, [inventoryVersion])
+  
+  // Watch for inventory changes
   useEffect(() => {
     console.log('[Inventory] ✅ Inventory state changed:', inventory.length, 'items', 'version:', inventoryVersion)
   }, [inventory, inventoryVersion])
-  
-  // Force re-render when inventoryVersion changes (even if inventory array reference is same)
-  useEffect(() => {
-    if (inventoryVersion > 0) {
-      console.log('[Inventory] 🔄 inventoryVersion changed to:', inventoryVersion, '- forcing re-render')
-      // This effect will trigger a re-render when version changes
-    }
-  }, [inventoryVersion])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
