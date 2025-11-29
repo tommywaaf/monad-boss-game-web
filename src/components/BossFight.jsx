@@ -13,13 +13,34 @@ function BossFight() {
   const [showRollDisplay, setShowRollDisplay] = useState(false)
   const [rollData, setRollData] = useState(null)
 
+  // Track which events we've already processed to prevent infinite loops
+  const processedEventRef = useRef(null)
+  
   useEffect(() => {
     if (lastEvent) {
-      console.log('[BossFight] lastEvent detected, showing modal:', lastEvent)
+      // Create unique key for this event
+      const eventKey = lastEvent.transactionHash && lastEvent.itemId 
+        ? `${lastEvent.transactionHash}-${lastEvent.itemId}` 
+        : lastEvent.transactionHash || lastEvent.itemId || 'unknown'
+      
+      // Skip if we've already processed this exact event
+      if (processedEventRef.current === eventKey) {
+        return
+      }
+      
+      processedEventRef.current = eventKey
       
       // Show roll display immediately
       setRollData(lastEvent)
       setShowRollDisplay(true)
+      
+      // AUTO-REFRESH INVENTORY: When roll display shows (when "You rolled:" appears)
+      // This is exactly when the manual button works, so trigger it here with 100ms delay
+      if (lastEvent.type === 'success' && lastEvent.itemId) {
+        setTimeout(() => {
+          refetchInventory()
+        }, 100)
+      }
       
       if (lastEvent.type === 'success') {
         const tier = ITEM_TIERS[lastEvent.tier]
@@ -36,58 +57,25 @@ function BossFight() {
         })
       }
       
-      // Clear notification after 5 seconds, but DON'T clear lastEvent yet
-      // Let Inventory component process it first
+      // Clear notification after 5 seconds
       const notificationTimer = setTimeout(() => {
         setNotification(null)
       }, 5000)
       
-      // Clear lastEvent after a longer delay to ensure Inventory has processed it
+      // Clear lastEvent after a longer delay
       const clearEventTimer = setTimeout(() => {
-        console.log('[BossFight] Clearing lastEvent after delay')
         clearLastEvent()
-      }, 10000) // 10 seconds instead of 5
+        // Reset processed ref when event is cleared so we can process new events
+        processedEventRef.current = null
+      }, 10000)
       
       return () => {
         clearTimeout(notificationTimer)
         clearTimeout(clearEventTimer)
       }
     }
-  }, [lastEvent, clearLastEvent])
+  }, [lastEvent, clearLastEvent, refetchInventory])
 
-  // Trigger inventory refresh when roll display is shown (when "You rolled:" appears)
-  // This is when the blockchain data is ready and displayed - same timing as manual button
-  const rollDisplayProcessedRef = useRef(null)
-  useEffect(() => {
-    if (showRollDisplay && rollData && rollData.type === 'success' && rollData.transactionHash) {
-      const eventKey = `${rollData.transactionHash}-${rollData.itemId}`
-      
-      // Only process once per event
-      if (rollDisplayProcessedRef.current === eventKey) {
-        return
-      }
-      
-      console.log('[BossFight] ✅ Roll display shown with "You rolled:" - triggering inventory refresh in 100ms...', {
-        itemId: rollData.itemId,
-        transactionHash: rollData.transactionHash
-      })
-      
-      rollDisplayProcessedRef.current = eventKey
-      
-      // 100ms delay - exactly what user requested, same timing as when they manually click
-      const timer = setTimeout(async () => {
-        console.log('[BossFight] 🔄 Triggering inventory refresh now (100ms delay completed)')
-        try {
-          await refetchInventory()
-          console.log('[BossFight] ✅ Inventory refresh completed!')
-        } catch (error) {
-          console.error('[BossFight] ❌ Error refreshing inventory:', error)
-        }
-      }, 100)
-      
-      return () => clearTimeout(timer)
-    }
-  }, [showRollDisplay, rollData, refetchInventory])
 
   // Close roll display when starting a new attack
   useEffect(() => {
