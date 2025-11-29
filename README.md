@@ -36,7 +36,8 @@ PRIVATE_KEY=your_private_key_for_deployment
 ```
 
 ### 3. Compile & Deploy Contract
-
+You can skip this if you want to use my contract address:
+VITE_CONTRACT_ADDRESS=0xc7a4F99Dad829Dc9D8FD77D5bbb4C1387B908E79
 ```bash
 # Compile the smart contract
 npm run compile
