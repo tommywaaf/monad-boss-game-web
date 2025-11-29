@@ -393,11 +393,16 @@ function useProvideGameContract() {
 
       if (bossKilledEvent) {
         console.log('[killBoss] ✅ BossKilled event found in receipt:', bossKilledEvent)
+        console.log('[killBoss] 📊 baseRoll:', bossKilledEvent.args.baseRoll?.toString(), 
+                    'adjustedRoll:', bossKilledEvent.args.adjustedRoll?.toString(),
+                    'tier:', bossKilledEvent.args.tier)
         
         // Also look for RandomnessDebug event
         let debugEvent = null
+        console.log('[killBoss] 🔍 Looking for RandomnessDebug in', receipt.logs.length, 'logs')
         for (const log of receipt.logs) {
           try {
+            // Try to decode as RandomnessDebug
             const decoded = publicClient.decodeEventLog({
               abi: GAME_CONTRACT_ABI,
               eventName: 'RandomnessDebug',
@@ -406,12 +411,26 @@ function useProvideGameContract() {
             })
             if (decoded) {
               debugEvent = decoded
-              console.log('[killBoss] 🔍 RandomnessDebug event:', debugEvent.args)
+              console.log('[killBoss] 🔍 RandomnessDebug event found:', {
+                blockhash: decoded.args.blockhashValue,
+                blockNumber: decoded.args.blockNumber?.toString(),
+                timestamp: decoded.args.timestamp?.toString(),
+                nonce: decoded.args.nonce?.toString(),
+                rawHash: decoded.args.rawHash?.toString(),
+                finalRoll: decoded.args.finalRoll?.toString()
+              })
               break
             }
-          } catch {
+          } catch (err) {
+            // Log first topic to help debug
+            if (log.topics?.[0]) {
+              console.log('[killBoss] 🔍 Log topic[0]:', log.topics[0].slice(0, 20) + '...')
+            }
             continue
           }
+        }
+        if (!debugEvent) {
+          console.log('[killBoss] ⚠️ RandomnessDebug event NOT found - contract may need redeployment')
         }
         
         setLastEvent({
