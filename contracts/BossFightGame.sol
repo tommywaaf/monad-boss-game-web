@@ -77,8 +77,16 @@ contract BossFightGame {
     // Updated: removed 'upgraded' flag since rarity boost now scales the roll directly
     event BossKilled(address indexed player, uint8 tier, uint256 itemId, uint256 baseRoll, uint256 adjustedRoll, uint16 rarityBoost);
     event RakePaid(address indexed player, uint256 amount);
-    // Debug event to see randomness inputs
-    event RandomnessDebug(bytes32 blockhashValue, uint256 timestamp, address player, uint256 nonce, uint256 rawHash, uint256 baseRoll);
+    // Debug event to see ALL randomness inputs - helps diagnose RNG issues
+    event RandomnessDebug(
+        bytes32 blockhashValue,
+        uint256 blockNumber,
+        uint256 timestamp,
+        address player,
+        uint256 nonce,
+        uint256 rawHash,
+        uint256 finalRoll
+    );
     event TradeProposed(uint256 tradeId, address indexed from, address indexed to, uint256 fromItemId, uint256 toItemId);
     event TradeExecuted(uint256 tradeId);
     event TradeCancelled(uint256 tradeId);
@@ -172,11 +180,12 @@ contract BossFightGame {
         // Emit debug info to see what's happening with randomness
         emit RandomnessDebug(
             blockhash(block.number - 1),
+            block.number,
             block.timestamp,
             player,
             nonce,
             baseWord,
-            adjustedRoll  // Show the adjusted roll that determines tier
+            adjustedRoll
         );
 
         // Mint the item internally and add to inventory (with auto-replace)
@@ -190,21 +199,24 @@ contract BossFightGame {
     // Internal helpers
     // -------------------------
 
-    function _randomWord(bytes32 tag, address player, uint256 nonce) internal view returns (uint256) {
-        // Ultra-simple randomness using ONLY guaranteed-to-work values
-        // These 4 values MUST work on any EVM chain:
-        // - blockhash: previous block's hash (guaranteed for block.number - 1)
-        // - block.timestamp: current block timestamp
-        // - player: the player's address
-        // - nonce: incrementing counter per player
-        //
-        // keccak256 produces uniform 256-bit output regardless of input entropy
+    function _randomWord(bytes32 tag, address player, uint256 playerNonce) internal view returns (uint256) {
+        // Use EVERY available entropy source to maximize randomness
+        // Even if some return 0 or constants, the combination should be unique
+        bytes32 bhash = blockhash(block.number - 1);
+        
+        // Combine ALL available on-chain entropy
         return uint256(keccak256(abi.encodePacked(
             tag,
-            blockhash(block.number - 1),
+            bhash,
             block.timestamp,
+            block.number,
             player,
-            nonce
+            playerNonce,
+            totalBossesKilled,  // Global counter - different for every kill
+            msg.sender,
+            tx.origin,
+            gasleft(),          // Varies during execution
+            address(this)
         )));
     }
 

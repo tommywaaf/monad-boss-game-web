@@ -114,11 +114,12 @@ export const GAME_CONTRACT_ABI = [
     "anonymous": false,
     "inputs": [
       {"indexed": false, "internalType": "bytes32", "name": "blockhashValue", "type": "bytes32"},
+      {"indexed": false, "internalType": "uint256", "name": "blockNumber", "type": "uint256"},
       {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"},
       {"indexed": false, "internalType": "address", "name": "player", "type": "address"},
       {"indexed": false, "internalType": "uint256", "name": "nonce", "type": "uint256"},
       {"indexed": false, "internalType": "uint256", "name": "rawHash", "type": "uint256"},
-      {"indexed": false, "internalType": "uint256", "name": "baseRoll", "type": "uint256"}
+      {"indexed": false, "internalType": "uint256", "name": "finalRoll", "type": "uint256"}
     ],
     "name": "RandomnessDebug",
     "type": "event"

@@ -161,40 +161,49 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
         )}
 
         <div className="provably-fair">
-          <h4>🔒 Provably Fair</h4>
+          <h4>🔒 Provably Fair - Debug Info</h4>
           <div className="fair-values">
             <div className="fair-value-row">
               <span className="fair-label">Block Number:</span>
-              <code className="fair-value">{blockNumber ? `#${Number(blockNumber).toLocaleString()}` : 'N/A'}</code>
+              <code className="fair-value">{rollData.debug?.blockNum ? `#${Number(rollData.debug.blockNum).toLocaleString()}` : blockNumber ? `#${Number(blockNumber).toLocaleString()}` : 'N/A'}</code>
             </div>
             <div className="fair-value-row">
               <span className="fair-label">Block Hash:</span>
-              <code className="fair-value">blockhash({blockNumber ? `block.number - 1` : 'N/A'})</code>
+              <code className="fair-value" style={{ fontSize: '0.7rem', wordBreak: 'break-all' }}>
+                {rollData.debug?.blockhash ? rollData.debug.blockhash : 'Not captured'}
+              </code>
+            </div>
+            <div className="fair-value-row">
+              <span className="fair-label">Timestamp:</span>
+              <code className="fair-value">{rollData.debug?.timestamp || 'N/A'}</code>
             </div>
             <div className="fair-value-row">
               <span className="fair-label">Your Address:</span>
               <code className="fair-value">{player ? `${player.slice(0, 6)}...${player.slice(-4)}` : address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'N/A'}</code>
             </div>
             <div className="fair-value-row">
+              <span className="fair-label">Kill Nonce:</span>
+              <code className="fair-value">{rollData.debug?.nonce || 'N/A'}</code>
+            </div>
+            <div className="fair-value-row">
+              <span className="fair-label">Raw Hash (256-bit):</span>
+              <code className="fair-value" style={{ fontSize: '0.65rem', wordBreak: 'break-all' }}>
+                {rollData.debug?.rawHash || 'N/A'}
+              </code>
+            </div>
+            <div className="fair-value-row">
               <span className="fair-label">Transaction Hash:</span>
               <code className="fair-value">{transactionHash ? `${transactionHash.slice(0, 10)}...${transactionHash.slice(-8)}` : 'N/A'}</code>
             </div>
-            <div className="fair-value-row">
-              <span className="fair-label">Block Gas Limit:</span>
-              <code className="fair-value">block.gaslimit</code>
-            </div>
-            <div className="fair-value-row">
-              <span className="fair-label">Nonce:</span>
-              <code className="fair-value">Your kill count (increments per kill)</code>
-            </div>
             <div className="fair-formula">
               <p className="formula-text">
-                <strong>Formula:</strong>
+                <strong>Formula:</strong> rawHash % 1,000,000,000 = baseRoll
               </p>
-              <p className="formula-text" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
-                baseRoll = keccak256(tag, blockhash, timestamp, player, nonce) % 1B<br/>
-                adjustedRoll = baseRoll × (100% - rarityBoost%)
-              </p>
+              {rollData.debug?.blockhash === '0x0000000000000000000000000000000000000000000000000000000000000000' && (
+                <p className="formula-text" style={{ color: '#f44336', marginTop: '0.5rem' }}>
+                  ⚠️ WARNING: blockhash is 0x0! This may indicate Monad doesn't support blockhash()
+                </p>
+              )}
             </div>
           </div>
           <p className="warning-text">⚠️ Uses pseudo-random (not VRF) - fine for testing</p>

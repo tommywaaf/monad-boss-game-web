@@ -394,6 +394,26 @@ function useProvideGameContract() {
       if (bossKilledEvent) {
         console.log('[killBoss] ✅ BossKilled event found in receipt:', bossKilledEvent)
         
+        // Also look for RandomnessDebug event
+        let debugEvent = null
+        for (const log of receipt.logs) {
+          try {
+            const decoded = publicClient.decodeEventLog({
+              abi: GAME_CONTRACT_ABI,
+              eventName: 'RandomnessDebug',
+              topics: log.topics,
+              data: log.data,
+            })
+            if (decoded) {
+              debugEvent = decoded
+              console.log('[killBoss] 🔍 RandomnessDebug event:', debugEvent.args)
+              break
+            }
+          } catch {
+            continue
+          }
+        }
+        
         setLastEvent({
           type: 'success',
           tier: Number(bossKilledEvent.args.tier),
@@ -403,7 +423,16 @@ function useProvideGameContract() {
           rarityBoost: Number(bossKilledEvent.args.rarityBoost || 0),
           blockNumber: receipt.blockNumber?.toString(),
           transactionHash: hash,
-          player: bossKilledEvent.args.player
+          player: bossKilledEvent.args.player,
+          // Debug info from RandomnessDebug event
+          debug: debugEvent ? {
+            blockhash: debugEvent.args.blockhashValue,
+            blockNum: debugEvent.args.blockNumber?.toString(),
+            timestamp: debugEvent.args.timestamp?.toString(),
+            nonce: debugEvent.args.nonce?.toString(),
+            rawHash: debugEvent.args.rawHash?.toString(),
+            finalRoll: debugEvent.args.finalRoll?.toString()
+          } : null
         })
         
         // DON'T call fetchContractData here - BossFight will handle the refresh
