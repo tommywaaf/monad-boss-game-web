@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useGameContract } from '../hooks/useGameContract'
 import { ITEM_TIERS } from '../config/gameContract'
 import ItemModal from './ItemModal'
@@ -10,40 +10,49 @@ function Inventory() {
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Automatically refresh inventory when boss is defeated
+  // Use a ref to track the last processed event to avoid duplicate refreshes
+  const lastProcessedEventRef = useRef(null)
+  
   useEffect(() => {
     if (lastEvent && lastEvent.type === 'success') {
-      console.log('[Inventory] Boss defeated, refreshing inventory...', lastEvent)
+      // Check if we've already processed this event
+      const eventKey = `${lastEvent.transactionHash}-${lastEvent.itemId}`
+      if (lastProcessedEventRef.current === eventKey) {
+        console.log('[Inventory] Event already processed, skipping...')
+        return
+      }
+      
+      console.log('[Inventory] ✅ Boss defeated event detected! Refreshing inventory...', {
+        itemId: lastEvent.itemId,
+        transactionHash: lastEvent.transactionHash
+      })
+      lastProcessedEventRef.current = eventKey
       setIsRefreshing(true)
       
-      // Try multiple times with increasing delays to ensure we catch the update
-      // Sometimes the contract state takes a moment to propagate on-chain
-      const timers = []
-      
-      // First attempt: immediate (contract might already be updated)
-      timers.push(setTimeout(() => {
-        console.log('[Inventory] First refresh attempt (500ms)...')
-        refetchInventory()
-      }, 500))
-      
-      // Second attempt: after 1.5 seconds
-      timers.push(setTimeout(() => {
-        console.log('[Inventory] Second refresh attempt (1.5s)...')
-        refetchInventory()
-      }, 1500))
-      
-      // Third attempt: after 3 seconds (should definitely be updated by now)
-      timers.push(setTimeout(() => {
-        console.log('[Inventory] Third refresh attempt (3s)...')
-        refetchInventory()
+      // Since the blockchain is ready when the modal shows up (user confirmed this),
+      // refresh immediately - no delay needed
+      const refreshInventory = async () => {
+        console.log('[Inventory] 🔄 Refreshing inventory now...')
+        await refetchInventory()
         setIsRefreshing(false)
-      }, 3000))
+        console.log('[Inventory] ✅ Inventory refresh completed')
+      }
+      
+      // Call immediately
+      refreshInventory()
+      
+      // Also set a backup refresh in case the first one fails
+      const backupTimer = setTimeout(() => {
+        console.log('[Inventory] 🔄 Backup refresh (500ms)...')
+        refreshInventory()
+      }, 500)
       
       return () => {
-        timers.forEach(timer => clearTimeout(timer))
+        clearTimeout(backupTimer)
         setIsRefreshing(false)
       }
     }
-  }, [lastEvent?.itemId, lastEvent?.transactionHash, refetchInventory]) // Use specific event properties to avoid unnecessary re-runs
+  }, [lastEvent?.transactionHash, lastEvent?.itemId]) // Depend on specific properties that change when new event occurs
 
   const handleRefresh = async () => {
     setIsRefreshing(true)

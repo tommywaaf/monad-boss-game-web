@@ -205,7 +205,9 @@ export function useGameContract() {
                 transactionHash: log.transactionHash,
                 player: log.args.player
               })
-              fetchContractData() // Refresh inventory and boosts
+              // Refresh inventory and boosts - blockchain is ready when event is emitted
+              console.log('[useGameContract] Event watcher detected BossKilled, refreshing contract data')
+              fetchContractData()
             }
           }
         })
@@ -381,8 +383,9 @@ export function useGameContract() {
           player: bossKilledEvent.args.player
         })
         
-        // Refresh contract data
-        fetchContractData()
+        // Refresh contract data immediately - blockchain is ready when event is in receipt
+        console.log('[killBoss] Refreshing contract data immediately after event found in receipt')
+        await fetchContractData()
         
         // Reset transaction status
         setTimeout(() => {
