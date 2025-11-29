@@ -12,28 +12,53 @@ function TransferModal({ item, onClose, onSuccess }) {
   const [isConfirming, setIsConfirming] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [hash, setHash] = useState(null)
+  const [clientsReady, setClientsReady] = useState(false)
   const walletClientRef = useRef(null)
   const publicClientRef = useRef(null)
 
   // Initialize clients when wallet is available
   useEffect(() => {
-    if (primaryWallet && isEthereumWallet(primaryWallet)) {
+    // Check if we have a valid wallet - support both external and embedded wallets
+    const hasValidWallet = primaryWallet && (
+      isEthereumWallet(primaryWallet) || 
+      (primaryWallet.address && primaryWallet.getWalletClient)
+    )
+    
+    if (hasValidWallet) {
       const initClients = async () => {
         try {
+          console.log('[TransferModal] Initializing wallet clients for:', primaryWallet.address)
+          console.log('[TransferModal] Wallet type:', primaryWallet.connector?.name || 'unknown')
+          
           const walletClient = await primaryWallet.getWalletClient()
           const publicClient = await primaryWallet.getPublicClient()
-          walletClientRef.current = walletClient
-          publicClientRef.current = publicClient
+          
+          if (walletClient && publicClient) {
+            walletClientRef.current = walletClient
+            publicClientRef.current = publicClient
+            setClientsReady(true)
+            console.log('[TransferModal] ✅ Wallet clients initialized successfully')
+          } else {
+            console.error('[TransferModal] Failed to get clients:', { walletClient: !!walletClient, publicClient: !!publicClient })
+            setClientsReady(false)
+          }
         } catch (error) {
-          console.error('Failed to initialize clients:', error)
+          console.error('[TransferModal] Failed to initialize clients:', error)
+          setClientsReady(false)
         }
       }
       initClients()
     } else {
+      console.log('[TransferModal] No valid wallet found:', { 
+        hasWallet: !!primaryWallet, 
+        hasAddress: !!primaryWallet?.address,
+        isEthereum: primaryWallet ? isEthereumWallet(primaryWallet) : false 
+      })
       walletClientRef.current = null
       publicClientRef.current = null
+      setClientsReady(false)
     }
-  }, [primaryWallet])
+  }, [primaryWallet?.address])
 
   // Watch for transaction confirmation
   useEffect(() => {
@@ -78,24 +103,36 @@ function TransferModal({ item, onClose, onSuccess }) {
       return
     }
 
-    if (!walletClientRef.current) {
-      setError('Wallet not connected')
+    if (!clientsReady || !walletClientRef.current) {
+      setError('Wallet not ready. Please wait a moment and try again.')
       return
     }
 
     try {
       setIsPending(true)
+      console.log('[TransferModal] Initiating transfer to:', toAddress, 'item:', item.id)
+      
       const txHash = await walletClientRef.current.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
         functionName: 'transferItem',
         args: [toAddress, BigInt(item.id)]
       })
+      console.log('[TransferModal] Transaction submitted:', txHash)
       setHash(txHash)
       setIsPending(false)
     } catch (err) {
-      console.error('Transfer error:', err)
-      setError(err.message || 'Transaction failed. Please try again.')
+      console.error('[TransferModal] Transfer error:', err)
+      // Provide more helpful error messages
+      let errorMessage = 'Transaction failed. Please try again.'
+      if (err.message?.includes('User rejected')) {
+        errorMessage = 'Transaction was rejected by user.'
+      } else if (err.message?.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for gas.'
+      } else if (err.message) {
+        errorMessage = err.message
+      }
+      setError(errorMessage)
       setIsPending(false)
     }
   }
@@ -166,9 +203,10 @@ function TransferModal({ item, onClose, onSuccess }) {
           <button 
             className="transfer-button"
             onClick={handleTransfer}
-            disabled={isPending || isConfirming || isSuccess}
+            disabled={!clientsReady || isPending || isConfirming || isSuccess}
           >
-            {isPending ? 'Waiting for approval...' : 
+            {!clientsReady ? 'Connecting wallet...' :
+             isPending ? 'Waiting for approval...' : 
              isConfirming ? 'Transferring...' :
              isSuccess ? 'Transferred!' : 
              'Transfer Item'}
