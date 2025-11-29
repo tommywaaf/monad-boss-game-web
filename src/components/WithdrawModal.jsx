@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import './WithdrawModal.css'
@@ -192,7 +193,7 @@ function WithdrawModal({ onClose, currentBalance }) {
   const clientsReady = !!walletClient && !!publicClient
   const formattedBalance = currentBalance ? formatBalance(currentBalance) : '0'
 
-  return (
+  return createPortal(
     <div className="withdraw-modal-overlay" onClick={onClose}>
       <div className="withdraw-modal-content" onClick={(e) => e.stopPropagation()}>
         <button className="modal-close" onClick={onClose}>×</button>
@@ -294,7 +295,8 @@ function WithdrawModal({ onClose, currentBalance }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
