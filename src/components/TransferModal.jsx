@@ -1,72 +1,28 @@
-import { useState, useEffect, useRef } from 'react'
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { useState, useEffect } from 'react'
+import { useGameContract } from '../hooks/useGameContract'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
-  const { primaryWallet } = useDynamicContext()
+  // Use the shared wallet clients from GameContractProvider - they're already working!
+  const { walletClient, publicClient } = useGameContract()
   const [toAddress, setToAddress] = useState('')
   const [error, setError] = useState('')
   const [isPending, setIsPending] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [hash, setHash] = useState(null)
-  const [clientsReady, setClientsReady] = useState(false)
-  const walletClientRef = useRef(null)
-  const publicClientRef = useRef(null)
-
-  // Initialize clients when wallet is available
-  useEffect(() => {
-    // Check if we have a valid wallet - support both external and embedded wallets
-    const hasValidWallet = primaryWallet && (
-      isEthereumWallet(primaryWallet) || 
-      (primaryWallet.address && primaryWallet.getWalletClient)
-    )
-    
-    if (hasValidWallet) {
-      const initClients = async () => {
-        try {
-          console.log('[TransferModal] Initializing wallet clients for:', primaryWallet.address)
-          console.log('[TransferModal] Wallet type:', primaryWallet.connector?.name || 'unknown')
-          
-          const walletClient = await primaryWallet.getWalletClient()
-          const publicClient = await primaryWallet.getPublicClient()
-          
-          if (walletClient && publicClient) {
-            walletClientRef.current = walletClient
-            publicClientRef.current = publicClient
-            setClientsReady(true)
-            console.log('[TransferModal] ✅ Wallet clients initialized successfully')
-          } else {
-            console.error('[TransferModal] Failed to get clients:', { walletClient: !!walletClient, publicClient: !!publicClient })
-            setClientsReady(false)
-          }
-        } catch (error) {
-          console.error('[TransferModal] Failed to initialize clients:', error)
-          setClientsReady(false)
-        }
-      }
-      initClients()
-    } else {
-      console.log('[TransferModal] No valid wallet found:', { 
-        hasWallet: !!primaryWallet, 
-        hasAddress: !!primaryWallet?.address,
-        isEthereum: primaryWallet ? isEthereumWallet(primaryWallet) : false 
-      })
-      walletClientRef.current = null
-      publicClientRef.current = null
-      setClientsReady(false)
-    }
-  }, [primaryWallet?.address])
+  
+  // Clients are ready if they exist (they're already initialized by useGameContract)
+  const clientsReady = !!walletClient && !!publicClient
 
   // Watch for transaction confirmation
   useEffect(() => {
-    if (hash && publicClientRef.current) {
+    if (hash && publicClient) {
       const waitForReceipt = async () => {
         try {
           setIsConfirming(true)
-          const receipt = await publicClientRef.current.waitForTransactionReceipt({ hash })
+          const receipt = await publicClient.waitForTransactionReceipt({ hash })
           setIsConfirming(false)
           setIsSuccess(true)
           if (onSuccess) {
@@ -83,7 +39,7 @@ function TransferModal({ item, onClose, onSuccess }) {
       }
       waitForReceipt()
     }
-  }, [hash, onSuccess, onClose])
+  }, [hash, publicClient, onSuccess, onClose])
 
   const validateAddress = (addr) => {
     // Basic Ethereum address validation
@@ -103,7 +59,7 @@ function TransferModal({ item, onClose, onSuccess }) {
       return
     }
 
-    if (!clientsReady || !walletClientRef.current) {
+    if (!clientsReady || !walletClient) {
       setError('Wallet not ready. Please wait a moment and try again.')
       return
     }
@@ -112,7 +68,7 @@ function TransferModal({ item, onClose, onSuccess }) {
       setIsPending(true)
       console.log('[TransferModal] Initiating transfer to:', toAddress, 'item:', item.id)
       
-      const txHash = await walletClientRef.current.writeContract({
+      const txHash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
         functionName: 'transferItem',

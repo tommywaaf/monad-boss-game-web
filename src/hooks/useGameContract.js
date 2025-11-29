@@ -571,6 +571,9 @@ function useProvideGameContract() {
     clearLastEvent: () => setLastEvent(null),
     resetTransaction: handleReset,
     refetchInventory: fetchContractData,
+    // Expose wallet clients for other components (e.g., TransferModal)
+    walletClient: walletClientRef.current,
+    publicClient: publicClientRef.current,
   }
 }
 
