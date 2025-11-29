@@ -9,30 +9,31 @@ npm install
 ```
 
 This will install:
-- `wagmi` - React hooks for Ethereum wallet interactions
+- `@dynamic-labs/sdk-react-core` - Dynamic wallet SDK
+- `@dynamic-labs/ethereum` - Ethereum wallet connectors
 - `viem` - Lightweight Ethereum library
-- `@tanstack/react-query` - State management for wagmi
-- `@web3modal/wagmi` - Beautiful wallet connection UI
+- `hardhat` - Smart contract development
 
-### 2. Get WalletConnect Project ID
+### 2. Get Dynamic Environment ID
 
-1. Go to [WalletConnect Cloud](https://cloud.walletconnect.com)
+1. Go to [Dynamic Dashboard](https://app.dynamic.xyz)
 2. Sign up / Log in
-3. Create a new project
-4. Copy your Project ID
+3. Create a new project or use existing
+4. Copy your Environment ID from the dashboard
 
-### 3. Configure Project ID
+### 3. Configure Environment
 
-Open `src/config/wagmiConfig.js` and replace:
+Create a `.env` file in the project root:
 
-```javascript
-const projectId = 'YOUR_WALLETCONNECT_PROJECT_ID'
-```
+```env
+# Dynamic Environment ID
+VITE_DYNAMIC_ENVIRONMENT_ID=your_environment_id_here
 
-With your actual project ID:
+# Contract address (after deployment)
+VITE_CONTRACT_ADDRESS=
 
-```javascript
-const projectId = 'abc123...'
+# Private key for deployment (never commit this!)
+PRIVATE_KEY=
 ```
 
 ### 4. Run Development Server
@@ -43,111 +44,82 @@ npm run dev
 
 ## 🔌 What's Included
 
-### Files Created:
+### Files Structure:
 
 ```
 src/
 ├── config/
 │   ├── monadChain.js          # Monad network config (Chain ID: 143)
-│   └── wagmiConfig.js         # Wagmi & Web3Modal setup
+│   └── gameContract.js        # Contract ABI & address
 ├── components/
 │   ├── WalletConnect.jsx      # Wallet connection component
-│   └── WalletConnect.css      # Wallet UI styles
-├── App.jsx                    # Updated main app
-├── App.css                    # Updated app styles
-└── main.jsx                   # Providers wrapper
+│   ├── BossFight.jsx          # Boss battle component
+│   ├── Inventory.jsx          # Player inventory
+│   ├── TransferModal.jsx      # Item transfer modal
+│   └── WithdrawModal.jsx      # MON withdrawal modal
+├── hooks/
+│   └── useGameContract.js     # Game contract interactions
+├── App.jsx                    # Main app component
+└── main.jsx                   # Dynamic SDK provider setup
 ```
 
 ## 🎯 Features
 
-✅ **Connect Wallets:**
-- MetaMask
-- WalletConnect (mobile wallets)
-- Coinbase Wallet
-- And more...
+✅ **Wallet Options:**
+- Create embedded wallet (email/social login)
+- Connect external wallets (MetaMask, WalletConnect, etc.)
 
 ✅ **Network Detection:**
 - Automatically detects if user is on Monad network
 - Shows visual indicator for correct/wrong network
 - Easy network switching
 
-✅ **Wallet Info Display:**
-- Connected address (truncated)
-- Network status badge
+✅ **Wallet Features:**
+- View MON balance
+- Withdraw MON to any address
+- Copy wallet address
 - Disconnect option
 
 ## 🌐 Monad Network Details
 
 - **Chain ID:** 143
-- **Network Name:** Monad
-- **RPC URL:** https://mainnet-rpc.monad.xyz
+- **Network Name:** Monad Testnet
+- **RPC URL:** https://testnet-rpc.monad.xyz
 - **Symbol:** MON
+- **Explorer:** https://testnet.monadexplorer.com
 
 ## 🧪 Testing
 
 1. Open the app in your browser
-2. Click "Connect Wallet"
-3. Select your wallet (MetaMask recommended for testing)
-4. Approve the connection
-5. If not on Monad network, click "Switch Network"
-6. The app will show your connected address and network status
+2. Click "Connect Wallet" or "Create New Wallet"
+3. Complete authentication (email, social, or external wallet)
+4. If not on Monad network, click "Switch to Monad"
+5. The app will show your connected address, balance, and network status
 
 ## 🚀 Next Steps
 
 Now that wallet connection is working, you can:
 
-1. **Add Smart Contract Integration:**
-   - Create contract ABI files
-   - Add contract addresses
-   - Use wagmi hooks like `useReadContract` and `useWriteContract`
+1. **Deploy the Smart Contract:**
+   - See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
 
-2. **Build Game Features:**
-   - Boss battle mechanics
-   - NFT minting
-   - Token rewards
-   - Leaderboards
-
-3. **Enhance UI:**
-   - Add game graphics
-   - Create battle animations
-   - Build inventory system
-
-## 📚 Useful Hooks
-
-When you're ready to integrate contracts:
-
-```javascript
-import { useReadContract, useWriteContract } from 'wagmi'
-
-// Read from contract
-const { data } = useReadContract({
-  address: '0x...',
-  abi: contractABI,
-  functionName: 'getBossHealth',
-})
-
-// Write to contract
-const { writeContract } = useWriteContract()
-
-writeContract({
-  address: '0x...',
-  abi: contractABI,
-  functionName: 'attackBoss',
-  args: [damageAmount],
-})
-```
+2. **Play the Game:**
+   - Attack bosses to earn items
+   - Build your inventory
+   - Transfer items to friends
+   - Withdraw MON when needed
 
 ## 🐛 Troubleshooting
 
 **Wallet not connecting?**
-- Make sure you've installed dependencies
-- Check that WalletConnect Project ID is set
-- Try different wallet providers
+- Make sure Dynamic Environment ID is set in `.env`
+- Check browser console for errors
+- Try different authentication methods
 
 **Wrong network showing?**
-- Click "Switch Network" button
-- Manually add Monad network to MetaMask if needed
-- RPC: https://mainnet-rpc.monad.xyz
+- Click "Switch to Monad" button
+- Manually add Monad network to your wallet if needed
+- RPC: https://testnet-rpc.monad.xyz
 - Chain ID: 143
 
 **Build errors?**
@@ -157,11 +129,10 @@ writeContract({
 
 ## 📖 Documentation Links
 
-- [Wagmi Docs](https://wagmi.sh)
-- [Web3Modal Docs](https://docs.walletconnect.com/web3modal/about)
+- [Dynamic Docs](https://docs.dynamic.xyz)
 - [Viem Docs](https://viem.sh)
+- [Hardhat Docs](https://hardhat.org/docs)
 
 ---
 
 Happy building! 🎮⚡
-

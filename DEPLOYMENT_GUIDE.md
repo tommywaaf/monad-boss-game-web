@@ -5,7 +5,7 @@ This guide will walk you through deploying your smart contract to the Monad netw
 ## 📋 Prerequisites
 
 - [x] Wallet with MON tokens (for gas fees on Monad)
-- [x] WalletConnect Project ID configured
+- [x] Dynamic Environment ID configured
 - [x] Node.js and npm installed
 
 ## Step 1: Install Dependencies
@@ -18,23 +18,16 @@ npm install
 
 This installs:
 - Hardhat & toolbox (for smart contract development)
-- Wagmi & Web3Modal (for wallet connectivity)
+- Dynamic SDK (for wallet connectivity)
 - All other frontend dependencies
 
 ## Step 2: Set Up Environment Variables
 
 Create a `.env` file in the project root:
 
-```bash
-# Copy the example
-cp .env.example .env
-```
-
-Edit `.env` and add:
-
 ```env
-# WalletConnect Project ID (you already have this)
-VITE_WALLETCONNECT_PROJECT_ID=563c100c26ea5e8412df52383cde520a
+# Dynamic Environment ID (from Dynamic dashboard)
+VITE_DYNAMIC_ENVIRONMENT_ID=your_environment_id_here
 
 # Your wallet's private key for deployment
 # ⚠️ NEVER commit this file! It's in .gitignore
@@ -92,7 +85,7 @@ npm run deploy
 ```
 
 This will:
-- Connect to Monad RPC: `https://mainnet-rpc.monad.xyz`
+- Connect to Monad RPC
 - Deploy the `BossFightGame` contract
 - Output the contract address
 
@@ -126,7 +119,7 @@ npm run dev
 ## Step 8: Test the Game! 🎮
 
 1. Open `http://localhost:5173`
-2. Connect your wallet
+2. Connect your wallet or create a new one
 3. Make sure you're on Monad network (Chain ID: 143)
 4. Click "Attack Boss"
 5. Approve the transaction in your wallet
@@ -136,12 +129,12 @@ npm run dev
 ## 🎯 What You Can Do Now
 
 ### Kill Bosses
-- Base 75% success rate
+- Base 100% success rate
 - Each item boosts your success rate
 - Max success rate: 99%
 
 ### Collect Items
-- 10 tiers: Common → Rainbow
+- 10 tiers: Grey → Rainbow
 - Each tier has different rarity
 - Items boost success & rarity rates
 
@@ -150,9 +143,14 @@ npm run dev
 - Weakest items auto-replaced
 - View item stats and counts
 
-### Trade (Coming Soon)
-- The contract has trading functions ready
-- UI will be added in future updates
+### Transfer Items
+- Send items to other players
+- Click on any item to open transfer modal
+
+### Withdraw MON
+- Click "Withdraw" button next to balance
+- Enter destination address and amount
+- Use MAX to send your full balance
 
 ## 🔧 Troubleshooting
 
@@ -171,12 +169,12 @@ npm run dev
 - Make sure contract is properly deployed
 
 ### "Wrong Network" warning
-- Click "Switch Network" button
+- Click "Switch to Monad" button
 - Or manually switch to Monad (Chain ID: 143) in your wallet
 
 ### Contract not responding
 - Verify the contract address in `.env`
-- Check Monad RPC is working: https://mainnet-rpc.monad.xyz
+- Check Monad RPC is working
 - Look for transaction on Monad explorer
 
 ## 📊 Contract Functions
@@ -191,9 +189,7 @@ The `BossFightGame` contract includes:
 
 ### Write Functions (Costs Gas)
 - `killBoss()` - Attack boss, get loot
-- `proposeTrade(to, myItemId, theirItemId)` - Propose item trade
-- `acceptTrade(tradeId)` - Accept a trade offer
-- `cancelTrade(tradeId)` - Cancel your trade offer
+- `transferItem(to, itemId)` - Transfer item to another player
 
 ## 🎨 Customization Ideas
 
@@ -201,12 +197,9 @@ Now that your game is running, you can:
 
 1. **Adjust Drop Rates:** Edit `BossFightGame.sol` tier probabilities
 2. **Add More Tiers:** Extend the tier system beyond 10
-3. **Custom Item Icons:** Replace 💎 emoji with actual images
+3. **Custom Item Icons:** Replace emoji with actual images
 4. **Leaderboards:** Track total boss kills per player
 5. **Seasons:** Reset inventories periodically for fair competition
-6. **Staking:** Add token rewards for boss kills
-7. **Boss Variety:** Multiple bosses with different difficulties
-8. **Guilds:** Team-based gameplay
 
 ## 📚 Next Steps
 
@@ -216,14 +209,12 @@ Now that your game is running, you can:
 - [ ] Add sound effects
 - [ ] Build achievement system
 - [ ] Deploy to production domain
-- [ ] Add analytics/tracking
 
 ---
 
 **Need Help?**
 - Check Hardhat docs: https://hardhat.org/docs
-- Wagmi docs: https://wagmi.sh
+- Dynamic docs: https://docs.dynamic.xyz
 - Monad docs: https://docs.monad.xyz
 
 Happy gaming! 🎮⚡
-

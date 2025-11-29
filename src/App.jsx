@@ -136,7 +136,7 @@ function App() {
               <div className="game-features">
                 <h4>🎯 Game Features:</h4>
                 <ul>
-                  <li>🗡️ Boss battles with 75% base success rate</li>
+                  <li>🗡️ Boss battles with 100% base success rate</li>
                   <li>💎 10 item tiers from Common to Rainbow</li>
                   <li>📦 20-item inventory with auto-upgrade</li>
                   <li>📈 Items boost success & rarity chances</li>

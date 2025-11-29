@@ -42,8 +42,8 @@ contract BossFightGame {
     mapping(address => bool) public hasPlayed;
     mapping(address => uint256) public playerBossKills;
 
-    // Base boss success: 75% = 7500 bps
-    uint16 public constant BASE_SUCCESS_BPS = 7500;
+    // Base boss success: 100% = 10000 bps
+    uint16 public constant BASE_SUCCESS_BPS = 10000;
     // Max success chance cap: 99% = 9900 bps
     uint16 public constant MAX_SUCCESS_BPS = 9900;
 

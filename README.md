@@ -4,12 +4,13 @@ A decentralized boss-fighting game on the Monad blockchain. Fight bosses, collec
 
 ## ✨ Features
 
-- 🗡️ **Boss Battles** - 75% base success rate with item boosts
+- 🗡️ **Boss Battles** - 100% base success rate
 - 💎 **10 Item Tiers** - From Common to Rainbow with increasing rarity
 - 📦 **Smart Inventory** - 20-item limit with automatic upgrades
 - 📈 **Boost System** - Items increase success & rarity chances
-- 🔄 **P2P Trading** - Trade items with other players
-- 🌐 **Multi-Wallet Support** - MetaMask, WalletConnect, and more
+- 🔄 **Item Transfers** - Transfer items to other players
+- 💸 **Withdraw MON** - Send your MON to any wallet
+- 🌐 **Dynamic Wallet Support** - Embedded wallets, social login, and external wallets
 
 ## 🚀 Quick Start
 
@@ -24,8 +25,13 @@ npm install
 Create a `.env` file:
 
 ```env
-VITE_WALLETCONNECT_PROJECT_ID=your_project_id_here
+# Dynamic Environment ID (from Dynamic dashboard)
+VITE_DYNAMIC_ENVIRONMENT_ID=your_environment_id_here
+
+# Contract address (after deployment)
 VITE_CONTRACT_ADDRESS=your_contract_address_here
+
+# Private key for deployment (never commit this!)
 PRIVATE_KEY=your_private_key_for_deployment
 ```
 
@@ -54,7 +60,7 @@ Open `http://localhost:5173` and start playing!
 
 ## 🎯 How to Play
 
-1. **Connect Wallet** - Use MetaMask or WalletConnect
+1. **Connect Wallet** - Use Dynamic to connect or create a wallet
 2. **Switch to Monad** - Network Chain ID: 143
 3. **Attack Boss** - Click the attack button
 4. **Collect Items** - Build your inventory
@@ -63,7 +69,7 @@ Open `http://localhost:5173` and start playing!
 ## 🏗️ Tech Stack
 
 - **Frontend:** React + Vite
-- **Web3:** Wagmi + Viem + Web3Modal
+- **Web3:** Dynamic SDK + Viem
 - **Smart Contracts:** Solidity 0.8.24 + Hardhat
 - **Blockchain:** Monad (Chain ID: 143)
 
@@ -79,10 +85,11 @@ monad-boss-game-web/
 │   ├── components/         # React components
 │   │   ├── WalletConnect.jsx
 │   │   ├── BossFight.jsx
-│   │   └── Inventory.jsx
+│   │   ├── Inventory.jsx
+│   │   ├── TransferModal.jsx
+│   │   └── WithdrawModal.jsx
 │   ├── config/             # Configuration files
 │   │   ├── monadChain.js   # Monad network config
-│   │   ├── wagmiConfig.js  # Wagmi setup
 │   │   └── gameContract.js # Contract ABI & address
 │   ├── hooks/              # Custom React hooks
 │   │   └── useGameContract.js
@@ -97,34 +104,24 @@ monad-boss-game-web/
 
 | Tier | Name | Drop Rate | Rarity Boost | Success Boost |
 |------|------|-----------|--------------|---------------|
-| 0 | Common | 1:1 | +0% | +5% |
-| 1 | Grey | 1:10 | +1% | +5% |
-| 2 | White | 1:100 | +2% | +5% |
-| 3 | Blue | 1:1,000 | +3% | +7% |
-| 4 | Purple | 1:10,000 | +4% | +10% |
-| 5 | Orange | 1:100,000 | +5% | +10% |
-| 6 | Red | 1:1,000,000 | +10% | +10% |
-| 7 | Brown | 1:10,000,000 | +15% | +10% |
-| 8 | Black | 1:100,000,000 | +20% | +10% |
-| 9 | Rainbow | 1:1,000,000,000 | +25% | +10% |
+| 0 | Grey | 1:1 | +0% | +1% |
+| 1 | Common | 1:10 | +1% | +1% |
+| 2 | White | 1:100 | +2% | +1% |
+| 3 | Blue | 1:1,000 | +3% | +1% |
+| 4 | Purple | 1:10,000 | +4% | +1% |
+| 5 | Orange | 1:100,000 | +5% | +1% |
+| 6 | Red | 1:1,000,000 | +10% | +1% |
+| 7 | Brown | 1:10,000,000 | +15% | +1% |
+| 8 | Black | 1:100,000,000 | +20% | +1% |
+| 9 | Rainbow | 1:1,000,000,000 | +25% | +1% |
 
 ### Boss Fight System
 
-- **Base Success Rate:** 75%
+- **Base Success Rate:** 100%
 - **Max Success Rate:** 99%
 - **Success boost:** Sum of all item success boosts
 - **Rarity boost:** Chance to upgrade dropped item tier
 - **Inventory:** Max 20 items, auto-replaces weakest
-
-## 🔮 Future Features
-
-- [ ] Trading UI implementation
-- [ ] Leaderboards & rankings
-- [ ] Multiple boss types
-- [ ] Achievement system
-- [ ] Token rewards
-- [ ] Guild/team battles
-- [ ] NFT marketplace integration
 
 ## 🛠️ Development
 
@@ -138,21 +135,11 @@ npm run deploy       # Deploy to Monad
 npm run lint         # Run ESLint
 ```
 
-### Testing Locally
-
-```bash
-# Start local Hardhat node
-npx hardhat node
-
-# Deploy to local network
-npm run deploy:local
-```
-
 ## 🌐 Monad Network
 
 - **Chain ID:** 143
-- **RPC URL:** https://mainnet-rpc.monad.xyz
-- **Block Explorer:** https://explorer.monad.xyz
+- **RPC URL:** https://testnet-rpc.monad.xyz
+- **Block Explorer:** https://testnet.monadexplorer.com
 - **Currency:** MON
 
 ## 📜 Smart Contract
@@ -162,8 +149,7 @@ The `BossFightGame` contract includes:
 - **killBoss()** - Attack boss and earn items
 - **getInventory(address)** - View player inventory
 - **getTotalBoosts(address)** - Get player stat boosts
-- **proposeTrade(...)** - Initiate item trade
-- **acceptTrade(...)** - Accept pending trade
+- **transferItem(to, itemId)** - Transfer an item to another player
 
 ## 🤝 Contributing
 
