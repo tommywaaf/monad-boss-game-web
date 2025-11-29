@@ -170,18 +170,37 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, requestBody) {
     const privateKey = await importPKCS8(apiSecret, 'RS256')
 
     // Calculate body hash (SHA-256 of request body)
+    // IMPORTANT: JSON must be stringified consistently (Fireblocks is strict about this)
+    // Use JSON.stringify without any modifications to ensure consistency
     const bodyString = JSON.stringify(requestBody)
+    console.log('[Fireblocks] Body string for hash:', bodyString)
+    
+    // Calculate SHA-256 hash
     const bodyHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(bodyString))
-    const bodyHashArray = Array.from(new Uint8Array(bodyHashBuffer))
-    const bodyHashBase64 = btoa(String.fromCharCode(...bodyHashArray))
+    const bodyHashArray = new Uint8Array(bodyHashBuffer)
+    
+    // Convert to base64 using binary string method (works in Cloudflare Workers)
+    let binaryString = ''
+    for (let i = 0; i < bodyHashArray.length; i++) {
+      binaryString += String.fromCharCode(bodyHashArray[i])
+    }
+    
+    // Use btoa for base64 encoding (available in Cloudflare Workers)
+    let base64 = btoa(binaryString)
+    
+    // Convert to base64url format (Fireblocks requirement)
+    // Replace + with -, / with _, and remove padding (=)
+    const bodyHashBase64 = base64
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '')
+    
+    console.log('[Fireblocks] Body hash (base64url, length:', bodyHashBase64.length, '):', bodyHashBase64.substring(0, 20) + '...')
 
     const now = Math.floor(Date.now() / 1000)
     const nonce = crypto.randomUUID()
 
-    // Create JWT payload
+    // Create JWT payload (order matters for Fireblocks)
     const payload = {
       uri: uri,
       nonce: nonce,
@@ -191,6 +210,15 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, requestBody) {
       bodyHash: bodyHashBase64,
     }
 
+    console.log('[Fireblocks] JWT payload:', {
+      uri,
+      nonce,
+      iat: now,
+      exp: now + 30,
+      sub: apiKey,
+      bodyHash: bodyHashBase64.substring(0, 20) + '...' // Log first 20 chars
+    })
+
     // Sign and create JWT using jose library
     const jwt = await new SignJWT(payload)
       .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
@@ -198,6 +226,7 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, requestBody) {
       .setExpirationTime(now + 30)
       .sign(privateKey)
 
+    console.log('[Fireblocks] JWT token generated (length:', jwt.length, ')')
     return jwt
   } catch (error) {
     console.error('Error generating Fireblocks JWT:', error)
