@@ -12,25 +12,18 @@ function Inventory() {
 
   // REMOVED: Auto-refresh is now handled in BossFight.jsx to avoid duplicate calls
 
-  // Track previous version to detect changes
-  const prevVersionRef = useRef(inventoryVersion)
-  
   // CRITICAL: Force re-render when inventoryVersion changes
-  // The issue is that React might not re-render the component when inventoryVersion changes
-  // So we need to trigger a state update to force a re-render
+  // React should re-render when inventoryVersion changes (it's from a hook),
+  // but we need to ensure the useEffect runs to trigger setIsRefreshing
   useEffect(() => {
-    if (inventoryVersion !== prevVersionRef.current) {
-      console.log('[Inventory] 🔄 inventoryVersion changed:', prevVersionRef.current, '->', inventoryVersion, '- forcing re-render')
-      prevVersionRef.current = inventoryVersion
-      // Force a state update IMMEDIATELY to trigger re-render (same as manual button)
-      // This ensures the component re-renders and picks up the new inventory
-      setIsRefreshing(true)
-      // Use setTimeout with 0ms to ensure it happens in the next tick
-      setTimeout(() => {
-        setIsRefreshing(false)
-      }, 0)
-    }
-  }, [inventoryVersion])
+    console.log('[Inventory] 🔄 useEffect triggered - inventoryVersion:', inventoryVersion, 'inventory.length:', inventory.length)
+    // Force a state update to trigger re-render (same as manual button)
+    setIsRefreshing(true)
+    const timer = setTimeout(() => {
+      setIsRefreshing(false)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [inventoryVersion]) // Only depend on inventoryVersion, not inventory
   
   // Watch for inventory changes
   useEffect(() => {
