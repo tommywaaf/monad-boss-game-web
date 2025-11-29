@@ -2,7 +2,7 @@
  * Cloudflare Function to send 0.1 MON/ETH to a newly created Dynamic wallet via Fireblocks
  */
 
-import { SignJWT, importPKCS8, importPKCS1 } from 'jose'
+import { SignJWT, importPKCS8 } from 'jose'
 
 export async function onRequestPost(context) {
   const { request, env } = context
@@ -33,21 +33,21 @@ export async function onRequestPost(context) {
       hasApiKey: !!apiKey,
       hasApiSecret: !!apiSecret,
       sourceVaultId,
-      assetId
+      assetId,
     })
 
     if (!apiKey || !apiSecret) {
       console.error('[Fireblocks] Missing credentials:', {
         hasApiKey: !!apiKey,
-        hasApiSecret: !!apiSecret
+        hasApiSecret: !!apiSecret,
       })
       return new Response(
         JSON.stringify({
           error: 'Fireblocks credentials not configured',
           details: {
             hasApiKey: !!apiKey,
-            hasApiSecret: !!apiSecret
-          }
+            hasApiSecret: !!apiSecret,
+          },
         }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       )
@@ -62,15 +62,15 @@ export async function onRequestPost(context) {
       amount: '0.1',
       source: {
         type: 'VAULT_ACCOUNT',
-        id: sourceVaultId.toString()
+        id: sourceVaultId.toString(),
       },
       destination: {
         type: 'ONE_TIME_ADDRESS',
         oneTimeAddress: {
-          address: address
-        }
+          address: address,
+        },
       },
-      note: `Welcome bonus: 0.1 ${assetId} to new Dynamic wallet ${address}`
+      note: `Welcome bonus: 0.1 ${assetId} to new Dynamic wallet ${address}`,
     }
 
     // 🔑 Stringify ONCE and reuse everywhere
@@ -94,9 +94,9 @@ export async function onRequestPost(context) {
       headers: {
         'Content-Type': 'application/json',
         'X-API-Key': apiKey,
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${token}`,
       },
-      body: bodyString
+      body: bodyString,
     })
 
     console.log('[Fireblocks] Response status:', response.status)
@@ -106,7 +106,7 @@ export async function onRequestPost(context) {
       console.error('[Fireblocks] API error response:', {
         status: response.status,
         statusText: response.statusText,
-        body: errorText
+        body: errorText,
       })
 
       let errorDetails
@@ -121,7 +121,7 @@ export async function onRequestPost(context) {
           error: 'Failed to create Fireblocks transaction',
           details: errorDetails,
           status: response.status,
-          statusText: response.statusText
+          statusText: response.statusText,
         }),
         { status: response.status, headers: { 'Content-Type': 'application/json' } }
       )
@@ -135,11 +135,11 @@ export async function onRequestPost(context) {
         transactionId: transaction.id,
         status: transaction.status,
         message: 'Transaction created successfully',
-        txHash: transaction.txHash
+        txHash: transaction.txHash,
       }),
       {
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
       }
     )
   } catch (error) {
@@ -148,7 +148,7 @@ export async function onRequestPost(context) {
       JSON.stringify({
         error: 'Internal server error',
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
@@ -161,34 +161,28 @@ export async function onRequestPost(context) {
  */
 async function generateFireblocksJWT(apiKey, apiSecret, uri, bodyString) {
   try {
-    // Detect key format
-    const isPKCS1 = apiSecret.includes('BEGIN RSA PRIVATE KEY')
+    // Quick key format logging
     const isPKCS8 =
       apiSecret.includes('BEGIN PRIVATE KEY') &&
       !apiSecret.includes('BEGIN RSA PRIVATE KEY')
 
     console.log('[Fireblocks] Key format check:', {
-      isPKCS1,
       isPKCS8,
       keyLength: apiSecret.length,
-      firstLine: apiSecret.split('\n')[0]
+      firstLine: apiSecret.split('\n')[0],
     })
 
     let privateKey
     try {
-      if (isPKCS1) {
-        // PKCS#1
-        privateKey = await importPKCS1(apiSecret, 'RS256')
-        console.log('[Fireblocks] Key imported successfully with importPKCS1')
-      } else {
-        // Assume PKCS#8
-        privateKey = await importPKCS8(apiSecret, 'RS256')
-        console.log('[Fireblocks] Key imported successfully with importPKCS8')
-      }
+      // We only support PKCS#8 in this environment
+      privateKey = await importPKCS8(apiSecret, 'RS256')
+      console.log('[Fireblocks] Key imported successfully with importPKCS8')
     } catch (keyError) {
       console.error('[Fireblocks] Error importing key:', keyError.message)
       throw new Error(
-        `Failed to import private key: ${keyError.message}. Ensure the key is in PKCS#8 (BEGIN PRIVATE KEY) or PKCS#1 (BEGIN RSA PRIVATE KEY) format.`
+        `Failed to import private key: ${keyError.message}. ` +
+          `Ensure the key is in PKCS#8 format (BEGIN PRIVATE KEY). ` +
+          `If you have BEGIN RSA PRIVATE KEY, convert it with openssl pkcs8 -topk8 -nocrypt.`
       )
     }
 
@@ -226,7 +220,7 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, bodyString) {
     )
 
     const now = Math.floor(Date.now() / 1000)
-    const exp = now + 120 // give yourself 2 minutes to avoid clock skew issues
+    const exp = now + 120 // 2-minute window to avoid clock skew problems
     const nonce = crypto.randomUUID()
 
     const payload = {
@@ -235,7 +229,7 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, bodyString) {
       iat: now,
       exp: exp,
       sub: apiKey,
-      bodyHash: bodyHashBase64
+      bodyHash: bodyHashBase64,
     }
 
     console.log('[Fireblocks] JWT payload:', {
@@ -244,7 +238,7 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, bodyString) {
       iat: now,
       exp: exp,
       sub: apiKey,
-      bodyHash: bodyHashBase64.substring(0, 20) + '...'
+      bodyHash: bodyHashBase64.substring(0, 20) + '...',
     })
 
     const jwt = await new SignJWT(payload)
