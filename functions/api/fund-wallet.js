@@ -71,7 +71,8 @@ export async function onRequestPost(context) {
 
     // Create transaction payload
     // Match the format from the working Python script
-    // For one-time addresses, use ONE_TIME_ADDRESS type (per Fireblocks API docs)
+    // IMPORTANT: Order of keys matters for consistent JSON stringification
+    // The Python SDK might sort keys, so we'll create in a specific order
     const transactionPayload = {
       assetId: assetId,
       amount: '0.1', // 0.1 ETH/MON
@@ -86,11 +87,11 @@ export async function onRequestPost(context) {
         },
       },
       note: `Welcome bonus: 0.1 ${assetId} to new Dynamic wallet ${address}`,
-      // Optional: Add gas price if needed (matching Python script uses 0.1 gwei)
-      // Note: gasPrice might need to be in a different format for REST API
     }
 
-    console.log('[Fireblocks] Creating transaction with payload:', JSON.stringify(transactionPayload, null, 2))
+    // Stringify without spaces to match SDK behavior (compact JSON)
+    const payloadString = JSON.stringify(transactionPayload)
+    console.log('[Fireblocks] Creating transaction with payload:', payloadString)
 
     // Generate JWT token for Fireblocks authentication
     console.log('[Fireblocks] Generating JWT token...')
@@ -176,42 +177,40 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, requestBody) {
     const privateKey = await importPKCS8(apiSecret, 'RS256')
 
     // Calculate body hash (SHA-256 of request body)
-    // Match the exact format from the working test script
-    // The Python SDK does this automatically, we need to replicate it exactly
+    // CRITICAL: Must match exactly what the Python SDK does
+    // The SDK uses compact JSON (no spaces) - JSON.stringify does this by default
     const bodyString = JSON.stringify(requestBody)
     console.log('[Fireblocks] Body string for hash:', bodyString)
+    console.log('[Fireblocks] Body string length:', bodyString.length)
     
-    // Calculate SHA-256 hash (matching test script approach)
+    // Calculate SHA-256 hash
     const bodyBytes = new TextEncoder().encode(bodyString)
     const bodyHashBuffer = await crypto.subtle.digest('SHA-256', bodyBytes)
     const bodyHashArray = new Uint8Array(bodyHashBuffer)
     
-    // Convert to base64 (matching Node.js Buffer.toString('base64') behavior)
-    // Build base64 string from bytes
-    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-    let base64 = ''
-    for (let i = 0; i < bodyHashArray.length; i += 3) {
-      const byte1 = bodyHashArray[i]
-      const byte2 = i + 1 < bodyHashArray.length ? bodyHashArray[i + 1] : 0
-      const byte3 = i + 2 < bodyHashArray.length ? bodyHashArray[i + 2] : 0
-      
-      const bitmap = (byte1 << 16) | (byte2 << 8) | byte3
-      
-      base64 += base64Chars.charAt((bitmap >> 18) & 63)
-      base64 += base64Chars.charAt((bitmap >> 12) & 63)
-      base64 += (i + 1 < bodyHashArray.length) ? base64Chars.charAt((bitmap >> 6) & 63) : '='
-      base64 += (i + 2 < bodyHashArray.length) ? base64Chars.charAt(bitmap & 63) : '='
+    console.log('[Fireblocks] Hash bytes length:', bodyHashArray.length)
+    
+    // Convert to base64 using the same method as Node.js Buffer.toString('base64')
+    // This must match exactly what the test script does
+    let binary = ''
+    for (let i = 0; i < bodyHashArray.length; i++) {
+      binary += String.fromCharCode(bodyHashArray[i])
     }
+    
+    // Use btoa for base64 encoding (matches Node.js Buffer.toString('base64'))
+    let base64 = btoa(binary)
+    
+    console.log('[Fireblocks] Base64 hash (before base64url):', base64.substring(0, 30) + '...')
     
     // Convert to base64url format (Fireblocks requirement)
     // Replace + with -, / with _, remove padding (=)
-    // This matches the test script: .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+    // This MUST match: .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
     const bodyHashBase64 = base64
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '')
     
-    console.log('[Fireblocks] Body hash (base64url, length:', bodyHashBase64.length, '):', bodyHashBase64.substring(0, 30) + '...')
+    console.log('[Fireblocks] Body hash (base64url, length:', bodyHashBase64.length, '):', bodyHashBase64)
 
     const now = Math.floor(Date.now() / 1000)
     const nonce = crypto.randomUUID()
