@@ -4,7 +4,7 @@ import WalletConnect from './components/WalletConnect'
 import BossFight from './components/BossFight'
 import Inventory from './components/Inventory'
 import Leaderboard from './components/Leaderboard'
-import { useDynamicWalletFund } from './hooks/useDynamicWalletFund'
+// import { useDynamicWalletFund } from './hooks/useDynamicWalletFund' // Disabled - funding removed for now
 import { GAME_CONTRACT_ADDRESS } from './config/gameContract'
 import './App.css'
 
@@ -101,7 +101,7 @@ function App() {
   }, [isConnected, primaryWallet?.address]) // Only depend on address, not entire wallet or chainId
   
   // Hook to automatically fund Dynamic wallets when created
-  useDynamicWalletFund()
+  // useDynamicWalletFund() // Disabled - funding removed for now
 
   const isContractDeployed = GAME_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000'
 
