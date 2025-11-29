@@ -138,58 +138,7 @@ contract BossFightGame {
 
         address player = msg.sender;
 
-        // Enhanced pseudo-random seed with multiple entropy sources
         uint256 nonce = ++killNonce[player];
-        
-        // Get block hashes (use 0 if block is too old to avoid zero values)
-        bytes32 blockHash1 = blockhash(block.number - 1);
-        bytes32 blockHash2 = block.number >= 2 ? blockhash(block.number - 2) : bytes32(0);
-        
-        // Create multiple hash rounds for better distribution
-        uint256 rand1 = uint256(
-            keccak256(
-                abi.encodePacked(
-                    blockHash1,
-                    blockHash2,
-                    block.number,
-                    block.timestamp,
-                    player,
-                    nonce
-                )
-            )
-        );
-        
-        // Second hash round using first hash + additional entropy for better distribution
-        uint256 rand2 = uint256(
-            keccak256(
-                abi.encodePacked(
-                    rand1,
-                    block.gaslimit,
-                    block.basefee,     // Base fee (varies per block)
-                    player,
-                    nonce,
-                    totalBossesKilled  // Global counter for additional entropy
-                )
-            )
-        );
-        
-        // Mix the hashes with XOR and additional hash round to ensure uniform distribution
-        // This breaks any potential patterns in the hash values
-        uint256 mixed = rand1 ^ rand2;
-        
-        // Final hash round with mixed value to ensure uniform distribution
-        uint256 rand = uint256(
-            keccak256(
-                abi.encodePacked(
-                    mixed,
-                    block.number,
-                    block.timestamp,
-                    player,
-                    nonce,
-                    totalBossesKilled
-                )
-            )
-        );
 
         // Boss always killed! Increment counters and track player
         totalBossesKilled++;
@@ -200,29 +149,13 @@ contract BossFightGame {
             players.push(player);
         }
 
-        // Determine item tier - use full hash value with proper range reduction
-        // Create final hash with all entropy sources
-        bytes32 finalHash = keccak256(abi.encodePacked(rand, block.number, block.timestamp, player, nonce, totalBossesKilled));
-        
-        // Use the full 256-bit hash value, but reduce to our range properly
-        // Instead of extracting bits, use the full value modulo our range
-        // This ensures we use all entropy from the hash
-        uint256 hashValue = uint256(finalHash);
-        
-        // Use rejection sampling approach: take modulo, but if result is in biased range, re-hash
-        // For simplicity and gas efficiency, use direct modulo with large range
-        // Since 1_000_000_000 is much smaller than 2^256, we can use modulo directly
-        // The bias is negligible (less than 1 in 10^60)
-        uint256 baseRoll = hashValue % 1_000_000_000;
-        
+        // Determine item tier using independent random words
+        uint256 baseWord = _randomWord(bytes32("BASE"), player, nonce);
+        uint256 baseRoll = baseWord % 1_000_000_000;
         uint8 baseTier = _rollBaseTier(baseRoll);
         
-        // Use different bits from hash for rarity upgrade to ensure independence
-        uint256 upgradeRand = uint256(
-            keccak256(
-                abi.encodePacked(rand, player, nonce)
-            )
-        ) % 10000;
+        uint256 upgradeWord = _randomWord(bytes32("UPGRADE"), player, nonce);
+        uint256 upgradeRand = upgradeWord % 10_000;
         
         uint8 finalTier = _applyRarityUpgrade(player, baseTier, upgradeRand);
         bool upgraded = finalTier > baseTier;
@@ -237,6 +170,24 @@ contract BossFightGame {
     // -------------------------
     // Internal helpers
     // -------------------------
+
+    function _randomWord(bytes32 tag, address player, uint256 nonce) internal view returns (uint256) {
+        bytes32 seed = keccak256(
+            abi.encodePacked(
+                tag,
+                blockhash(block.number - 1),
+                block.prevrandao,
+                block.timestamp,
+                block.number,
+                totalBossesKilled,
+                killNonce[player],
+                nonce,
+                player,
+                address(this)
+            )
+        );
+        return uint256(seed);
+    }
 
     // Uses your 1:10, 1:100, ... table, approximated.
     // We do a sequence of checks from rarest to common:
