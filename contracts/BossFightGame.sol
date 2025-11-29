@@ -200,24 +200,26 @@ contract BossFightGame {
     // -------------------------
 
     function _randomWord(bytes32 tag, address player, uint256 playerNonce) internal view returns (uint256) {
-        // Use EVERY available entropy source to maximize randomness
-        // Even if some return 0 or constants, the combination should be unique
-        bytes32 bhash = blockhash(block.number - 1);
+        // SIMPLE TEST: Use block.timestamp XOR with nonce and totalBossesKilled
+        // This should produce varying results even if other entropy sources fail
         
-        // Combine ALL available on-chain entropy
-        return uint256(keccak256(abi.encodePacked(
-            tag,
-            bhash,
+        // Multiple different combinations to maximize variance
+        uint256 seed1 = uint256(keccak256(abi.encodePacked(
             block.timestamp,
+            playerNonce,
+            totalBossesKilled
+        )));
+        
+        uint256 seed2 = uint256(keccak256(abi.encodePacked(
             block.number,
             player,
-            playerNonce,
-            totalBossesKilled,  // Global counter - different for every kill
-            msg.sender,
-            tx.origin,
-            gasleft(),          // Varies during execution
-            address(this)
+            tag
         )));
+        
+        // XOR the seeds and hash again
+        uint256 combined = seed1 ^ seed2 ^ block.timestamp ^ playerNonce;
+        
+        return uint256(keccak256(abi.encodePacked(combined, block.timestamp, playerNonce)));
     }
 
     // Uses your 1:10, 1:100, ... table, approximated.
