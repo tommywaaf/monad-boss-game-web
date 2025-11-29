@@ -1,10 +1,15 @@
 /**
- * Cloudflare Function to send 1 MON to a newly created Dynamic wallet via Fireblocks
+ * Cloudflare Function to send 0.1 MON to a newly created Dynamic wallet via Fireblocks
+ * 
+ * NOTE: This is a manual JWT implementation. The Python SDK handles this automatically.
+ * We're manually implementing JWT signing because Cloudflare Workers can't easily use
+ * the Fireblocks Node.js SDK. This requires precise matching of the SDK's behavior.
  * 
  * Environment variables required in Cloudflare Pages:
  * - FIREBLOCKS_API_KEY: Your Fireblocks API key
  * - FIREBLOCKS_SECRET_KEY: Your Fireblocks secret key (the content of the .key file)
  * - FIREBLOCKS_SOURCE_VAULT_ID: Source vault ID (default: 0)
+ * - FIREBLOCKS_ASSET_ID: Asset ID (default: ETH)
  * 
  * Note: For Monad network, you may need to configure the asset ID.
  * Check Fireblocks dashboard to see if MON is available or use ETH if compatible.
@@ -12,6 +17,7 @@
 
 // Import jose for JWT signing (compatible with Cloudflare Workers)
 // Note: jose is installed in package.json
+// The Python SDK uses fireblocks_sdk which handles JWT automatically
 import { SignJWT, importPKCS8 } from 'jose'
 
 export async function onRequestPost(context) {
@@ -170,32 +176,42 @@ async function generateFireblocksJWT(apiKey, apiSecret, uri, requestBody) {
     const privateKey = await importPKCS8(apiSecret, 'RS256')
 
     // Calculate body hash (SHA-256 of request body)
-    // IMPORTANT: JSON must be stringified consistently (Fireblocks is strict about this)
-    // Use JSON.stringify without any modifications to ensure consistency
+    // Match the exact format from the working test script
+    // The Python SDK does this automatically, we need to replicate it exactly
     const bodyString = JSON.stringify(requestBody)
     console.log('[Fireblocks] Body string for hash:', bodyString)
     
-    // Calculate SHA-256 hash
-    const bodyHashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(bodyString))
+    // Calculate SHA-256 hash (matching test script approach)
+    const bodyBytes = new TextEncoder().encode(bodyString)
+    const bodyHashBuffer = await crypto.subtle.digest('SHA-256', bodyBytes)
     const bodyHashArray = new Uint8Array(bodyHashBuffer)
     
-    // Convert to base64 using binary string method (works in Cloudflare Workers)
-    let binaryString = ''
-    for (let i = 0; i < bodyHashArray.length; i++) {
-      binaryString += String.fromCharCode(bodyHashArray[i])
+    // Convert to base64 (matching Node.js Buffer.toString('base64') behavior)
+    // Build base64 string from bytes
+    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    let base64 = ''
+    for (let i = 0; i < bodyHashArray.length; i += 3) {
+      const byte1 = bodyHashArray[i]
+      const byte2 = i + 1 < bodyHashArray.length ? bodyHashArray[i + 1] : 0
+      const byte3 = i + 2 < bodyHashArray.length ? bodyHashArray[i + 2] : 0
+      
+      const bitmap = (byte1 << 16) | (byte2 << 8) | byte3
+      
+      base64 += base64Chars.charAt((bitmap >> 18) & 63)
+      base64 += base64Chars.charAt((bitmap >> 12) & 63)
+      base64 += (i + 1 < bodyHashArray.length) ? base64Chars.charAt((bitmap >> 6) & 63) : '='
+      base64 += (i + 2 < bodyHashArray.length) ? base64Chars.charAt(bitmap & 63) : '='
     }
     
-    // Use btoa for base64 encoding (available in Cloudflare Workers)
-    let base64 = btoa(binaryString)
-    
     // Convert to base64url format (Fireblocks requirement)
-    // Replace + with -, / with _, and remove padding (=)
+    // Replace + with -, / with _, remove padding (=)
+    // This matches the test script: .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
     const bodyHashBase64 = base64
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '')
     
-    console.log('[Fireblocks] Body hash (base64url, length:', bodyHashBase64.length, '):', bodyHashBase64.substring(0, 20) + '...')
+    console.log('[Fireblocks] Body hash (base64url, length:', bodyHashBase64.length, '):', bodyHashBase64.substring(0, 30) + '...')
 
     const now = Math.floor(Date.now() / 1000)
     const nonce = crypto.randomUUID()
