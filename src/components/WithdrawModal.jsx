@@ -77,16 +77,19 @@ function WithdrawModal({ onClose, currentBalance }) {
   }
 
   const handleSetMax = async () => {
-    if (!currentBalance || !publicClient || !toAddress) {
-      // Fallback: leave 0.05 MON for gas if we can't estimate
-      if (currentBalance) {
-        const maxAmount = Number(currentBalance) / 1e18 - 0.05
-        if (maxAmount > 0) {
-          setAmount(maxAmount.toFixed(6))
-        } else {
-          setAmount('0')
-          setError('Balance too low to cover gas fees')
-        }
+    if (!currentBalance) {
+      return
+    }
+
+    // If we don't have publicClient or toAddress, use a conservative fallback
+    if (!publicClient || !toAddress || !validateAddress(toAddress)) {
+      // Fallback: leave 0.015 MON for gas (conservative estimate)
+      const maxAmount = Number(currentBalance) / 1e18 - 0.015
+      if (maxAmount > 0) {
+        setAmount(maxAmount.toFixed(6))
+      } else {
+        setAmount('0')
+        setError('Balance too low to cover gas fees')
       }
       return
     }
@@ -102,8 +105,9 @@ function WithdrawModal({ onClose, currentBalance }) {
       // Get current gas price
       const gasPrice = await publicClient.getGasPrice()
       
-      // Calculate estimated fee with 20% buffer for safety
-      const estimatedFee = (gasEstimate * gasPrice * BigInt(120)) / BigInt(100)
+      // Calculate estimated fee with 100% buffer for safety (2x the estimate)
+      // This accounts for gas price fluctuations
+      const estimatedFee = (gasEstimate * gasPrice * BigInt(200)) / BigInt(100)
       
       // Calculate max sendable amount
       const maxSendable = currentBalance - estimatedFee
@@ -117,8 +121,8 @@ function WithdrawModal({ onClose, currentBalance }) {
       }
     } catch (err) {
       console.log('[WithdrawModal] Gas estimation failed, using fallback:', err)
-      // Fallback: leave 0.05 MON for gas
-      const maxAmount = Number(currentBalance) / 1e18 - 0.05
+      // Fallback: leave 0.015 MON for gas
+      const maxAmount = Number(currentBalance) / 1e18 - 0.015
       if (maxAmount > 0) {
         setAmount(maxAmount.toFixed(6))
       } else {
@@ -146,18 +150,19 @@ function WithdrawModal({ onClose, currentBalance }) {
       return
     }
 
-    const amountWei = parseMonToWei(amount)
-    if (amountWei <= BigInt(0)) {
+    const amountNum = parseFloat(amount)
+    if (amountNum <= 0) {
       setError('Amount must be greater than 0')
       return
     }
 
-    if (currentBalance && amountWei > currentBalance) {
+    const balanceNum = currentBalance ? Number(currentBalance) / 1e18 : 0
+    if (amountNum > balanceNum) {
       setError('Insufficient balance')
       return
     }
 
-    if (!walletClient || !primaryWallet?.address) {
+    if (!primaryWallet) {
       setError('Wallet not ready. Please wait a moment and try again.')
       return
     }
@@ -166,10 +171,10 @@ function WithdrawModal({ onClose, currentBalance }) {
       setIsPending(true)
       console.log('[WithdrawModal] Initiating withdrawal to:', toAddress, 'amount:', amount, 'MON')
       
-      const txHash = await walletClient.sendTransaction({
-        to: toAddress,
-        value: amountWei,
-        account: primaryWallet.address,
+      // Use Dynamic's sendBalance method for native token transfers
+      const txHash = await primaryWallet.sendBalance({
+        amount: amount,
+        toAddress: toAddress,
       })
       
       console.log('[WithdrawModal] Transaction submitted:', txHash)
@@ -180,8 +185,8 @@ function WithdrawModal({ onClose, currentBalance }) {
       let errorMessage = 'Transaction failed. Please try again.'
       if (err.message?.includes('User rejected') || err.message?.includes('rejected')) {
         errorMessage = 'Transaction was rejected by user.'
-      } else if (err.message?.includes('insufficient funds')) {
-        errorMessage = 'Insufficient funds for this transaction.'
+      } else if (err.message?.includes('insufficient funds') || err.message?.includes('Insufficient')) {
+        errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
       } else if (err.message) {
         errorMessage = err.message.slice(0, 100)
       }
