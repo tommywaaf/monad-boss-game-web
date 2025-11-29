@@ -7,7 +7,9 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
   const { primaryWallet } = useDynamicContext()
   const address = primaryWallet?.address
 
-  const { type, tier, baseRoll, baseTier, upgraded, successRoll, successChance, blockNumber, transactionHash, player } = rollData
+  const { type, tier, baseRoll, adjustedRoll, rarityBoost: eventRarityBoost, successRoll, successChance, blockNumber, transactionHash, player } = rollData
+  // Use rarity boost from event if available, otherwise use the prop
+  const effectiveRarityBoost = eventRarityBoost || rarityBoost || 0
 
   // Define tier ranges (based on contract logic)
   const tierRanges = [
@@ -65,9 +67,11 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
   }
 
   // Success case
-  const rollNum = Number(baseRoll)
+  const baseRollNum = Number(baseRoll)
+  const adjustedRollNum = adjustedRoll ? Number(adjustedRoll) : baseRollNum
   const maxRoll = 1_000_000_000
-  const rollPercent = (rollNum / maxRoll) * 100
+  const rollPercent = (adjustedRollNum / maxRoll) * 100
+  const hasRarityBoost = effectiveRarityBoost > 0 && adjustedRollNum < baseRollNum
 
   return (
     <div className="roll-display-overlay" onClick={onClose}>
@@ -81,7 +85,7 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
           <div className="tier-ranges">
             {tierRanges.map((range) => {
               const width = ((range.max - range.min + 1) / maxRoll) * 100
-              const isThisTier = baseTier === range.tier
+              const isThisTier = tier === range.tier
               
               return (
                 <div 
@@ -111,23 +115,26 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
           </div>
           
           <div className="roll-explanation">
-            <p>You rolled: <strong>{rollNum.toLocaleString()}</strong></p>
-            <p>Base drop: <strong style={{ color: ITEM_TIERS[baseTier].color }}>
-              {ITEM_TIERS[baseTier].name} (Tier {baseTier})
-            </strong></p>
+            <p>Base Roll: <strong>{baseRollNum.toLocaleString()}</strong></p>
             
-            {upgraded ? (
-              <div className="upgrade-notice">
-                <p className="result-text success-text">
-                  ✨ Rarity Boost Activated! Upgraded to <strong style={{ color: ITEM_TIERS[tier].color }}>
-                    {ITEM_TIERS[tier].name}
-                  </strong>!
+            {hasRarityBoost ? (
+              <>
+                <p className="rarity-effect">
+                  ✨ Rarity Boost ({(effectiveRarityBoost / 100).toFixed(1)}%): 
+                  <strong> {baseRollNum.toLocaleString()} → {adjustedRollNum.toLocaleString()}</strong>
                 </p>
-              </div>
+                <p className="result-text success-text">
+                  Final drop: <strong style={{ color: ITEM_TIERS[tier].color }}>
+                    {ITEM_TIERS[tier].name}
+                  </strong>
+                </p>
+              </>
             ) : (
-              <p className="result-text">Final drop: <strong style={{ color: ITEM_TIERS[tier].color }}>
-                {ITEM_TIERS[tier].name}
-              </strong></p>
+              <p className="result-text">
+                Final drop: <strong style={{ color: ITEM_TIERS[tier].color }}>
+                  {ITEM_TIERS[tier].name}
+                </strong>
+              </p>
             )}
           </div>
         </div>
@@ -182,18 +189,11 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
             </div>
             <div className="fair-formula">
               <p className="formula-text">
-                <strong>Enhanced Formula:</strong>
+                <strong>Formula:</strong>
               </p>
               <p className="formula-text" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
-                keccak256(<br/>
-                &nbsp;&nbsp;blockhash(block.number - 1) +<br/>
-                &nbsp;&nbsp;blockhash(block.number - 2) +<br/>
-                &nbsp;&nbsp;block.number +<br/>
-                &nbsp;&nbsp;block.timestamp +<br/>
-                &nbsp;&nbsp;block.gaslimit +<br/>
-                &nbsp;&nbsp;address +<br/>
-                &nbsp;&nbsp;nonce<br/>
-                )
+                baseRoll = keccak256(tag, blockhash, timestamp, player, nonce) % 1B<br/>
+                adjustedRoll = baseRoll × (100% - rarityBoost%)
               </p>
             </div>
           </div>
@@ -222,9 +222,9 @@ function RollDisplay({ rollData, onClose, onAttackAgain, isKilling, rarityBoost 
               )
             })}
           </div>
-          {rarityBoost > 0 && (
+          {effectiveRarityBoost > 0 && (
             <p className="rarity-boost-hint">
-              ✨ Your rarity boost: <strong>+{rarityBoost.toFixed(1)}%</strong> chance to upgrade items by 1 tier!
+              ✨ Your rarity boost: <strong>+{(effectiveRarityBoost / 100).toFixed(1)}%</strong> - scales down your roll, increasing odds for ALL tiers!
             </p>
           )}
         </div>

@@ -223,8 +223,8 @@ function useProvideGameContract() {
                 tier: Number(log.args.tier),
                 itemId: log.args.itemId?.toString(),
                 baseRoll: log.args.baseRoll?.toString(),
-                baseTier: Number(log.args.baseTier),
-                upgraded: log.args.upgraded,
+                adjustedRoll: log.args.adjustedRoll?.toString(),
+                rarityBoost: Number(log.args.rarityBoost || 0),
                 blockNumber: log.blockNumber?.toString(),
                 transactionHash: log.transactionHash,
                 player: log.args.player
@@ -399,8 +399,8 @@ function useProvideGameContract() {
           tier: Number(bossKilledEvent.args.tier),
           itemId: bossKilledEvent.args.itemId?.toString(),
           baseRoll: bossKilledEvent.args.baseRoll?.toString(),
-          baseTier: Number(bossKilledEvent.args.baseTier),
-          upgraded: bossKilledEvent.args.upgraded,
+          adjustedRoll: bossKilledEvent.args.adjustedRoll?.toString(),
+          rarityBoost: Number(bossKilledEvent.args.rarityBoost || 0),
           blockNumber: receipt.blockNumber?.toString(),
           transactionHash: hash,
           player: bossKilledEvent.args.player
@@ -452,8 +452,8 @@ function useProvideGameContract() {
               tier: Number(playerEvent.args.tier),
               itemId: playerEvent.args.itemId?.toString(),
               baseRoll: playerEvent.args.baseRoll?.toString(),
-              baseTier: Number(playerEvent.args.baseTier),
-              upgraded: playerEvent.args.upgraded,
+              adjustedRoll: playerEvent.args.adjustedRoll?.toString(),
+              rarityBoost: Number(playerEvent.args.rarityBoost || 0),
               blockNumber: receipt.blockNumber?.toString(),
               transactionHash: hash,
               player: playerEvent.args.player

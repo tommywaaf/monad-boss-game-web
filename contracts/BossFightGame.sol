@@ -74,8 +74,11 @@ contract BossFightGame {
         1000   // tier 9: Rainbow +10%
     ];
 
-    event BossKilled(address indexed player, uint8 tier, uint256 itemId, uint256 baseRoll, uint8 baseTier, bool upgraded);
+    // Updated: removed 'upgraded' flag since rarity boost now scales the roll directly
+    event BossKilled(address indexed player, uint8 tier, uint256 itemId, uint256 baseRoll, uint256 adjustedRoll, uint16 rarityBoost);
     event RakePaid(address indexed player, uint256 amount);
+    // Debug event to see randomness inputs
+    event RandomnessDebug(bytes32 blockhashValue, uint256 timestamp, address player, uint256 nonce, uint256 rawHash, uint256 baseRoll);
     event TradeProposed(uint256 tradeId, address indexed from, address indexed to, uint256 fromItemId, uint256 toItemId);
     event TradeExecuted(uint256 tradeId);
     event TradeCancelled(uint256 tradeId);
@@ -152,19 +155,35 @@ contract BossFightGame {
         // Determine item tier using independent random words
         uint256 baseWord = _randomWord(bytes32("BASE"), player, nonce);
         uint256 baseRoll = baseWord % 1_000_000_000;
-        uint8 baseTier = _rollBaseTier(baseRoll);
         
-        uint256 upgradeWord = _randomWord(bytes32("UPGRADE"), player, nonce);
-        uint256 upgradeRand = upgradeWord % 10_000;
+        // Apply rarity boost by scaling down the roll
+        // Higher rarity boost = lower adjusted roll = better chance at rare tiers
+        (uint16 rarityBoostTotal, ) = getTotalBoosts(player);
+        uint256 adjustedRoll = baseRoll;
+        if (rarityBoostTotal > 0) {
+            // Scale factor: 10000 = 100%, so 2500 boost means multiply by 75%
+            uint256 scaleFactor = 10000 - rarityBoostTotal;
+            if (scaleFactor < 1000) scaleFactor = 1000; // Cap at 90% reduction max
+            adjustedRoll = (baseRoll * scaleFactor) / 10000;
+        }
         
-        uint8 finalTier = _applyRarityUpgrade(player, baseTier, upgradeRand);
-        bool upgraded = finalTier > baseTier;
+        uint8 finalTier = _rollBaseTier(adjustedRoll);
+        
+        // Emit debug info to see what's happening with randomness
+        emit RandomnessDebug(
+            blockhash(block.number - 1),
+            block.timestamp,
+            player,
+            nonce,
+            baseWord,
+            adjustedRoll  // Show the adjusted roll that determines tier
+        );
 
         // Mint the item internally and add to inventory (with auto-replace)
         uint256 itemId = nextItemId++;
         _giveItem(player, finalTier, itemId);
 
-        emit BossKilled(player, finalTier, itemId, baseRoll, baseTier, upgraded);
+        emit BossKilled(player, finalTier, itemId, baseRoll, adjustedRoll, rarityBoostTotal);
     }
 
     // -------------------------
@@ -172,21 +191,21 @@ contract BossFightGame {
     // -------------------------
 
     function _randomWord(bytes32 tag, address player, uint256 nonce) internal view returns (uint256) {
-        bytes32 seed = keccak256(
-            abi.encodePacked(
-                tag,
-                blockhash(block.number - 1),
-                block.prevrandao,
-                block.timestamp,
-                block.number,
-                totalBossesKilled,
-                killNonce[player],
-                nonce,
-                player,
-                address(this)
-            )
-        );
-        return uint256(seed);
+        // Ultra-simple randomness using ONLY guaranteed-to-work values
+        // These 4 values MUST work on any EVM chain:
+        // - blockhash: previous block's hash (guaranteed for block.number - 1)
+        // - block.timestamp: current block timestamp
+        // - player: the player's address
+        // - nonce: incrementing counter per player
+        //
+        // keccak256 produces uniform 256-bit output regardless of input entropy
+        return uint256(keccak256(abi.encodePacked(
+            tag,
+            blockhash(block.number - 1),
+            block.timestamp,
+            player,
+            nonce
+        )));
     }
 
     // Uses your 1:10, 1:100, ... table, approximated.
@@ -209,21 +228,8 @@ contract BossFightGame {
         return 0;
     }
 
-    // Applies rarity boost as a chance to upgrade one tier.
-    function _applyRarityUpgrade(address player, uint8 baseTier, uint256 upgradeRand) internal view returns (uint8) {
-        (uint16 rarityBoostTotal, ) = getTotalBoosts(player);
-        if (baseTier >= 9 || rarityBoostTotal == 0) {
-            return baseTier;
-        }
-
-        // upgradeRand is already 0..9999 from caller
-        if (upgradeRand < rarityBoostTotal) {
-            // One-tier upgrade
-            return baseTier + 1;
-        }
-
-        return baseTier;
-    }
+    // Rarity boost now applied directly to roll in killBoss() - scales down the roll
+    // to increase odds for ALL tiers, not just upgrade by 1
 
     function _giveItem(address player, uint8 tier, uint256 itemId) internal {
         require(tier <= 9, "Invalid tier");

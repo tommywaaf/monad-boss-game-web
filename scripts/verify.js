@@ -10,11 +10,11 @@ import hre from "hardhat";
  *   npx hardhat run scripts/verify.js --network monad --address 0x...
  * 
  * Or using CLI directly:
- *   npx hardhat verify --network monad --contract contracts/BossFightGame.sol:BossFightGame 0x9941D4Cc6E39be8786ADBb2cA8884A30b6C4d585
+ *   npx hardhat verify --network monad --contract contracts/BossFightGame.sol:BossFightGame 0x08457C0822A929f366A3c0Ab65c3239EDf3c774D
  */
 async function main() {
   // Contract address - can be overridden with CONTRACT_ADDRESS env var
-  const contractAddress = process.env.CONTRACT_ADDRESS || "0x9941D4Cc6E39be8786ADBb2cA8884A30b6C4d585";
+  const contractAddress = process.env.CONTRACT_ADDRESS || "0x08457C0822A929f366A3c0Ab65c3239EDf3c774D";
   
   console.log("🔍 Verifying BossFightGame contract on Monad...");
   console.log(`📍 Contract Address: ${contractAddress}`);

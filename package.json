@@ -16,7 +16,9 @@
     "simulate:1k": "node scripts/simulate.js 1000",
     "simulate:10k": "node scripts/simulate.js 10000",
     "simulate:100k": "node scripts/simulate.js 100000",
-    "test:fireblocks": "node scripts/test-fireblocks.js"
+    "test:fireblocks": "node scripts/test-fireblocks.js",
+    "test:randomness": "hardhat run scripts/test-randomness.js --network localhost",
+    "test:randomness:1k": "hardhat run scripts/test-randomness.js --network localhost -- 1000"
   },
   "dependencies": {
     "@dynamic-labs/ethereum": "^4.47.0",

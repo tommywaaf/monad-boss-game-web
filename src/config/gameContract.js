@@ -104,10 +104,23 @@ export const GAME_CONTRACT_ABI = [
       {"indexed": false, "internalType": "uint8", "name": "tier", "type": "uint8"},
       {"indexed": false, "internalType": "uint256", "name": "itemId", "type": "uint256"},
       {"indexed": false, "internalType": "uint256", "name": "baseRoll", "type": "uint256"},
-      {"indexed": false, "internalType": "uint8", "name": "baseTier", "type": "uint8"},
-      {"indexed": false, "internalType": "bool", "name": "upgraded", "type": "bool"}
+      {"indexed": false, "internalType": "uint256", "name": "adjustedRoll", "type": "uint256"},
+      {"indexed": false, "internalType": "uint16", "name": "rarityBoost", "type": "uint16"}
     ],
     "name": "BossKilled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": false, "internalType": "bytes32", "name": "blockhashValue", "type": "bytes32"},
+      {"indexed": false, "internalType": "uint256", "name": "timestamp", "type": "uint256"},
+      {"indexed": false, "internalType": "address", "name": "player", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "nonce", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "rawHash", "type": "uint256"},
+      {"indexed": false, "internalType": "uint256", "name": "baseRoll", "type": "uint256"}
+    ],
+    "name": "RandomnessDebug",
     "type": "event"
   },
   {
