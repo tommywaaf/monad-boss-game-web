@@ -13,8 +13,9 @@ function BossFight() {
   const [showRollDisplay, setShowRollDisplay] = useState(false)
   const [rollData, setRollData] = useState(null)
 
-  // Track which events we've already processed to prevent infinite loops
+  // Track which events we've already processed to prevent infinite loops and duplicate refreshes
   const processedEventRef = useRef(null)
+  const refreshedItemsRef = useRef(new Set())
   
   useEffect(() => {
     if (lastEvent) {
@@ -51,25 +52,25 @@ function BossFight() {
       }
       
       // AUTO-REFRESH INVENTORY: When roll display shows (when "You rolled:" appears)
-      // Call it EXACTLY like the manual button does
-      if (lastEvent.type === 'success' && lastEvent.itemId) {
-        console.log('[BossFight] ✅ Boss defeated! Will auto-refresh inventory in 100ms')
-        console.log('[BossFight] refetchInventory available:', !!refetchInventory, 'type:', typeof refetchInventory)
+      // Only refresh once per item to avoid rate limiting
+      if (lastEvent.type === 'success' && lastEvent.itemId && refetchInventory) {
+        const itemId = lastEvent.itemId
         
-        // 100ms delay, then call it EXACTLY like manual button
-        setTimeout(async () => {
-          console.log('[BossFight] 🔄 NOW calling refetchInventory() - same as manual button click')
-          try {
-            if (refetchInventory) {
+        // Only refresh if we haven't already refreshed for this item
+        if (!refreshedItemsRef.current.has(itemId)) {
+          refreshedItemsRef.current.add(itemId)
+          
+          // 100ms delay, then call it - same as manual button
+          setTimeout(async () => {
+            try {
               await refetchInventory()
-              console.log('[BossFight] ✅✅✅ refetchInventory() completed - inventory should be updated!')
-            } else {
-              console.error('[BossFight] ❌ refetchInventory is undefined!')
+            } catch (error) {
+              console.error('[BossFight] Error refreshing inventory:', error)
+              // Remove from set on error so we can retry
+              refreshedItemsRef.current.delete(itemId)
             }
-          } catch (error) {
-            console.error('[BossFight] ❌ Error in refetchInventory:', error)
-          }
-        }, 100)
+          }, 100)
+        }
       }
       
       // Clear notification after 5 seconds

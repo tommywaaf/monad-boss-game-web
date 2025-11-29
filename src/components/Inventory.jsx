@@ -9,47 +9,7 @@ function Inventory() {
   const [selectedItem, setSelectedItem] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Automatically refresh inventory when boss is defeated
-  // Use a ref to track the last processed event to avoid duplicate refreshes
-  const lastProcessedEventRef = useRef(null)
-  
-  // Watch for lastEvent changes - this is the same event that triggers the modal
-  useEffect(() => {
-    // Only process success events with all required fields
-    if (lastEvent && lastEvent.type === 'success' && lastEvent.transactionHash && lastEvent.itemId) {
-      const eventKey = `${lastEvent.transactionHash}-${lastEvent.itemId}`
-      
-      // Skip if we've already processed this exact event
-      if (lastProcessedEventRef.current === eventKey) {
-        return
-      }
-      
-      console.log('[Inventory] 🎯 NEW Boss defeated event! Auto-refreshing inventory...', {
-        itemId: lastEvent.itemId,
-        transactionHash: lastEvent.transactionHash,
-        tier: lastEvent.tier
-      })
-      
-      lastProcessedEventRef.current = eventKey
-      setIsRefreshing(true)
-      
-      // Call refetchInventory - EXACTLY the same as the manual button does
-      const refresh = async () => {
-        try {
-          console.log('[Inventory] 🔄 Auto-refresh: calling refetchInventory()...')
-          await refetchInventory()
-          console.log('[Inventory] ✅ Auto-refresh completed!')
-        } catch (error) {
-          console.error('[Inventory] ❌ Auto-refresh error:', error)
-        } finally {
-          setIsRefreshing(false)
-        }
-      }
-      
-      // Refresh immediately - same timing as manual button
-      refresh()
-    }
-  }, [lastEvent, refetchInventory]) // Depend on entire lastEvent object
+  // REMOVED: Auto-refresh is now handled in BossFight.jsx to avoid duplicate calls
 
   const handleRefresh = async () => {
     setIsRefreshing(true)

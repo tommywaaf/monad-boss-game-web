@@ -168,12 +168,12 @@ export function useGameContract() {
     console.log('[useGameContract] Fetching contract data (address changed)')
     fetchContractData()
     
-    // Set up polling for contract data
+    // Reduced polling - only poll every 30 seconds to avoid rate limiting
     const interval = setInterval(() => {
       if (publicClientRef.current && primaryWallet?.address) {
         fetchContractData()
       }
-    }, 10000) // Poll every 10 seconds
+    }, 30000) // Poll every 30 seconds instead of 10
     
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
