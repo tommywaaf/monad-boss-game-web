@@ -64,9 +64,6 @@ function BossFight() {
       <div className="boss-container">
         <div className="boss-sprite">
           <div className="boss-emoji">👹</div>
-          <div className="boss-health-bar">
-            <div className="health-fill"></div>
-          </div>
         </div>
         
         <div className="boss-stats">
