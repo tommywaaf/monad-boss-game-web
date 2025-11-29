@@ -75,14 +75,54 @@ function WithdrawModal({ onClose, currentBalance }) {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
   }
 
-  const handleSetMax = () => {
-    if (currentBalance) {
-      // Leave a small amount for gas (0.001 MON)
-      const maxAmount = Number(currentBalance) / 1e18 - 0.001
+  const handleSetMax = async () => {
+    if (!currentBalance || !publicClient || !toAddress) {
+      // Fallback: leave 0.05 MON for gas if we can't estimate
+      if (currentBalance) {
+        const maxAmount = Number(currentBalance) / 1e18 - 0.05
+        if (maxAmount > 0) {
+          setAmount(maxAmount.toFixed(6))
+        } else {
+          setAmount('0')
+          setError('Balance too low to cover gas fees')
+        }
+      }
+      return
+    }
+
+    try {
+      // Try to estimate gas for the transaction
+      const gasEstimate = await publicClient.estimateGas({
+        to: toAddress,
+        value: currentBalance,
+        account: primaryWallet?.address,
+      })
+      
+      // Get current gas price
+      const gasPrice = await publicClient.getGasPrice()
+      
+      // Calculate estimated fee with 20% buffer for safety
+      const estimatedFee = (gasEstimate * gasPrice * BigInt(120)) / BigInt(100)
+      
+      // Calculate max sendable amount
+      const maxSendable = currentBalance - estimatedFee
+      
+      if (maxSendable > BigInt(0)) {
+        const maxAmount = Number(maxSendable) / 1e18
+        setAmount(maxAmount.toFixed(6))
+      } else {
+        setAmount('0')
+        setError('Balance too low to cover gas fees')
+      }
+    } catch (err) {
+      console.log('[WithdrawModal] Gas estimation failed, using fallback:', err)
+      // Fallback: leave 0.05 MON for gas
+      const maxAmount = Number(currentBalance) / 1e18 - 0.05
       if (maxAmount > 0) {
         setAmount(maxAmount.toFixed(6))
       } else {
         setAmount('0')
+        setError('Balance too low to cover gas fees')
       }
     }
   }
