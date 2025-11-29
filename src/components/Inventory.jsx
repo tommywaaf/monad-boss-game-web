@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import React from 'react'
 import { useGameContract } from '../hooks/useGameContract'
 import { ITEM_TIERS } from '../config/gameContract'
 import ItemModal from './ItemModal'
@@ -11,10 +12,18 @@ function Inventory() {
 
   // REMOVED: Auto-refresh is now handled in BossFight.jsx to avoid duplicate calls
 
-  // Debug: Log when inventory changes
+  // Watch for inventory changes - use inventoryVersion to force re-render
   useEffect(() => {
-    console.log('[Inventory] Inventory state changed:', inventory.length, 'items')
-  }, [inventory])
+    console.log('[Inventory] ✅ Inventory state changed:', inventory.length, 'items', 'version:', inventoryVersion)
+  }, [inventory, inventoryVersion])
+  
+  // Force re-render when inventoryVersion changes (even if inventory array reference is same)
+  useEffect(() => {
+    if (inventoryVersion > 0) {
+      console.log('[Inventory] 🔄 inventoryVersion changed to:', inventoryVersion, '- forcing re-render')
+      // This effect will trigger a re-render when version changes
+    }
+  }, [inventoryVersion])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -23,7 +32,10 @@ function Inventory() {
   }
 
   // Sort inventory by tier (highest first)
-  const sortedInventory = [...inventory].sort((a, b) => b.tier - a.tier)
+  // Use inventoryVersion in the sort to ensure it re-computes when version changes
+  const sortedInventory = React.useMemo(() => {
+    return [...inventory].sort((a, b) => b.tier - a.tier)
+  }, [inventory, inventoryVersion])
 
   // Count items by tier
   const tierCounts = inventory.reduce((acc, item) => {
@@ -31,8 +43,9 @@ function Inventory() {
     return acc
   }, {})
 
+  // Use inventoryVersion in render to ensure component re-renders when it changes
   return (
-    <div className="inventory">
+    <div className="inventory" key={`inventory-wrapper-${inventoryVersion}`}>
       <div className="inventory-header">
         <h2>🎒 Inventory</h2>
         <div className="inventory-header-right">
