@@ -1,7 +1,7 @@
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 
 // Helper functions to avoid viem bundling issues
 const formatEther = (value) => {
@@ -16,7 +16,9 @@ const parseEther = (value) => {
   return BigInt(Math.floor(num * 1e18))
 }
 
-export function useGameContract() {
+const GameContractContext = createContext(null)
+
+function useProvideGameContract() {
   const { primaryWallet } = useDynamicContext()
   const [inventory, setInventory] = useState([])
   const [inventoryVersion, setInventoryVersion] = useState(0) // Force re-render when inventory changes
@@ -514,4 +516,21 @@ export function useGameContract() {
     resetTransaction: handleReset,
     refetchInventory: fetchContractData,
   }
+}
+
+export function GameContractProvider({ children }) {
+  const value = useProvideGameContract()
+  return (
+    <GameContractContext.Provider value={value}>
+      {children}
+    </GameContractContext.Provider>
+  )
+}
+
+export function useGameContract() {
+  const context = useContext(GameContractContext)
+  if (!context) {
+    throw new Error('useGameContract must be used within a GameContractProvider')
+  }
+  return context
 }

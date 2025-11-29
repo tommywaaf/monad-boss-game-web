@@ -4,6 +4,7 @@ import WalletConnect from './components/WalletConnect'
 import BossFight from './components/BossFight'
 import Inventory from './components/Inventory'
 import Leaderboard from './components/Leaderboard'
+import { GameContractProvider } from './hooks/useGameContract'
 // import { useDynamicWalletFund } from './hooks/useDynamicWalletFund' // Disabled - funding removed for now
 import { GAME_CONTRACT_ADDRESS } from './config/gameContract'
 import './App.css'
@@ -106,7 +107,8 @@ function App() {
   const isContractDeployed = GAME_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000'
 
   return (
-    <div className="app">
+    <GameContractProvider>
+      <div className="app">
       <nav className="app-navbar">
         <div className="navbar-content">
           <div className="navbar-left">
@@ -215,6 +217,7 @@ function App() {
         <p>Powered by Monad Network ⚡</p>
       </footer>
     </div>
+  </GameContractProvider>
   )
 }
 
