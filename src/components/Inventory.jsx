@@ -13,17 +13,22 @@ function Inventory() {
   // REMOVED: Auto-refresh is now handled in BossFight.jsx to avoid duplicate calls
 
   // Track previous version to detect changes
-  const prevVersionRef = useRef(0)
+  const prevVersionRef = useRef(inventoryVersion)
   
-  // Force re-render when inventoryVersion changes - same pattern as manual button
+  // CRITICAL: Force re-render when inventoryVersion changes
+  // The issue is that React might not re-render the component when inventoryVersion changes
+  // So we need to trigger a state update to force a re-render
   useEffect(() => {
     if (inventoryVersion !== prevVersionRef.current) {
       console.log('[Inventory] 🔄 inventoryVersion changed:', prevVersionRef.current, '->', inventoryVersion, '- forcing re-render')
       prevVersionRef.current = inventoryVersion
-      // Force a state update to trigger re-render (like setIsRefreshing does in manual button)
+      // Force a state update IMMEDIATELY to trigger re-render (same as manual button)
+      // This ensures the component re-renders and picks up the new inventory
       setIsRefreshing(true)
-      // Immediately set it back so UI doesn't show loading
-      setTimeout(() => setIsRefreshing(false), 0)
+      // Use setTimeout with 0ms to ensure it happens in the next tick
+      setTimeout(() => {
+        setIsRefreshing(false)
+      }, 0)
     }
   }, [inventoryVersion])
   
@@ -40,23 +45,30 @@ function Inventory() {
 
   // Sort inventory by tier (highest first)
   // Use inventoryVersion in the sort to ensure it re-computes when version changes
+  // CRITICAL: Include inventoryVersion in dependencies to force re-computation
   const sortedInventory = React.useMemo(() => {
+    console.log('[Inventory] 🔄 Recomputing sortedInventory - version:', inventoryVersion, 'items:', inventory.length)
     return [...inventory].sort((a, b) => b.tier - a.tier)
   }, [inventory, inventoryVersion])
 
-  // Count items by tier
-  const tierCounts = inventory.reduce((acc, item) => {
-    acc[item.tier] = (acc[item.tier] || 0) + 1
-    return acc
-  }, {})
+  // Count items by tier - include inventoryVersion to force re-computation
+  const tierCounts = React.useMemo(() => {
+    return inventory.reduce((acc, item) => {
+      acc[item.tier] = (acc[item.tier] || 0) + 1
+      return acc
+    }, {})
+  }, [inventory, inventoryVersion])
 
   // Use inventoryVersion in render to ensure component re-renders when it changes
+  // CRITICAL: Include inventoryVersion in the render to force React to re-render when it changes
   return (
-    <div className="inventory" key={`inventory-wrapper-${inventoryVersion}`}>
+    <div className="inventory" key={`inventory-wrapper-${inventoryVersion}`} data-version={inventoryVersion}>
       <div className="inventory-header">
         <h2>🎒 Inventory</h2>
         <div className="inventory-header-right">
           <span className="inventory-count">{inventory.length} / 20</span>
+          {/* Hidden element to force re-render when inventoryVersion changes */}
+          <span style={{ display: 'none' }}>{inventoryVersion}</span>
           <button 
             className="refresh-inventory-button"
             onClick={handleRefresh}
