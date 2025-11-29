@@ -205,9 +205,8 @@ export function useGameContract() {
                 transactionHash: log.transactionHash,
                 player: log.args.player
               })
-              // Refresh inventory and boosts - blockchain is ready when event is emitted
-              console.log('[useGameContract] Event watcher detected BossKilled, refreshing contract data')
-              fetchContractData()
+              // DON'T call fetchContractData here - it's already called in killBoss and BossFight
+              // This prevents duplicate rapid calls
             }
           }
         })
@@ -383,9 +382,8 @@ export function useGameContract() {
           player: bossKilledEvent.args.player
         })
         
-        // Refresh contract data immediately - blockchain is ready when event is in receipt
-        console.log('[killBoss] Refreshing contract data immediately after event found in receipt')
-        await fetchContractData()
+        // DON'T call fetchContractData here - BossFight will handle the refresh
+        // This prevents duplicate rapid calls
         
         // Reset transaction status
         setTimeout(() => {
@@ -437,8 +435,8 @@ export function useGameContract() {
               player: playerEvent.args.player
             })
             
-            // Refresh contract data
-            fetchContractData()
+            // DON'T call fetchContractData here - BossFight will handle the refresh
+            // This prevents duplicate rapid calls
             
             // Reset transaction status
             setTimeout(() => {
@@ -463,13 +461,8 @@ export function useGameContract() {
       setTxStatus('waiting-event')
       
       // Fallback: Refresh data after a delay if event doesn't arrive
-      setTimeout(async () => {
-        if (txStatus === 'waiting-event') {
-          console.log('[killBoss] Event not received, refreshing contract data as fallback...')
-          await fetchContractData()
-          // At least the inventory will be updated even if event display doesn't show
-        }
-      }, 2000)
+      // Removed fallback fetchContractData - it was causing rapid duplicate calls
+      // BossFight will handle the refresh when lastEvent is set
     } catch (error) {
       console.error('[killBoss] Error:', error)
       setTxError(error)
