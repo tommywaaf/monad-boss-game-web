@@ -118,17 +118,17 @@ export function useGameContract() {
       console.log('[fetchContractData] Inventory updated:', newInventory.length, 'items')
       console.log('[fetchContractData] New inventory items:', newInventory.map(i => `#${i.id}`).join(', '))
       
-      // CRITICAL: Increment version FIRST, then update inventory
-      // This ensures React detects the change even if array reference is similar
+      // CRITICAL: Update inventory FIRST, then increment version
+      // This ensures the inventory state is updated before version changes
+      setInventory([...newInventory])
+      console.log('[fetchContractData] setInventory() called with new array - React should re-render Inventory component')
+      
+      // Then increment version to force re-render
       setInventoryVersion(prev => {
         const newVersion = prev + 1
         console.log('[fetchContractData] Incrementing inventoryVersion:', prev, '->', newVersion)
         return newVersion
       })
-      
-      // Then update inventory with a completely new array reference
-      setInventory([...newInventory])
-      console.log('[fetchContractData] setInventory() called with new array - React should re-render Inventory component')
 
       // Read boosts
       const boostsData = await publicClientRef.current.readContract({

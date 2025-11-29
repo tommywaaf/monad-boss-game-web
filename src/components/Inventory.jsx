@@ -12,23 +12,22 @@ function Inventory() {
 
   // REMOVED: Auto-refresh is now handled in BossFight.jsx to avoid duplicate calls
 
-  // CRITICAL: Force re-render when inventoryVersion changes
-  // React should re-render when inventoryVersion changes (it's from a hook),
-  // but we need to ensure the useEffect runs to trigger setIsRefreshing
-  useEffect(() => {
-    console.log('[Inventory] 🔄 useEffect triggered - inventoryVersion:', inventoryVersion, 'inventory.length:', inventory.length)
-    // Force a state update to trigger re-render (same as manual button)
-    setIsRefreshing(true)
-    const timer = setTimeout(() => {
-      setIsRefreshing(false)
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [inventoryVersion]) // Only depend on inventoryVersion, not inventory
+  // SIMPLE: When inventory changes, force a re-render EXACTLY like the manual button does
+  // Track previous inventory length to detect changes
+  const prevInventoryLengthRef = useRef(inventory.length)
   
-  // Watch for inventory changes
+  // Watch for inventory changes and force re-render
   useEffect(() => {
-    console.log('[Inventory] ✅ Inventory state changed:', inventory.length, 'items', 'version:', inventoryVersion)
-  }, [inventory, inventoryVersion])
+    if (inventory.length !== prevInventoryLengthRef.current) {
+      console.log('[Inventory] ✅ Inventory updated:', prevInventoryLengthRef.current, '->', inventory.length, 'items - forcing re-render like manual button')
+      prevInventoryLengthRef.current = inventory.length
+      // EXACTLY what the manual button does - this forces a re-render
+      setIsRefreshing(true)
+      setTimeout(() => {
+        setIsRefreshing(false)
+      }, 500)
+    }
+  }, [inventory.length])
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
