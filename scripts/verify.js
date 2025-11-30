@@ -31,12 +31,12 @@ async function main() {
     
     console.log("");
     console.log("✅ Contract verified successfully!");
-    console.log(`🔗 View on explorer: https://monad.socialscan.io/address/${contractAddress}`);
+    console.log(`🔗 View on explorer: https://monadvision.com/address/${contractAddress}`);
   } catch (error) {
     if (error.message.includes("Already Verified") || error.message.includes("already verified")) {
       console.log("");
       console.log("✅ Contract is already verified!");
-      console.log(`🔗 View on explorer: https://monad.socialscan.io/address/${contractAddress}`);
+      console.log(`🔗 View on explorer: https://monadvision.com/address/${contractAddress}`);
     } else {
       console.error("");
       console.error("❌ Verification failed:", error.message);
@@ -45,7 +45,7 @@ async function main() {
       console.log(`   npx hardhat verify --network monad --contract contracts/BossFightGame.sol:BossFightGame ${contractAddress}`);
       console.log("");
       console.log("💡 Or verify manually on the block explorer:");
-      console.log(`   1. Go to: https://monad.socialscan.io/address/${contractAddress}`);
+      console.log(`   1. Go to: https://monadvision.com/address/${contractAddress}`);
       console.log("   2. Click 'Verify Contract'");
       console.log("   3. Select 'Solidity (Hardhat)'");
       console.log("   4. Follow the instructions provided");
