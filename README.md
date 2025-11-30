@@ -136,21 +136,11 @@ npm run lint         # Run ESLint
 
 ### Contract Verification
 
-After deploying your own contract, you can verify it on the Monad block explorer using Sourcify:
+To verify your contract on the Monad block explorer, update the contract address in `scripts/verify.js` and run:
 
 ```bash
-# Verify using the script (uses default contract address)
-npx hardhat run scripts/verify.js --network monad
-
-# Or specify a custom address
-CONTRACT_ADDRESS=0xYourAddress npx hardhat run scripts/verify.js --network monad
-
-# Or use Hardhat CLI directly
-npx hardhat verify --network monad --contract contracts/BossFightGame.sol:BossFightGame 0xYourAddress
+npm run verify
 ```
-
-Once verified, you can view the contract source code on the explorer:
-- https://monadvision.com/address/0xc7a4F99Dad829Dc9D8FD77D5bbb4C1387B908E79
 
 ## 🌐 Monad Network
 
