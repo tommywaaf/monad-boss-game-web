@@ -4,16 +4,16 @@ A decentralized boss-fighting game on the Monad blockchain. Fight bosses, collec
 
 ## ✨ Features
 
-- 🗡️ **Boss Battles** - 100% base success rate
-- 💎 **10 Item Tiers** - From Common to Rainbow with increasing rarity
+- 🗡️ **Boss Battles** - Fight bosses to earn loot
+- 💎 **10 Item Tiers** - From Grey to Rainbow with increasing rarity
 - 📦 **Smart Inventory** - 20-item limit with automatic upgrades
-- 📈 **Boost System** - Items increase success & rarity chances
+- 📈 **Boost System** - Items increase your rarity chances
 - 🔄 **Item Transfers** - Transfer items to other players
 - 💸 **Withdraw MON** - Send your MON to any wallet
 - 🌐 **Dynamic Wallet Support** - Embedded wallets, social login, and external wallets
 
 ## 🚀 Quick Start
-test
+
 ### 1. Install Dependencies
 
 ```bash
@@ -28,17 +28,17 @@ Create a `.env` file:
 # Dynamic Environment ID (from Dynamic dashboard)
 VITE_DYNAMIC_ENVIRONMENT_ID=your_environment_id_here
 
-# Contract address (after deployment)
-VITE_CONTRACT_ADDRESS=your_contract_address_here
+# Contract address - use this sample or deploy your own
+VITE_CONTRACT_ADDRESS=0xc7a4F99Dad829Dc9D8FD77D5bbb4C1387B908E79
 
-# Private key for deployment (never commit this!)
+# Private key for deployment (only needed if deploying your own contract)
 PRIVATE_KEY=your_private_key_for_deployment
 ```
 
-### 3. Compile & Deploy Contract
-You can skip this if you want to use my contract address:
+### 3. Compile & Deploy Contract (Optional)
 
-VITE_CONTRACT_ADDRESS=0xc7a4F99Dad829Dc9D8FD77D5bbb4C1387B908E79
+You can skip this step and use the sample contract address above, or deploy your own:
+
 ```bash
 # Compile the smart contract
 npm run compile
@@ -66,7 +66,7 @@ Open `http://localhost:5173` and start playing!
 2. **Switch to Monad** - Network Chain ID: 143
 3. **Attack Boss** - Click the attack button
 4. **Collect Items** - Build your inventory
-5. **Get Stronger** - Items boost your success rate
+5. **Get Stronger** - Items boost your rarity chances
 
 ## 🏗️ Tech Stack
 
@@ -119,10 +119,7 @@ monad-boss-game-web/
 
 ### Boss Fight System
 
-- **Base Success Rate:** 100%
-- **Max Success Rate:** 99%
-- **Success boost:** Sum of all item success boosts
-- **Rarity boost:** Chance to upgrade dropped item tier
+- **Rarity boost:** Items improve your chance at better item tiers
 - **Inventory:** Max 20 items, auto-replaces weakest
 
 ## 🛠️ Development
