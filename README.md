@@ -13,7 +13,7 @@ A decentralized boss-fighting game on the Monad blockchain. Fight bosses, collec
 - 🌐 **Dynamic Wallet Support** - Embedded wallets, social login, and external wallets
 
 ## 🚀 Quick Start
-
+test
 ### 1. Install Dependencies
 
 ```bash
