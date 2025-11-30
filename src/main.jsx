@@ -13,17 +13,18 @@ if (!dynamicEnvironmentId) {
 }
 
 // Monad network configuration for Dynamic
+// Note: Icon URL must be publicly accessible. Update this after deploying your app
+// or configure the Monad network in your Dynamic dashboard for custom icons.
 const monadNetwork = {
   blockExplorerUrls: ['https://monad.socialscan.io'],
   chainId: 143,
   name: 'Monad',
   rpcUrls: ['https://rpc.monad.xyz/'],
-  iconUrls: ['https://imagedelivery.net/nDIbXIaRBO7lN4d7rIe0Jw/5ef0bfd7-2c56-48cd-ec52-dd99d5b1c100/public'],
+  iconUrls: ['https://monad.socialscan.io/favicon-32x32.png'],
   nativeCurrency: {
     name: 'Monad',
     symbol: 'MON',
     decimals: 18,
-    iconUrl: 'https://imagedelivery.net/nDIbXIaRBO7lN4d7rIe0Jw/5ef0bfd7-2c56-48cd-ec52-dd99d5b1c100/public',
   },
   networkId: 143,
 }
