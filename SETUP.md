@@ -83,10 +83,10 @@ src/
 ## 🌐 Monad Network Details
 
 - **Chain ID:** 143
-- **Network Name:** Monad Testnet
-- **RPC URL:** https://testnet-rpc.monad.xyz
+- **Network Name:** Monad
+- **RPC URL:** https://rpc.monad.xyz
 - **Symbol:** MON
-- **Explorer:** https://testnet.monadexplorer.com
+- **Explorer:** https://explorer.monad.xyz
 
 ## 🧪 Testing
 
@@ -119,7 +119,7 @@ Now that wallet connection is working, you can:
 **Wrong network showing?**
 - Click "Switch to Monad" button
 - Manually add Monad network to your wallet if needed
-- RPC: https://testnet-rpc.monad.xyz
+- RPC: https://rpc.monad.xyz
 - Chain ID: 143
 
 **Build errors?**

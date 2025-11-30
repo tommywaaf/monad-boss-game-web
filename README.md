@@ -145,8 +145,8 @@ npm run verify
 ## 🌐 Monad Network
 
 - **Chain ID:** 143
-- **RPC URL:** https://testnet-rpc.monad.xyz
-- **Block Explorer:** https://testnet.monadexplorer.com
+- **RPC URL:** https://rpc.monad.xyz
+- **Block Explorer:** https://explorer.monad.xyz
 - **Currency:** MON
 
 ## 📜 Smart Contract
