@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { useGameContract } from '../hooks/useGameContract'
 import './WithdrawModal.css'
 
 // Helper to format balance for display
@@ -23,6 +23,8 @@ const parseMonToWei = (value) => {
 
 function WithdrawModal({ onClose, currentBalance }) {
   const { primaryWallet } = useDynamicContext()
+  // Use shared wallet clients from GameContractProvider - these are already working!
+  const { walletClient: sharedWalletClient, publicClient: sharedPublicClient } = useGameContract()
   const [toAddress, setToAddress] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
@@ -30,25 +32,10 @@ function WithdrawModal({ onClose, currentBalance }) {
   const [isConfirming, setIsConfirming] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [hash, setHash] = useState(null)
-  const [walletClient, setWalletClient] = useState(null)
-  const [publicClient, setPublicClient] = useState(null)
-
-  // Initialize wallet clients
-  useEffect(() => {
-    if (primaryWallet && isEthereumWallet(primaryWallet)) {
-      const initClients = async () => {
-        try {
-          const wc = await primaryWallet.getWalletClient()
-          const pc = await primaryWallet.getPublicClient()
-          setWalletClient(wc)
-          setPublicClient(pc)
-        } catch (err) {
-          console.error('[WithdrawModal] Failed to init clients:', err)
-        }
-      }
-      initClients()
-    }
-  }, [primaryWallet])
+  
+  // Use the shared clients from useGameContract
+  const walletClient = sharedWalletClient
+  const publicClient = sharedPublicClient
 
   // Watch for transaction confirmation
   useEffect(() => {
@@ -171,10 +158,19 @@ function WithdrawModal({ onClose, currentBalance }) {
       setIsPending(true)
       console.log('[WithdrawModal] Initiating withdrawal to:', toAddress, 'amount:', amount, 'MON')
       
-      // Use Dynamic's sendBalance method for native token transfers
-      const txHash = await primaryWallet.sendBalance({
-        amount: amount,
-        toAddress: toAddress,
+      // Convert amount to wei
+      const amountWei = parseMonToWei(amount)
+      
+      // Use the shared wallet client from useGameContract
+      if (!walletClient) {
+        throw new Error('Wallet not ready. Please wait a moment and try again.')
+      }
+      
+      // Use sendTransaction for native token transfer
+      const txHash = await walletClient.sendTransaction({
+        to: toAddress,
+        value: amountWei,
+        account: primaryWallet.address,
       })
       
       console.log('[WithdrawModal] Transaction submitted:', txHash)
@@ -187,6 +183,8 @@ function WithdrawModal({ onClose, currentBalance }) {
         errorMessage = 'Transaction was rejected by user.'
       } else if (err.message?.includes('insufficient funds') || err.message?.includes('Insufficient')) {
         errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
+      } else if (err.message?.includes('EVM network not found')) {
+        errorMessage = 'Network not configured. Please switch to Monad network and try again.'
       } else if (err.message) {
         errorMessage = err.message.slice(0, 100)
       }
@@ -195,7 +193,7 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
   }
 
-  const walletReady = !!primaryWallet
+  const walletReady = !!primaryWallet && !!walletClient
   const formattedBalance = currentBalance ? formatBalance(currentBalance) : '0'
 
   return createPortal(
