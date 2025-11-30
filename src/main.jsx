@@ -18,11 +18,12 @@ const monadNetwork = {
   chainId: 143,
   name: 'Monad',
   rpcUrls: ['https://rpc.monad.xyz/'],
-  iconUrls: [],
+  iconUrls: ['https://imagedelivery.net/nDIbXIaRBO7lN4d7rIe0Jw/5ef0bfd7-2c56-48cd-ec52-dd99d5b1c100/public'],
   nativeCurrency: {
     name: 'Monad',
     symbol: 'MON',
     decimals: 18,
+    iconUrl: 'https://imagedelivery.net/nDIbXIaRBO7lN4d7rIe0Jw/5ef0bfd7-2c56-48cd-ec52-dd99d5b1c100/public',
   },
   networkId: 143,
 }
