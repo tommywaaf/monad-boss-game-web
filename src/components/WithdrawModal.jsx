@@ -265,7 +265,7 @@ function WithdrawModal({ onClose, currentBalance }) {
             <div className="tx-hash-display">
               <span>Tx: </span>
               <a 
-                href={`https://explorer.monad.xyz/tx/${hash}`} 
+                href={`https://monad.socialscan.io/tx/${hash}`} 
                 target="_blank" 
                 rel="noopener noreferrer"
               >

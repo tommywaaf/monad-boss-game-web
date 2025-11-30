@@ -146,7 +146,7 @@ npm run verify
 
 - **Chain ID:** 143
 - **RPC URL:** https://rpc.monad.xyz
-- **Block Explorer:** https://explorer.monad.xyz
+- **Block Explorer:** https://monad.socialscan.io
 - **Currency:** MON
 
 ## 📜 Smart Contract

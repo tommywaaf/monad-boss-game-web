@@ -23,7 +23,7 @@ export default {
   sourcify: {
     enabled: true,
     apiUrl: "https://sourcify-api-monad.blockvision.org/",
-    browserUrl: "https://monadvision.com/",
+    browserUrl: "https://monad.socialscan.io/",
   },
   etherscan: {
     enabled: false,

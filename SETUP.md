@@ -86,7 +86,7 @@ src/
 - **Network Name:** Monad
 - **RPC URL:** https://rpc.monad.xyz
 - **Symbol:** MON
-- **Explorer:** https://explorer.monad.xyz
+- **Explorer:** https://monad.socialscan.io
 
 ## 🧪 Testing
 

@@ -19,7 +19,7 @@ export const monad = {
   blockExplorers: {
     default: {
       name: 'Monad Explorer',
-      url: 'https://explorer.monad.xyz',
+      url: 'https://monad.socialscan.io',
     },
   },
   testnet: false,

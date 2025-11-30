@@ -14,7 +14,7 @@ if (!dynamicEnvironmentId) {
 
 // Monad network configuration for Dynamic
 const monadNetwork = {
-  blockExplorerUrls: ['https://explorer.monad.xyz'],
+  blockExplorerUrls: ['https://monad.socialscan.io'],
   chainId: 143,
   name: 'Monad',
   rpcUrls: ['https://rpc.monad.xyz/'],
