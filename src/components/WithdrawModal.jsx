@@ -195,7 +195,7 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
   }
 
-  const clientsReady = !!walletClient && !!publicClient
+  const walletReady = !!primaryWallet
   const formattedBalance = currentBalance ? formatBalance(currentBalance) : '0'
 
   return createPortal(
@@ -290,9 +290,9 @@ function WithdrawModal({ onClose, currentBalance }) {
           <button 
             className="withdraw-button"
             onClick={handleWithdraw}
-            disabled={!clientsReady || isPending || isConfirming || isSuccess}
+            disabled={!walletReady || isPending || isConfirming || isSuccess}
           >
-            {!clientsReady ? 'Connecting...' :
+            {!walletReady ? 'Connecting...' :
              isPending ? 'Waiting for approval...' : 
              isConfirming ? 'Confirming...' :
              isSuccess ? 'Done!' : 
