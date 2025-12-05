@@ -37,7 +37,7 @@ PRIVATE_KEY=your_private_key_for_deployment
 
 ### 3. Compile & Deploy Contract (Optional)
 
-You can skip this step and use the sample contract address above, or deploy your own :
+You can skip this step and use the sample contract address above, or deploy your own:
 
 ```bash
 # Compile the smart contract
