@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { createPublicClient, http, defineChain } from 'viem'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI } from '../config/gameContract'
 
 // Maximum players to fetch for leaderboard
@@ -10,30 +11,171 @@ export function useLeaderboard() {
   const { primaryWallet } = useDynamicContext()
   const [leaderboardData, setLeaderboardData] = useState([])
   const [loading, setLoading] = useState(true)
+  const [isClientReady, setIsClientReady] = useState(false)
   const publicClientRef = useRef(null)
-  const initializedRef = useRef(false)
 
-  // Initialize public client when wallet is available
+  // Initialize public client - try wallet first, fallback to direct RPC connection
   useEffect(() => {
-    if (primaryWallet && isEthereumWallet(primaryWallet)) {
-      const initClient = async () => {
-        try {
-          const publicClient = await primaryWallet.getPublicClient()
-          publicClientRef.current = publicClient
-          initializedRef.current = true
-        } catch (error) {
-          console.error('Failed to initialize public client:', error)
+    const initClient = async () => {
+      try {
+        // Try to get public client from wallet if available
+        if (primaryWallet && isEthereumWallet(primaryWallet)) {
+          try {
+            const publicClient = await primaryWallet.getPublicClient()
+            publicClientRef.current = publicClient
+            setIsClientReady(true)
+            console.log('[Leaderboard] Using wallet public client')
+            return
+          } catch (error) {
+            console.warn('[Leaderboard] Failed to get wallet public client, using direct RPC:', error)
+          }
         }
+        
+        // Fallback: create public client directly from RPC URL
+        // This allows leaderboard to work even without wallet connection
+        const monadChain = defineChain({
+          id: 143,
+          name: 'Monad',
+          network: 'monad',
+          nativeCurrency: {
+            decimals: 18,
+            name: 'Monad',
+            symbol: 'MON',
+          },
+          rpcUrls: {
+            default: {
+              http: ['https://rpc.monad.xyz/'],
+            },
+            public: {
+              http: ['https://rpc.monad.xyz/'],
+            },
+          },
+          blockExplorers: {
+            default: {
+              name: 'Monad Explorer',
+              url: 'https://monad.socialscan.io',
+            },
+          },
+          testnet: false,
+        })
+        
+        const publicClient = createPublicClient({
+          chain: monadChain,
+          transport: http('https://rpc.monad.xyz/')
+        })
+        publicClientRef.current = publicClient
+        setIsClientReady(true)
+        console.log('[Leaderboard] Using direct RPC public client')
+      } catch (error) {
+        console.error('[Leaderboard] Failed to initialize public client:', error)
+        publicClientRef.current = null
+        setIsClientReady(false)
       }
-      initClient()
-    } else {
-      publicClientRef.current = null
-      initializedRef.current = false
     }
+    
+    initClient()
   }, [primaryWallet])
+
+  // Fallback for chains that don't support multicall
+  const fetchLeaderboardFallback = useCallback(async () => {
+    const client = publicClientRef.current
+    if (!client) {
+      console.warn('[Leaderboard] Fallback: No public client available')
+      return
+    }
+
+    if (!GAME_CONTRACT_ADDRESS || GAME_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
+      console.error('[Leaderboard] Fallback: Contract address not set!')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const playerCount = await client.readContract({
+        address: GAME_CONTRACT_ADDRESS,
+        abi: GAME_CONTRACT_ABI,
+        functionName: 'getPlayerCount',
+      })
+      
+      const count = Math.min(Number(playerCount || 0), 50) // Limit to 50 in fallback mode
+      
+      if (count === 0) {
+        setLeaderboardData([])
+        setLoading(false)
+        return
+      }
+
+      // Parallel fetch with Promise.all (still faster than sequential)
+      const indices = Array.from({ length: count }, (_, i) => i)
+      
+      const playerPromises = indices.map(async (i) => {
+        try {
+          const address = await client.readContract({
+            address: GAME_CONTRACT_ADDRESS,
+            abi: GAME_CONTRACT_ABI,
+            functionName: 'getPlayerAt',
+            args: [BigInt(i)]
+          })
+
+          const [stats, inventory] = await Promise.all([
+            client.readContract({
+              address: GAME_CONTRACT_ADDRESS,
+              abi: GAME_CONTRACT_ABI,
+              functionName: 'getPlayerStats',
+              args: [address]
+            }),
+            client.readContract({
+              address: GAME_CONTRACT_ADDRESS,
+              abi: GAME_CONTRACT_ABI,
+              functionName: 'getInventory',
+              args: [address]
+            })
+          ])
+
+          let highestTier = -1
+          if (inventory && inventory.length > 0) {
+            highestTier = Math.max(...inventory.map(item => Number(item.tier)))
+          }
+
+          return {
+            address,
+            rarityBoost: Number(stats[0]) / 100,
+            successBoost: Number(stats[1]) / 100,
+            bossKills: Number(stats[2]),
+            inventorySize: Number(stats[3]),
+            highestTier
+          }
+        } catch (err) {
+          console.error(`[Leaderboard] Fallback error for player ${i}:`, err)
+          return null
+        }
+      })
+
+      const results = await Promise.all(playerPromises)
+      const players = results.filter(p => p !== null)
+      
+      console.log('[Leaderboard] ✅ Fallback loaded', players.length, 'players')
+      setLeaderboardData(players)
+      setLoading(false)
+    } catch (error) {
+      console.error('[Leaderboard] Fallback fetch failed:', error)
+      setLeaderboardData([])
+      setLoading(false)
+      throw error // Re-throw so the caller knows it failed
+    }
+  }, [])
 
   const fetchLeaderboard = useCallback(async () => {
     if (!publicClientRef.current) {
+      console.warn('[Leaderboard] Public client not available')
+      setLoading(false)
+      return
+    }
+
+    // Validate contract address
+    if (!GAME_CONTRACT_ADDRESS || GAME_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
+      console.error('[Leaderboard] Contract address not set! Please set VITE_CONTRACT_ADDRESS in .env')
+      setLeaderboardData([])
       setLoading(false)
       return
     }
@@ -42,7 +184,7 @@ export function useLeaderboard() {
 
     try {
       setLoading(true)
-      console.log('[Leaderboard] Fetching with multicall...')
+      console.log('[Leaderboard] Fetching with multicall...', { contractAddress: GAME_CONTRACT_ADDRESS })
 
       // Step 1: Get player count (single call)
       const playerCount = await client.readContract({
@@ -143,23 +285,43 @@ export function useLeaderboard() {
 
       console.log('[Leaderboard] ✅ Loaded', players.length, 'players with just 3 RPC calls!')
       setLeaderboardData(players)
+      setLoading(false)
     } catch (error) {
       console.error('[Leaderboard] Error fetching leaderboard:', error)
+      console.error('[Leaderboard] Error details:', {
+        message: error.message,
+        cause: error.cause,
+        stack: error.stack
+      })
       
       // Fallback: try without multicall if it fails (some chains don't support it)
       console.log('[Leaderboard] Attempting fallback fetch...')
-      await fetchLeaderboardFallback()
-    } finally {
-      setLoading(false)
+      try {
+        await fetchLeaderboardFallback()
+      } catch (fallbackError) {
+        console.error('[Leaderboard] Fallback also failed:', fallbackError)
+        setLeaderboardData([])
+      } finally {
+        setLoading(false)
+      }
     }
   }, [])
 
   // Fallback for chains that don't support multicall
-  const fetchLeaderboardFallback = async () => {
+  const fetchLeaderboardFallback = useCallback(async () => {
     const client = publicClientRef.current
-    if (!client) return
+    if (!client) {
+      console.warn('[Leaderboard] Fallback: No public client available')
+      return
+    }
+
+    if (!GAME_CONTRACT_ADDRESS || GAME_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
+      console.error('[Leaderboard] Fallback: Contract address not set!')
+      return
+    }
 
     try {
+      setLoading(true)
       const playerCount = await client.readContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
@@ -170,6 +332,7 @@ export function useLeaderboard() {
       
       if (count === 0) {
         setLeaderboardData([])
+        setLoading(false)
         return
       }
 
@@ -224,17 +387,24 @@ export function useLeaderboard() {
       
       console.log('[Leaderboard] ✅ Fallback loaded', players.length, 'players')
       setLeaderboardData(players)
+      setLoading(false)
     } catch (error) {
       console.error('[Leaderboard] Fallback fetch failed:', error)
+      setLeaderboardData([])
+      setLoading(false)
+      throw error // Re-throw so the caller knows it failed
     }
-  }
+  }, [])
 
   // Initial fetch when client is ready
   useEffect(() => {
-    if (publicClientRef.current && initializedRef.current) {
+    if (isClientReady && publicClientRef.current) {
+      console.log('[Leaderboard] Client ready, fetching leaderboard...')
       fetchLeaderboard()
+    } else {
+      console.log('[Leaderboard] Waiting for client...', { isClientReady, hasClient: !!publicClientRef.current })
     }
-  }, [primaryWallet?.address, fetchLeaderboard])
+  }, [isClientReady, fetchLeaderboard])
 
   const refetchLeaderboard = useCallback(async () => {
     await fetchLeaderboard()
