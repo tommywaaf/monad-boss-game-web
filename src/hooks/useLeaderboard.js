@@ -305,96 +305,7 @@ export function useLeaderboard() {
         setLoading(false)
       }
     }
-  }, [])
-
-  // Fallback for chains that don't support multicall
-  const fetchLeaderboardFallback = useCallback(async () => {
-    const client = publicClientRef.current
-    if (!client) {
-      console.warn('[Leaderboard] Fallback: No public client available')
-      return
-    }
-
-    if (!GAME_CONTRACT_ADDRESS || GAME_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
-      console.error('[Leaderboard] Fallback: Contract address not set!')
-      return
-    }
-
-    try {
-      setLoading(true)
-      const playerCount = await client.readContract({
-        address: GAME_CONTRACT_ADDRESS,
-        abi: GAME_CONTRACT_ABI,
-        functionName: 'getPlayerCount',
-      })
-      
-      const count = Math.min(Number(playerCount || 0), 50) // Limit to 50 in fallback mode
-      
-      if (count === 0) {
-        setLeaderboardData([])
-        setLoading(false)
-        return
-      }
-
-      // Parallel fetch with Promise.all (still faster than sequential)
-      const indices = Array.from({ length: count }, (_, i) => i)
-      
-      const playerPromises = indices.map(async (i) => {
-        try {
-          const address = await client.readContract({
-            address: GAME_CONTRACT_ADDRESS,
-            abi: GAME_CONTRACT_ABI,
-            functionName: 'getPlayerAt',
-            args: [BigInt(i)]
-          })
-
-          const [stats, inventory] = await Promise.all([
-            client.readContract({
-              address: GAME_CONTRACT_ADDRESS,
-              abi: GAME_CONTRACT_ABI,
-              functionName: 'getPlayerStats',
-              args: [address]
-            }),
-            client.readContract({
-              address: GAME_CONTRACT_ADDRESS,
-              abi: GAME_CONTRACT_ABI,
-              functionName: 'getInventory',
-              args: [address]
-            })
-          ])
-
-          let highestTier = -1
-          if (inventory && inventory.length > 0) {
-            highestTier = Math.max(...inventory.map(item => Number(item.tier)))
-          }
-
-          return {
-            address,
-            rarityBoost: Number(stats[0]) / 100,
-            successBoost: Number(stats[1]) / 100,
-            bossKills: Number(stats[2]),
-            inventorySize: Number(stats[3]),
-            highestTier
-          }
-        } catch (err) {
-          console.error(`[Leaderboard] Fallback error for player ${i}:`, err)
-          return null
-        }
-      })
-
-      const results = await Promise.all(playerPromises)
-      const players = results.filter(p => p !== null)
-      
-      console.log('[Leaderboard] ✅ Fallback loaded', players.length, 'players')
-      setLeaderboardData(players)
-      setLoading(false)
-    } catch (error) {
-      console.error('[Leaderboard] Fallback fetch failed:', error)
-      setLeaderboardData([])
-      setLoading(false)
-      throw error // Re-throw so the caller knows it failed
-    }
-  }, [])
+  }, [fetchLeaderboardFallback])
 
   // Initial fetch when client is ready
   useEffect(() => {
@@ -403,6 +314,14 @@ export function useLeaderboard() {
       fetchLeaderboard()
     } else {
       console.log('[Leaderboard] Waiting for client...', { isClientReady, hasClient: !!publicClientRef.current })
+      // Set a timeout to stop loading if client never initializes (e.g., network issues)
+      const timeout = setTimeout(() => {
+        if (!isClientReady) {
+          console.warn('[Leaderboard] Client initialization timeout after 10s, stopping load')
+          setLoading(false)
+        }
+      }, 10000) // 10 second timeout
+      return () => clearTimeout(timeout)
     }
   }, [isClientReady, fetchLeaderboard])
 
