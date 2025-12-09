@@ -3,36 +3,58 @@ import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { createPublicClient, http, defineChain } from 'viem'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI } from '../config/gameContract'
+import { useGameContract } from './useGameContract'
 
 // Maximum players to fetch for leaderboard
 const MAX_LEADERBOARD_PLAYERS = 100
 
 export function useLeaderboard() {
   const { primaryWallet } = useDynamicContext()
+  // Try to use the shared public client from useGameContract first (ensures same RPC instance)
+  let sharedPublicClient = null
+  try {
+    const gameContract = useGameContract()
+    sharedPublicClient = gameContract?.publicClient || null
+  } catch (error) {
+    // useGameContract might not be available (e.g., outside provider), that's okay
+    sharedPublicClient = null
+  }
+  
   const [leaderboardData, setLeaderboardData] = useState([])
   const [loading, setLoading] = useState(true)
   const [isClientReady, setIsClientReady] = useState(false)
   const publicClientRef = useRef(null)
 
-  // Initialize public client - try wallet first, fallback to direct RPC connection
+  // Initialize public client - prefer shared client from useGameContract, fallback to wallet or direct RPC
   useEffect(() => {
     const initClient = async () => {
       try {
-        // Try to get public client from wallet if available
+        // First priority: Use shared public client from useGameContract (same instance as Attack Boss & Withdraw)
+        if (sharedPublicClient) {
+          publicClientRef.current = sharedPublicClient
+          setIsClientReady(true)
+          console.log('[Leaderboard] Using shared public client from useGameContract (same as Attack Boss & Withdraw)')
+          return
+        }
+        
+        // Second priority: Get public client from wallet (same pattern as useGameContract)
         if (primaryWallet && isEthereumWallet(primaryWallet)) {
           try {
             const publicClient = await primaryWallet.getPublicClient()
-            publicClientRef.current = publicClient
-            setIsClientReady(true)
-            console.log('[Leaderboard] Using wallet public client')
-            return
+            if (publicClient) {
+              publicClientRef.current = publicClient
+              setIsClientReady(true)
+              console.log('[Leaderboard] Using wallet public client')
+              return
+            }
           } catch (error) {
-            console.warn('[Leaderboard] Failed to get wallet public client, using direct RPC:', error)
+            console.warn('[Leaderboard] Failed to get wallet public client:', error)
           }
         }
         
-        // Fallback: create public client directly from RPC URL
+        // Last resort: Create direct RPC client if no wallet is connected
         // This allows leaderboard to work even without wallet connection
+        console.log('[Leaderboard] No wallet connected, creating direct RPC client for read-only access')
         const monadChain = defineChain({
           id: 143,
           name: 'Monad',
@@ -65,7 +87,7 @@ export function useLeaderboard() {
         })
         publicClientRef.current = publicClient
         setIsClientReady(true)
-        console.log('[Leaderboard] Using direct RPC public client')
+        console.log('[Leaderboard] Using direct RPC public client (read-only, no wallet)')
       } catch (error) {
         console.error('[Leaderboard] Failed to initialize public client:', error)
         publicClientRef.current = null
@@ -74,7 +96,7 @@ export function useLeaderboard() {
     }
     
     initClient()
-  }, [primaryWallet])
+  }, [primaryWallet?.address, sharedPublicClient]) // Include sharedPublicClient in dependencies
 
   // Fallback for chains that don't support multicall
   const fetchLeaderboardFallback = useCallback(async () => {
