@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { DynamicContextProvider, mergeNetworks } from '@dynamic-labs/sdk-react-core'
-import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
+import { EthereumWalletConnectorsWithConfig } from '@dynamic-labs/ethereum'
 import './index.css'
 import App from './App.jsx'
 
@@ -73,7 +73,16 @@ if (!dynamicEnvironmentId) {
       <DynamicContextProvider
         settings={{
           environmentId: dynamicEnvironmentId,
-          walletConnectors: [EthereumWalletConnectors],
+          walletConnectors: [
+            // Configure viem transport to disable internal retries
+            // This prevents the "RPC endpoint returned too many errors" issue
+            EthereumWalletConnectorsWithConfig({
+              httpTransportConfig: {
+                retryCount: 0, // Disable viem's internal retry mechanism
+                timeout: 30000, // 30 second timeout
+              },
+            })
+          ],
           overrides: {
             evmNetworks: (networks) => {
               // Merge Monad network with dashboard networks, putting Monad first
