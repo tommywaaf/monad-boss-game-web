@@ -10,15 +10,11 @@ const MAX_LEADERBOARD_PLAYERS = 100
 
 export function useLeaderboard() {
   const { primaryWallet } = useDynamicContext()
-  // Try to use the shared public client from useGameContract first (ensures same RPC instance)
-  let sharedPublicClient = null
-  try {
-    const gameContract = useGameContract()
-    sharedPublicClient = gameContract?.publicClient || null
-  } catch (error) {
-    // useGameContract might not be available (e.g., outside provider), that's okay
-    sharedPublicClient = null
-  }
+  // Use the shared public client from useGameContract (same instance as Attack Boss & Withdraw)
+  // This ensures all components use the same RPC connection to avoid rate limiting
+  // Note: Leaderboard is always inside GameContractProvider, so this is safe
+  const gameContract = useGameContract()
+  const sharedPublicClient = gameContract?.publicClient || null
   
   const [leaderboardData, setLeaderboardData] = useState([])
   const [loading, setLoading] = useState(true)
@@ -96,7 +92,7 @@ export function useLeaderboard() {
     }
     
     initClient()
-  }, [primaryWallet?.address, sharedPublicClient]) // Include sharedPublicClient in dependencies
+  }, [primaryWallet?.address, sharedPublicClient]) // Re-initialize if shared client changes
 
   // Fallback for chains that don't support multicall
   const fetchLeaderboardFallback = useCallback(async () => {
