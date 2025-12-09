@@ -192,14 +192,12 @@ function useProvideGameContract() {
     console.log('[useGameContract] Fetching contract data (address changed)')
     fetchContractData()
     
-    // Reduced polling - only poll every 30 seconds to avoid rate limiting
-    const interval = setInterval(() => {
-      if (publicClientRef.current && primaryWallet?.address) {
-        fetchContractData()
-      }
-    }, 30000) // Poll every 30 seconds instead of 10
+    // DISABLED POLLING - was causing rate limit issues
+    // Data will refresh automatically after transactions via event watchers
+    // User can manually refresh by killing a boss (which refreshes inventory)
+    console.log('[useGameContract] Polling disabled to prevent rate limiting')
     
-    return () => clearInterval(interval)
+    return () => {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryWallet?.address]) // Only depend on address, fetchContractData is stable
 

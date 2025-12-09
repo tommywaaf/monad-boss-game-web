@@ -115,8 +115,8 @@ function WalletConnect() {
 
     fetchBalance()
     
-    // Poll balance every 10 seconds
-    const interval = setInterval(fetchBalance, 10000)
+    // REDUCED polling to prevent rate limiting - poll every 60 seconds instead of 10
+    const interval = setInterval(fetchBalance, 60000)
 
     return () => {
       cancelled = true

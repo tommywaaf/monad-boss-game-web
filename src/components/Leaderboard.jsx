@@ -76,7 +76,7 @@ function Leaderboard() {
         <div className="loading">Loading leaderboard...</div>
       ) : sortedData.length === 0 ? (
         <div className="empty-leaderboard">
-          <p>No players yet! Be the first to kill a boss.</p>
+          <p>Click the refresh button ⟳ to load the leaderboard</p>
         </div>
       ) : (
         <div className="leaderboard-table">

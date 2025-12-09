@@ -341,30 +341,26 @@ export function useLeaderboard() {
     }
   }, [fetchLeaderboardFallback])
 
-  // Initial fetch when client is ready (only once per wallet address)
-  const lastFetchedAddressRef = useRef(null)
+  // DISABLED AUTO-FETCH: Leaderboard no longer fetches automatically on mount
+  // This prevents rate limiting the RPC endpoint which breaks Attack Boss and Withdraw
+  // User must click the refresh button to load the leaderboard
   useEffect(() => {
-    const currentAddress = primaryWallet?.address
-    const shouldFetch = isClientReady && 
-                       publicClientRef.current && 
-                       currentAddress !== lastFetchedAddressRef.current
-    
-    if (shouldFetch) {
-      console.log('[Leaderboard] Client ready, fetching leaderboard...')
-      lastFetchedAddressRef.current = currentAddress
-      fetchLeaderboard()
-    } else if (!isClientReady) {
-      console.log('[Leaderboard] Waiting for client...', { isClientReady, hasClient: !!publicClientRef.current })
-      // Set a timeout to stop loading if client never initializes (e.g., network issues)
+    if (isClientReady) {
+      // Just mark loading as false - don't auto-fetch
+      console.log('[Leaderboard] Client ready, auto-fetch DISABLED to prevent rate limiting')
+      console.log('[Leaderboard] Click the refresh button to load the leaderboard')
+      setLoading(false)
+    } else {
+      // Set a timeout to stop loading if client never initializes
       const timeout = setTimeout(() => {
         if (!isClientReady) {
           console.warn('[Leaderboard] Client initialization timeout after 10s, stopping load')
           setLoading(false)
         }
-      }, 10000) // 10 second timeout
+      }, 10000)
       return () => clearTimeout(timeout)
     }
-  }, [isClientReady, primaryWallet?.address]) // Only fetch when client becomes ready or address changes
+  }, [isClientReady])
 
   const refetchLeaderboard = useCallback(async () => {
     await fetchLeaderboard()
