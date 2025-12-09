@@ -47,7 +47,7 @@ npm run compile
 npm run deploy
 ```
 
-### 4. Run the Game
+### 4. Run the Game!
 
 ```bash
 npm run dev
