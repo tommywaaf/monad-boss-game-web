@@ -13,6 +13,8 @@ export function useLeaderboard() {
   const [loading, setLoading] = useState(true)
   const [isClientReady, setIsClientReady] = useState(false)
   const publicClientRef = useRef(null)
+  const lastFetchRef = useRef(0)
+  const FETCH_COOLDOWN = 5000 // 5 seconds cooldown between fetches
 
   // Initialize public client - get from wallet (same pattern as useGameContract)
   // Dynamic's wallet.getPublicClient() returns the same instance, so this shares the RPC connection
@@ -82,6 +84,7 @@ export function useLeaderboard() {
   }, [primaryWallet?.address]) // Only depend on address, not the whole wallet object (same as useGameContract)
 
   // Fallback for chains that don't support multicall
+  // VERY conservative: only fetch top 10 players to avoid rate limiting
   const fetchLeaderboardFallback = useCallback(async () => {
     const client = publicClientRef.current
     if (!client) {
@@ -102,7 +105,8 @@ export function useLeaderboard() {
         functionName: 'getPlayerCount',
       })
       
-      const count = Math.min(Number(playerCount || 0), 50) // Limit to 50 in fallback mode
+      // VERY conservative: only fetch top 10 in fallback mode to avoid rate limiting
+      const count = Math.min(Number(playerCount || 0), 10)
       
       if (count === 0) {
         setLeaderboardData([])
@@ -110,11 +114,16 @@ export function useLeaderboard() {
         return
       }
 
-      // Parallel fetch with Promise.all (still faster than sequential)
-      const indices = Array.from({ length: count }, (_, i) => i)
-      
-      const playerPromises = indices.map(async (i) => {
+      // Sequential fetch with delays to avoid rate limiting
+      // This is slower but much safer for RPC endpoints
+      const players = []
+      for (let i = 0; i < count; i++) {
         try {
+          // Add small delay between requests to avoid rate limiting
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100)) // 100ms delay
+          }
+          
           const address = await client.readContract({
             address: GAME_CONTRACT_ADDRESS,
             abi: GAME_CONTRACT_ABI,
@@ -122,6 +131,9 @@ export function useLeaderboard() {
             args: [BigInt(i)]
           })
 
+          // Small delay before next batch
+          await new Promise(resolve => setTimeout(resolve, 50))
+          
           const [stats, inventory] = await Promise.all([
             client.readContract({
               address: GAME_CONTRACT_ADDRESS,
@@ -142,22 +154,19 @@ export function useLeaderboard() {
             highestTier = Math.max(...inventory.map(item => Number(item.tier)))
           }
 
-          return {
+          players.push({
             address,
             rarityBoost: Number(stats[0]) / 100,
             successBoost: Number(stats[1]) / 100,
             bossKills: Number(stats[2]),
             inventorySize: Number(stats[3]),
             highestTier
-          }
+          })
         } catch (err) {
           console.error(`[Leaderboard] Fallback error for player ${i}:`, err)
-          return null
+          // Continue to next player instead of stopping
         }
-      })
-
-      const results = await Promise.all(playerPromises)
-      const players = results.filter(p => p !== null)
+      }
       
       console.log('[Leaderboard] ✅ Fallback loaded', players.length, 'players')
       setLeaderboardData(players)
@@ -177,6 +186,15 @@ export function useLeaderboard() {
       return
     }
 
+    // Rate limiting: Don't fetch if we just fetched recently
+    const now = Date.now()
+    const timeSinceLastFetch = now - lastFetchRef.current
+    if (timeSinceLastFetch < FETCH_COOLDOWN) {
+      const remaining = Math.ceil((FETCH_COOLDOWN - timeSinceLastFetch) / 1000)
+      console.log(`[Leaderboard] Cooldown active, please wait ${remaining}s before fetching again`)
+      return
+    }
+
     // Validate contract address
     if (!GAME_CONTRACT_ADDRESS || GAME_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
       console.error('[Leaderboard] Contract address not set! Please set VITE_CONTRACT_ADDRESS in .env')
@@ -189,6 +207,7 @@ export function useLeaderboard() {
 
     try {
       setLoading(true)
+      lastFetchRef.current = now
       console.log('[Leaderboard] Fetching with multicall...', { contractAddress: GAME_CONTRACT_ADDRESS })
 
       // Step 1: Get player count (single call)
@@ -299,8 +318,17 @@ export function useLeaderboard() {
         stack: error.stack
       })
       
+      // Don't use fallback if it's a rate limit error - that would make it worse
+      if (error.message?.includes('too many errors') || error.message?.includes('rate limit')) {
+        console.warn('[Leaderboard] Rate limit detected, skipping fallback to avoid further issues')
+        setLeaderboardData([])
+        setLoading(false)
+        return
+      }
+      
       // Fallback: try without multicall if it fails (some chains don't support it)
-      console.log('[Leaderboard] Attempting fallback fetch...')
+      // But limit to top 10 players to avoid rate limiting
+      console.log('[Leaderboard] Attempting conservative fallback fetch (top 10 only)...')
       try {
         await fetchLeaderboardFallback()
       } catch (fallbackError) {
