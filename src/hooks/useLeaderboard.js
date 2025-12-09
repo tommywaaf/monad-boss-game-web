@@ -21,25 +21,10 @@ export function useLeaderboard() {
   useEffect(() => {
     const initClient = async () => {
       try {
-        // Get public client from wallet (same pattern as useGameContract)
-        // Dynamic's wallet.getPublicClient() returns a singleton, so this is the same instance
-        if (primaryWallet && isEthereumWallet(primaryWallet)) {
-          try {
-            const publicClient = await primaryWallet.getPublicClient()
-            if (publicClient) {
-              publicClientRef.current = publicClient
-              setIsClientReady(true)
-              console.log('[Leaderboard] Using wallet public client (shared RPC connection with Attack Boss & Withdraw)')
-              return
-            }
-          } catch (error) {
-            console.warn('[Leaderboard] Failed to get wallet public client:', error)
-          }
-        }
-        
-        // Fallback: Create direct RPC client if no wallet is connected
-        // This allows leaderboard to work even without wallet connection
-        console.log('[Leaderboard] No wallet connected, creating direct RPC client for read-only access')
+        // IMPORTANT: Always use a separate direct RPC client for leaderboard reads
+        // This prevents leaderboard reads from interfering with write operations (Attack Boss, Withdraw)
+        // Using the same connection for reads and writes can cause RPC endpoint issues
+        console.log('[Leaderboard] Creating dedicated RPC client for read-only leaderboard access')
         const monadChain = defineChain({
           id: 143,
           name: 'Monad',
@@ -195,6 +180,22 @@ export function useLeaderboard() {
       return
     }
 
+    // Don't fetch if RPC is having issues (check for recent errors)
+    // This prevents hammering a failing RPC endpoint
+    if (publicClientRef.current && typeof publicClientRef.current.getBlockNumber === 'function') {
+      try {
+        // Quick health check - if this fails, RPC is having issues
+        await Promise.race([
+          publicClientRef.current.getBlockNumber(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('RPC timeout')), 2000))
+        ])
+      } catch (error) {
+        console.warn('[Leaderboard] RPC health check failed, skipping fetch to avoid further issues:', error.message)
+        setLoading(false)
+        return
+      }
+    }
+
     // Validate contract address
     if (!GAME_CONTRACT_ADDRESS || GAME_CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
       console.error('[Leaderboard] Contract address not set! Please set VITE_CONTRACT_ADDRESS in .env')
@@ -340,12 +341,19 @@ export function useLeaderboard() {
     }
   }, [fetchLeaderboardFallback])
 
-  // Initial fetch when client is ready
+  // Initial fetch when client is ready (only once per wallet address)
+  const lastFetchedAddressRef = useRef(null)
   useEffect(() => {
-    if (isClientReady && publicClientRef.current) {
+    const currentAddress = primaryWallet?.address
+    const shouldFetch = isClientReady && 
+                       publicClientRef.current && 
+                       currentAddress !== lastFetchedAddressRef.current
+    
+    if (shouldFetch) {
       console.log('[Leaderboard] Client ready, fetching leaderboard...')
+      lastFetchedAddressRef.current = currentAddress
       fetchLeaderboard()
-    } else {
+    } else if (!isClientReady) {
       console.log('[Leaderboard] Waiting for client...', { isClientReady, hasClient: !!publicClientRef.current })
       // Set a timeout to stop loading if client never initializes (e.g., network issues)
       const timeout = setTimeout(() => {
@@ -356,7 +364,7 @@ export function useLeaderboard() {
       }, 10000) // 10 second timeout
       return () => clearTimeout(timeout)
     }
-  }, [isClientReady, fetchLeaderboard])
+  }, [isClientReady, primaryWallet?.address]) // Only fetch when client becomes ready or address changes
 
   const refetchLeaderboard = useCallback(async () => {
     await fetchLeaderboard()
