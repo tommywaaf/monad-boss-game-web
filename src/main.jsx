@@ -1,7 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { DynamicContextProvider, mergeNetworks } from '@dynamic-labs/sdk-react-core'
-import { EthereumWalletConnectorsWithConfig } from '@dynamic-labs/ethereum'
+import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
+import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
+import { WagmiProvider } from 'wagmi'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { wagmiConfig } from './config/wagmi'
 import './index.css'
 import App from './App.jsx'
 
@@ -12,9 +16,10 @@ if (!dynamicEnvironmentId) {
   console.warn('VITE_DYNAMIC_ENVIRONMENT_ID is not set. Dynamic embedded wallets will not work.')
 }
 
+// Create React Query client
+const queryClient = new QueryClient()
+
 // Monad network configuration for Dynamic
-// Note: Icon URL must be publicly accessible. Update this after deploying your app
-// or configure the Monad network in your Dynamic dashboard for custom icons.
 const monadNetwork = {
   blockExplorerUrls: ['https://monad.socialscan.io'],
   chainId: 143,
@@ -73,16 +78,7 @@ if (!dynamicEnvironmentId) {
       <DynamicContextProvider
         settings={{
           environmentId: dynamicEnvironmentId,
-          walletConnectors: [
-            // Configure viem transport to disable internal retries
-            // This prevents the "RPC endpoint returned too many errors" issue
-            EthereumWalletConnectorsWithConfig({
-              httpTransportConfig: {
-                retryCount: 0, // Disable viem's internal retry mechanism
-                timeout: 30000, // 30 second timeout
-              },
-            })
-          ],
+          walletConnectors: [EthereumWalletConnectors],
           overrides: {
             evmNetworks: (networks) => {
               // Merge Monad network with dashboard networks, putting Monad first
@@ -99,7 +95,13 @@ if (!dynamicEnvironmentId) {
           walletConnectPreferredChains: ['eip155:143'], // Prefer Monad for WalletConnect
         }}
       >
-        <App />
+        <WagmiProvider config={wagmiConfig}>
+          <QueryClientProvider client={queryClient}>
+            <DynamicWagmiConnector>
+              <App />
+            </DynamicWagmiConnector>
+          </QueryClientProvider>
+        </WagmiProvider>
       </DynamicContextProvider>
     </StrictMode>,
   )

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { useGameContract } from '../hooks/useGameContract'
+import { useSendTransaction, useWaitForTransactionReceipt, usePublicClient, useAccount } from 'wagmi'
 import './WithdrawModal.css'
 
 // Helper to format balance for display
@@ -22,42 +21,49 @@ const parseMonToWei = (value) => {
 }
 
 function WithdrawModal({ onClose, currentBalance }) {
-  const { primaryWallet } = useDynamicContext()
-  // Use shared wallet clients from GameContractProvider - these are already working!
-  const { walletClient: sharedWalletClient, publicClient: sharedPublicClient } = useGameContract()
+  const { address } = useAccount()
+  const publicClient = usePublicClient()
+  
+  // Use wagmi's useSendTransaction hook
+  const { sendTransaction, data: hash, isPending, error: txError } = useSendTransaction()
+  
+  // Use wagmi's useWaitForTransactionReceipt hook
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash,
+    query: {
+      enabled: !!hash,
+    }
+  })
+  
   const [toAddress, setToAddress] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
-  const [isPending, setIsPending] = useState(false)
-  const [isConfirming, setIsConfirming] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [hash, setHash] = useState(null)
-  
-  // Use the shared clients from useGameContract
-  const walletClient = sharedWalletClient
-  const publicClient = sharedPublicClient
 
-  // Watch for transaction confirmation
+  // Close modal after successful transaction
   useEffect(() => {
-    if (hash && publicClient) {
-      const waitForReceipt = async () => {
-        try {
-          setIsConfirming(true)
-          await publicClient.waitForTransactionReceipt({ hash })
-          setIsConfirming(false)
-          setIsSuccess(true)
-          setTimeout(() => {
-            onClose()
-          }, 2000)
-        } catch (error) {
-          console.error('Transaction failed:', error)
-          setIsConfirming(false)
-          setError('Transaction failed. Please try again.')
-        }
-      }
-      waitForReceipt()
+    if (isSuccess) {
+      setTimeout(() => {
+        onClose()
+      }, 2000)
     }
-  }, [hash, publicClient, onClose])
+  }, [isSuccess, onClose])
+
+  // Set error from transaction error
+  useEffect(() => {
+    if (txError) {
+      let errorMessage = 'Transaction failed. Please try again.'
+      if (txError.message?.includes('User rejected') || txError.message?.includes('rejected')) {
+        errorMessage = 'Transaction was rejected by user.'
+      } else if (txError.message?.includes('insufficient funds') || txError.message?.includes('Insufficient')) {
+        errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
+      } else if (txError.message?.includes('EVM network not found')) {
+        errorMessage = 'Network not configured. Please switch to Monad network and try again.'
+      } else if (txError.message) {
+        errorMessage = txError.message.slice(0, 100)
+      }
+      setError(errorMessage)
+    }
+  }, [txError])
 
   const validateAddress = (addr) => {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
@@ -86,14 +92,13 @@ function WithdrawModal({ onClose, currentBalance }) {
       const gasEstimate = await publicClient.estimateGas({
         to: toAddress,
         value: currentBalance,
-        account: primaryWallet?.address,
+        account: address,
       })
       
       // Get current gas price
       const gasPrice = await publicClient.getGasPrice()
       
       // Calculate estimated fee with 100% buffer for safety (2x the estimate)
-      // This accounts for gas price fluctuations
       const estimatedFee = (gasEstimate * gasPrice * BigInt(200)) / BigInt(100)
       
       // Calculate max sendable amount
@@ -119,7 +124,7 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
   }
 
-  const handleWithdraw = async () => {
+  const handleWithdraw = () => {
     setError('')
     
     if (!toAddress) {
@@ -149,51 +154,23 @@ function WithdrawModal({ onClose, currentBalance }) {
       return
     }
 
-    if (!primaryWallet) {
-      setError('Wallet not ready. Please wait a moment and try again.')
+    if (!address) {
+      setError('Wallet not connected. Please connect your wallet and try again.')
       return
     }
 
-    try {
-      setIsPending(true)
-      console.log('[WithdrawModal] Initiating withdrawal to:', toAddress, 'amount:', amount, 'MON')
-      
-      // Convert amount to wei
-      const amountWei = parseMonToWei(amount)
-      
-      // Use the shared wallet client from useGameContract
-      if (!walletClient) {
-        throw new Error('Wallet not ready. Please wait a moment and try again.')
-      }
-      
-      // Use sendTransaction for native token transfer
-      const txHash = await walletClient.sendTransaction({
-        to: toAddress,
-        value: amountWei,
-        account: primaryWallet.address,
-      })
-      
-      console.log('[WithdrawModal] Transaction submitted:', txHash)
-      setHash(txHash)
-      setIsPending(false)
-    } catch (err) {
-      console.error('[WithdrawModal] Withdrawal error:', err)
-      let errorMessage = 'Transaction failed. Please try again.'
-      if (err.message?.includes('User rejected') || err.message?.includes('rejected')) {
-        errorMessage = 'Transaction was rejected by user.'
-      } else if (err.message?.includes('insufficient funds') || err.message?.includes('Insufficient')) {
-        errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
-      } else if (err.message?.includes('EVM network not found')) {
-        errorMessage = 'Network not configured. Please switch to Monad network and try again.'
-      } else if (err.message) {
-        errorMessage = err.message.slice(0, 100)
-      }
-      setError(errorMessage)
-      setIsPending(false)
-    }
+    console.log('[WithdrawModal] Initiating withdrawal to:', toAddress, 'amount:', amount, 'MON')
+    
+    // Convert amount to wei and send transaction
+    const amountWei = parseMonToWei(amount)
+    
+    sendTransaction({
+      to: toAddress,
+      value: amountWei,
+    })
   }
 
-  const walletReady = !!primaryWallet && !!walletClient
+  const walletReady = !!address
   const formattedBalance = currentBalance ? formatBalance(currentBalance) : '0'
 
   return createPortal(
@@ -304,4 +281,3 @@ function WithdrawModal({ onClose, currentBalance }) {
 }
 
 export default WithdrawModal
-
