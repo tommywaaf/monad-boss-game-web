@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import WalletConnect from './components/WalletConnect'
 import BossFight from './components/BossFight'
 import Inventory from './components/Inventory'
-import Leaderboard from './components/Leaderboard'
+// import Leaderboard from './components/Leaderboard' // DISABLED - causing RPC issues
 import { GameContractProvider } from './hooks/useGameContract'
 // import { useDynamicWalletFund } from './hooks/useDynamicWalletFund' // Disabled - funding removed for now
 import { GAME_CONTRACT_ADDRESS } from './config/gameContract'
@@ -198,18 +198,12 @@ function App() {
         )}
 
         {isConnected && isMonadNetwork && isContractDeployed && (
-          <>
-            <div className="game-section">
-              <div className="game-grid">
-                <BossFight />
-                <Inventory />
-              </div>
+          <div className="game-section">
+            <div className="game-grid">
+              <BossFight />
+              <Inventory />
             </div>
-            
-            <div className="game-section">
-              <Leaderboard />
-            </div>
-          </>
+          </div>
         )}
       </main>
 
