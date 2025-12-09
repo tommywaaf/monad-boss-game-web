@@ -1,7 +1,7 @@
-import { useReadContract, useWriteContract, useWatchContractEvent, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
-import { useState, useEffect, useCallback, createContext, useContext } from 'react'
-import { formatEther } from 'viem'
+import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
+import { formatEther, decodeEventLog } from 'viem'
 
 // Create context for sharing game state
 const GameContractContext = createContext(null)
@@ -20,11 +20,12 @@ export function GameContractProvider({ children }) {
   const { address } = useAccount()
   const { writeContract, data: txHash, isPending: isWriting, reset, error: writeError } = useWriteContract()
   const [lastEvent, setLastEvent] = useState(null)
-  const [txStatus, setTxStatus] = useState(null) // 'preparing' | 'pending' | 'submitted' | 'confirming' | 'confirmed' | 'waiting-event'
+  const [txStatus, setTxStatus] = useState(null)
   const [inventoryVersion, setInventoryVersion] = useState(0)
+  const processedTxRef = useRef(null) // Track which tx we've processed
 
-  // Wait for transaction receipt
-  const { isLoading: isConfirming, isSuccess: isConfirmed, error: receiptError } = useWaitForTransactionReceipt({
+  // Wait for transaction receipt - get the full receipt data
+  const { isLoading: isConfirming, isSuccess: isConfirmed, error: receiptError, data: receipt } = useWaitForTransactionReceipt({
     hash: txHash,
     query: {
       enabled: !!txHash,
@@ -42,6 +43,8 @@ export function GameContractProvider({ children }) {
     args: address ? [address] : undefined,
     query: {
       enabled: !!address,
+      staleTime: 30000,
+      refetchOnWindowFocus: false,
     }
   })
 
@@ -53,6 +56,8 @@ export function GameContractProvider({ children }) {
     args: address ? [address] : undefined,
     query: {
       enabled: !!address,
+      staleTime: 30000,
+      refetchOnWindowFocus: false,
     }
   })
 
@@ -61,6 +66,10 @@ export function GameContractProvider({ children }) {
     address: GAME_CONTRACT_ADDRESS,
     abi: GAME_CONTRACT_ABI,
     functionName: 'totalBossesKilled',
+    query: {
+      staleTime: 60000,
+      refetchOnWindowFocus: false,
+    }
   })
 
   // Read rake fee
@@ -68,31 +77,67 @@ export function GameContractProvider({ children }) {
     address: GAME_CONTRACT_ADDRESS,
     abi: GAME_CONTRACT_ABI,
     functionName: 'RAKE_FEE',
-  })
-
-  // Watch for BossKilled event
-  useWatchContractEvent({
-    address: GAME_CONTRACT_ADDRESS,
-    abi: GAME_CONTRACT_ABI,
-    eventName: 'BossKilled',
-    onLogs(logs) {
-      const log = logs[0]
-      if (log && log.args.player?.toLowerCase() === address?.toLowerCase()) {
-        setLastEvent({
-          type: 'success',
-          tier: Number(log.args.tier),
-          itemId: log.args.itemId?.toString(),
-          baseRoll: log.args.baseRoll?.toString(),
-          baseTier: Number(log.args.baseTier),
-          upgraded: log.args.upgraded
-        })
-        refetchInventory()
-        refetchBoosts()
-        refetchGlobalKills()
-        setInventoryVersion(v => v + 1)
-      }
+    query: {
+      staleTime: 300000,
+      refetchOnWindowFocus: false,
     }
   })
+
+  // Parse BossKilled event from transaction receipt
+  useEffect(() => {
+    if (!receipt || !isConfirmed || !receipt.logs) return
+    if (processedTxRef.current === receipt.transactionHash) return // Already processed
+    
+    console.log('[useGameContract] Processing receipt:', receipt.transactionHash)
+    processedTxRef.current = receipt.transactionHash
+    
+    // Find BossKilled event in logs
+    for (const log of receipt.logs) {
+      if (log.address?.toLowerCase() !== GAME_CONTRACT_ADDRESS.toLowerCase()) continue
+      
+      try {
+        const decoded = decodeEventLog({
+          abi: GAME_CONTRACT_ABI,
+          data: log.data,
+          topics: log.topics,
+        })
+        
+        console.log('[useGameContract] Decoded event:', decoded)
+        
+        if (decoded.eventName === 'BossKilled') {
+          const args = decoded.args
+          
+          // Check if this event is for the current user
+          if (args.player?.toLowerCase() === address?.toLowerCase()) {
+            console.log('[useGameContract] BossKilled event found for current user!')
+            
+            setLastEvent({
+              type: 'success',
+              tier: Number(args.tier),
+              itemId: args.itemId?.toString(),
+              baseRoll: args.baseRoll?.toString(),
+              baseTier: Number(args.baseTier),
+              upgraded: args.upgraded,
+              transactionHash: receipt.transactionHash,
+            })
+            
+            // Refetch data
+            setTimeout(() => {
+              refetchInventory()
+              refetchBoosts()
+              refetchGlobalKills()
+              setInventoryVersion(v => v + 1)
+            }, 500)
+            
+            break
+          }
+        }
+      } catch (e) {
+        // Not a BossKilled event or couldn't decode, continue
+        console.log('[useGameContract] Could not decode log:', e.message)
+      }
+    }
+  }, [receipt, isConfirmed, address, refetchInventory, refetchBoosts, refetchGlobalKills])
 
   // Track transaction status
   useEffect(() => {
@@ -104,24 +149,25 @@ export function GameContractProvider({ children }) {
       setTxStatus('submitted')
     } else if (txHash && isConfirming) {
       setTxStatus('confirming')
-    } else if (txHash && isConfirmed) {
+    } else if (txHash && isConfirmed && !lastEvent) {
       setTxStatus('confirmed')
-      // After confirmation, wait a bit for events
+      // After confirmation, wait a bit for event processing
       setTimeout(() => {
         setTxStatus('waiting-event')
       }, 500)
     } else if (!isWriting && !txHash) {
       setTxStatus(null)
     }
-  }, [isWriting, txHash, isConfirming, isConfirmed])
+  }, [isWriting, txHash, isConfirming, isConfirmed, lastEvent])
 
   // Reset status when event is received
   useEffect(() => {
-    if (lastEvent && txStatus === 'waiting-event') {
+    if (lastEvent && (txStatus === 'waiting-event' || txStatus === 'confirmed')) {
       // Event received, reset transaction tracking
       setTimeout(() => {
         setTxStatus(null)
         reset()
+        processedTxRef.current = null
       }, 1000)
     }
   }, [lastEvent, txStatus, reset])
@@ -136,6 +182,7 @@ export function GameContractProvider({ children }) {
     console.log('[killBoss] Value:', rakeFeeWei.toString(), 'wei')
     setTxStatus('preparing')
     setLastEvent(null)
+    processedTxRef.current = null
     writeContract({
       address: GAME_CONTRACT_ADDRESS,
       abi: GAME_CONTRACT_ABI,
@@ -148,6 +195,7 @@ export function GameContractProvider({ children }) {
     reset()
     setTxStatus(null)
     setLastEvent(null)
+    processedTxRef.current = null
   }, [reset])
 
   // Parse inventory
@@ -157,20 +205,17 @@ export function GameContractProvider({ children }) {
   })) : []
 
   // Parse boosts
-  const rarityBoost = boosts ? Number(boosts[0]) / 100 : 0 // Convert bps to percentage
+  const rarityBoost = boosts ? Number(boosts[0]) / 100 : 0
 
   const rakeFeeMon = rakeFeeWei ? formatEther(rakeFeeWei) : '0'
 
   const value = {
-    // Inventory
     inventory: inventoryItems,
     refetchInventory,
     inventoryVersion,
-    // Stats
     rarityBoost,
     rakeFeeMon,
     globalBossesKilled: globalKills ? Number(globalKills) : 0,
-    // Transaction
     killBoss,
     isKilling: isWriting || isConfirming || !!txStatus,
     txStatus,
@@ -179,7 +224,6 @@ export function GameContractProvider({ children }) {
     isConfirming,
     isConfirmed,
     resetTransaction,
-    // Events
     lastEvent,
     clearLastEvent: () => setLastEvent(null),
   }
