@@ -161,17 +161,51 @@ function WithdrawModal({ onClose, currentBalance }) {
       // Convert amount to wei
       const amountWei = parseMonToWei(amount)
       
-      // Use the shared wallet client from useGameContract
-      if (!walletClient) {
+      // Get fresh wallet client to avoid rate limit issues
+      // Don't use the shared client which might have rate limit state
+      const { isEthereumWallet } = await import('@dynamic-labs/ethereum')
+      if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
         throw new Error('Wallet not ready. Please wait a moment and try again.')
       }
       
-      // Use sendTransaction for native token transfer
-      const txHash = await walletClient.sendTransaction({
-        to: toAddress,
-        value: amountWei,
-        account: primaryWallet.address,
-      })
+      // Use sendTransaction for native token transfer with retry logic
+      let txHash
+      let retryCount = 0
+      const maxRetries = 3
+      
+      while (retryCount < maxRetries) {
+        try {
+          // Get fresh wallet client for each attempt
+          const freshWalletClient = await primaryWallet.getWalletClient()
+          if (!freshWalletClient) {
+            throw new Error('Wallet not ready. Please wait a moment and try again.')
+          }
+          
+          txHash = await freshWalletClient.sendTransaction({
+            to: toAddress,
+            value: amountWei,
+            account: primaryWallet.address,
+          })
+          break // Success, exit loop
+        } catch (sendError) {
+          const errorMsg = sendError.message || ''
+          const isRateLimitError = errorMsg.includes('too many errors') || 
+                                   errorMsg.includes('rate limit') ||
+                                   errorMsg.includes('retrying in')
+          
+          if (isRateLimitError && retryCount < maxRetries - 1) {
+            retryCount++
+            console.warn(`[WithdrawModal] Rate limit hit, waiting 5 seconds before retry ${retryCount}/${maxRetries}...`)
+            await new Promise(resolve => setTimeout(resolve, 5000))
+          } else {
+            throw sendError
+          }
+        }
+      }
+      
+      if (!txHash) {
+        throw new Error('Failed to submit transaction after retries')
+      }
       
       console.log('[WithdrawModal] Transaction submitted:', txHash)
       setHash(txHash)
@@ -185,6 +219,8 @@ function WithdrawModal({ onClose, currentBalance }) {
         errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
       } else if (err.message?.includes('EVM network not found')) {
         errorMessage = 'Network not configured. Please switch to Monad network and try again.'
+      } else if (err.message?.includes('too many errors') || err.message?.includes('rate limit')) {
+        errorMessage = 'RPC rate limit reached. Please wait a minute and try again.'
       } else if (err.message) {
         errorMessage = err.message.slice(0, 100)
       }

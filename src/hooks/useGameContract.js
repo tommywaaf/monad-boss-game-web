@@ -309,22 +309,18 @@ function useProvideGameContract() {
       setIsWriting(true)
       setTxError(null)
 
-      // Ensure clients are initialized (refresh if needed)
-      let walletClient = walletClientRef.current
-      let publicClient = publicClientRef.current
-
+      // Always get fresh clients to avoid rate-limit state issues
+      // viem tracks rate limit state internally, so we need fresh clients if previous ones failed
+      console.log('[killBoss] Getting fresh wallet clients...')
+      let walletClient = await primaryWallet.getWalletClient()
+      let publicClient = await primaryWallet.getPublicClient()
+      
       if (!walletClient || !publicClient) {
-        console.log('[killBoss] Clients not ready, initializing...')
-        walletClient = await primaryWallet.getWalletClient()
-        publicClient = await primaryWallet.getPublicClient()
-        
-        if (!walletClient || !publicClient) {
-          throw new Error('Failed to initialize wallet clients. Please try again.')
-        }
-        
-        walletClientRef.current = walletClient
-        publicClientRef.current = publicClient
+        throw new Error('Failed to initialize wallet clients. Please try again.')
       }
+      
+      walletClientRef.current = walletClient
+      publicClientRef.current = publicClient
 
       console.log('[killBoss] Writing contract transaction...')
       console.log('[killBoss] Contract:', GAME_CONTRACT_ADDRESS)
@@ -332,13 +328,49 @@ function useProvideGameContract() {
       console.log('[killBoss] Value:', parseEther(rakeFeeMon).toString(), 'wei')
 
       // Write contract - this should trigger Dynamic's signature modal
-      const hash = await walletClient.writeContract({
-        address: GAME_CONTRACT_ADDRESS,
-        abi: GAME_CONTRACT_ABI,
-        functionName: 'killBoss',
-        value: parseEther(rakeFeeMon),
-        account: primaryWallet.address,
-      })
+      // Add retry logic for rate limit errors
+      let hash
+      let retryCount = 0
+      const maxRetries = 3
+      
+      while (retryCount < maxRetries) {
+        try {
+          hash = await walletClient.writeContract({
+            address: GAME_CONTRACT_ADDRESS,
+            abi: GAME_CONTRACT_ABI,
+            functionName: 'killBoss',
+            value: parseEther(rakeFeeMon),
+            account: primaryWallet.address,
+          })
+          break // Success, exit loop
+        } catch (writeError) {
+          const errorMsg = writeError.message || ''
+          const isRateLimitError = errorMsg.includes('too many errors') || 
+                                   errorMsg.includes('rate limit') ||
+                                   errorMsg.includes('retrying in')
+          
+          if (isRateLimitError && retryCount < maxRetries - 1) {
+            retryCount++
+            console.warn(`[killBoss] Rate limit hit, waiting 5 seconds before retry ${retryCount}/${maxRetries}...`)
+            
+            // Wait 5 seconds before retrying
+            await new Promise(resolve => setTimeout(resolve, 5000))
+            
+            // Get completely fresh clients for retry
+            console.log('[killBoss] Getting fresh clients for retry...')
+            walletClient = await primaryWallet.getWalletClient()
+            publicClient = await primaryWallet.getPublicClient()
+            walletClientRef.current = walletClient
+            publicClientRef.current = publicClient
+          } else {
+            throw writeError // Re-throw if not rate limit or max retries reached
+          }
+        }
+      }
+      
+      if (!hash) {
+        throw new Error('Failed to submit transaction after retries')
+      }
 
       console.log('[killBoss] Transaction hash:', hash)
       setTxHash(hash)
@@ -346,9 +378,39 @@ function useProvideGameContract() {
       setIsWriting(false)
       setIsConfirming(true)
 
-      // Wait for transaction receipt
+      // Wait for transaction receipt with retry logic
       console.log('[killBoss] Waiting for transaction receipt...')
-      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+      let receipt
+      let receiptRetryCount = 0
+      const maxReceiptRetries = 3
+      
+      while (receiptRetryCount < maxReceiptRetries) {
+        try {
+          receipt = await publicClient.waitForTransactionReceipt({ hash })
+          break
+        } catch (receiptError) {
+          const errorMsg = receiptError.message || ''
+          const isRateLimitError = errorMsg.includes('too many errors') || 
+                                   errorMsg.includes('rate limit') ||
+                                   errorMsg.includes('retrying in')
+          
+          if (isRateLimitError && receiptRetryCount < maxReceiptRetries - 1) {
+            receiptRetryCount++
+            console.warn(`[killBoss] Rate limit on receipt, waiting 5 seconds before retry ${receiptRetryCount}/${maxReceiptRetries}...`)
+            await new Promise(resolve => setTimeout(resolve, 5000))
+            
+            // Get fresh public client
+            publicClient = await primaryWallet.getPublicClient()
+            publicClientRef.current = publicClient
+          } else {
+            throw receiptError
+          }
+        }
+      }
+      
+      if (!receipt) {
+        throw new Error('Failed to get transaction receipt after retries')
+      }
       console.log('[killBoss] Transaction receipt:', receipt)
       
       setIsConfirming(false)
