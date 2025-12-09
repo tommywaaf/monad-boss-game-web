@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import React from 'react'
-import { useGameContract } from '../hooks/useGameContract'
+import { useGameContract } from '../hooks/useGameContract.jsx'
 import { ITEM_TIERS } from '../config/gameContract'
 import ItemModal from './ItemModal'
 import './Inventory.css'

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useGameContract } from '../hooks/useGameContract'
+import { useGameContract } from '../hooks/useGameContract.jsx'
 import { ITEM_TIERS } from '../config/gameContract'
 import BossKillStats from './BossKillStats'
 import RollDisplay from './RollDisplay'
