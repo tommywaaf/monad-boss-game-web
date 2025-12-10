@@ -1,20 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { isEthereumWallet } from '@dynamic-labs/ethereum'
-import { monad } from '../config/wagmi'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
-  const { address } = useAccount()
-  const { primaryWallet } = useDynamicContext()
+  const { address, connector } = useAccount()
   
-  // Track transaction state manually since we use Dynamic's wallet client
-  const [hash, setHash] = useState(null)
-  const [isPending, setIsPending] = useState(false)
-  const [txError, setTxError] = useState(null)
-  
+  // Use wagmi hooks with explicit connector - DynamicWagmiConnector handles wallet client internally
+  const { writeContract, data: hash, isPending, error: txError, reset } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
     query: { enabled: !!hash }
@@ -22,13 +15,6 @@ function TransferModal({ item, onClose, onSuccess }) {
   
   const [toAddress, setToAddress] = useState('')
   const [error, setError] = useState('')
-  
-  // Reset function to clear transaction state
-  const reset = () => {
-    setHash(null)
-    setIsPending(false)
-    setTxError(null)
-  }
 
   // Handle transaction error
   useEffect(() => {
@@ -62,9 +48,8 @@ function TransferModal({ item, onClose, onSuccess }) {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
   }
 
-  const handleTransfer = async () => {
+  const handleTransfer = () => {
     setError('')
-    setTxError(null)
     
     if (!toAddress) {
       setError('Please enter an address')
@@ -76,40 +61,25 @@ function TransferModal({ item, onClose, onSuccess }) {
       return
     }
 
-    if (!address || !primaryWallet || !isEthereumWallet(primaryWallet)) {
+    if (!address || !connector) {
       setError('Wallet not connected.')
       return
     }
 
     console.log('[TransferModal] Transferring item', item.id, 'to:', toAddress)
+    console.log('[TransferModal] Using connector:', connector.name)
     
-    setIsPending(true)
-    
-    try {
-      // Use Dynamic's wallet client for transaction - works for both embedded and external wallets
-      // Don't pass chainId to getWalletClient - instead pass chain config to the transaction
-      const walletClient = await primaryWallet.getWalletClient()
-      
-      const txHash = await walletClient.writeContract({
-        address: GAME_CONTRACT_ADDRESS,
-        abi: GAME_CONTRACT_ABI,
-        functionName: 'transferItem',
-        args: [toAddress, BigInt(item.id)],
-        chain: monad,
-        account: walletClient.account,
-      })
-      
-      console.log('[TransferModal] Transaction sent:', txHash)
-      setHash(txHash)
-    } catch (err) {
-      console.error('[TransferModal] Transaction error:', err)
-      setTxError(err)
-    } finally {
-      setIsPending(false)
-    }
+    // Use wagmi's writeContract with explicit connector - DynamicWagmiConnector handles the rest
+    writeContract({
+      address: GAME_CONTRACT_ADDRESS,
+      abi: GAME_CONTRACT_ABI,
+      functionName: 'transferItem',
+      args: [toAddress, BigInt(item.id)],
+      connector, // Pass connector explicitly for Dynamic embedded wallets
+    })
   }
 
-  const clientsReady = !!address && !!primaryWallet && isEthereumWallet(primaryWallet)
+  const clientsReady = !!address && !!connector
   const tierInfo = ITEM_TIERS[item.tier]
 
   return (
