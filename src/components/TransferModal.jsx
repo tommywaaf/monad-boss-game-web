@@ -1,13 +1,21 @@
 import { useState, useEffect } from 'react'
-import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { createWalletClient, custom } from 'viem'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { monad } from '../config/wagmi'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
-  const { address, connector } = useAccount()
+  const { address } = useAccount()
+  const { primaryWallet } = useDynamicContext()
   
-  // Use wagmi hooks with explicit connector - DynamicWagmiConnector handles wallet client internally
-  const { writeContract, data: hash, isPending, error: txError, reset } = useWriteContract()
+  // Track transaction state manually
+  const [hash, setHash] = useState(null)
+  const [isPending, setIsPending] = useState(false)
+  const [txError, setTxError] = useState(null)
+  
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
     query: { enabled: !!hash }
@@ -15,6 +23,13 @@ function TransferModal({ item, onClose, onSuccess }) {
   
   const [toAddress, setToAddress] = useState('')
   const [error, setError] = useState('')
+  
+  // Reset function
+  const reset = () => {
+    setHash(null)
+    setIsPending(false)
+    setTxError(null)
+  }
 
   // Handle transaction error
   useEffect(() => {
@@ -48,8 +63,9 @@ function TransferModal({ item, onClose, onSuccess }) {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
   }
 
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
     setError('')
+    setTxError(null)
     
     if (!toAddress) {
       setError('Please enter an address')
@@ -61,25 +77,56 @@ function TransferModal({ item, onClose, onSuccess }) {
       return
     }
 
-    if (!address || !connector) {
+    if (!address || !primaryWallet || !isEthereumWallet(primaryWallet)) {
       setError('Wallet not connected.')
       return
     }
 
     console.log('[TransferModal] Transferring item', item.id, 'to:', toAddress)
-    console.log('[TransferModal] Using connector:', connector.name)
     
-    // Use wagmi's writeContract with explicit connector - DynamicWagmiConnector handles the rest
-    writeContract({
-      address: GAME_CONTRACT_ADDRESS,
-      abi: GAME_CONTRACT_ABI,
-      functionName: 'transferItem',
-      args: [toAddress, BigInt(item.id)],
-      connector, // Pass connector explicitly for Dynamic embedded wallets
-    })
+    setIsPending(true)
+    
+    try {
+      // Get wallet client, with fallback to manual creation for embedded wallets
+      const walletClient = await primaryWallet.getWalletClient()
+        .catch(async () => {
+          console.log('[TransferModal] getWalletClient failed, using provider directly')
+          const ethProvider = await primaryWallet.connector?.getProvider?.() 
+            || await primaryWallet.getEthereumProvider?.()
+          
+          if (!ethProvider) {
+            throw new Error('Could not get Ethereum provider')
+          }
+          
+          return createWalletClient({
+            account: address,
+            chain: monad,
+            transport: custom(ethProvider)
+          })
+        })
+      
+      console.log('[TransferModal] Got wallet client, sending transaction...')
+      
+      const txHash = await walletClient.writeContract({
+        address: GAME_CONTRACT_ADDRESS,
+        abi: GAME_CONTRACT_ABI,
+        functionName: 'transferItem',
+        args: [toAddress, BigInt(item.id)],
+        chain: monad,
+        account: address,
+      })
+      
+      console.log('[TransferModal] Transaction sent:', txHash)
+      setHash(txHash)
+    } catch (err) {
+      console.error('[TransferModal] Transaction error:', err)
+      setTxError(err)
+    } finally {
+      setIsPending(false)
+    }
   }
 
-  const clientsReady = !!address && !!connector
+  const clientsReady = !!address && !!primaryWallet && isEthereumWallet(primaryWallet)
   const tierInfo = ITEM_TIERS[item.tier]
 
   return (

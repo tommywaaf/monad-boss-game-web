@@ -1,7 +1,10 @@
-import { useReadContract, useWaitForTransactionReceipt, useAccount, useWriteContract } from 'wagmi'
+import { useReadContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
+import { monad } from '../config/wagmi'
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
-import { formatEther, decodeEventLog } from 'viem'
+import { formatEther, decodeEventLog, createWalletClient, custom } from 'viem'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
 
 // Create context for sharing game state
 const GameContractContext = createContext(null)
@@ -17,21 +20,25 @@ export function useGameContract() {
 
 // Provider component
 export function GameContractProvider({ children }) {
-  const { address, connector } = useAccount()
+  const { address } = useAccount()
+  const { primaryWallet } = useDynamicContext()
   
-  // Use wagmi's useWriteContract - DynamicWagmiConnector handles wallet client internally
-  const { 
-    writeContract, 
-    data: txHash, 
-    isPending: isWriting, 
-    reset, 
-    error: writeError 
-  } = useWriteContract()
+  // Track transaction state manually
+  const [txHash, setTxHash] = useState(null)
+  const [isWriting, setIsWriting] = useState(false)
+  const [writeError, setWriteError] = useState(null)
   
   const [lastEvent, setLastEvent] = useState(null)
   const [txStatus, setTxStatus] = useState(null)
   const [inventoryVersion, setInventoryVersion] = useState(0)
   const processedTxRef = useRef(null)
+  
+  // Reset function
+  const reset = useCallback(() => {
+    setTxHash(null)
+    setIsWriting(false)
+    setWriteError(null)
+  }, [])
 
   // Wait for transaction receipt
   const { isLoading: isConfirming, isSuccess: isConfirmed, data: receipt, error: receiptError } = useWaitForTransactionReceipt({
@@ -174,42 +181,76 @@ export function GameContractProvider({ children }) {
     }
   }, [lastEvent, txStatus, reset])
 
-  const killBoss = useCallback(() => {
+  const killBoss = useCallback(async () => {
     if (!rakeFeeWei) {
       console.log('[killBoss] No rake fee, cannot kill boss')
       return
     }
     
-    if (!connector) {
-      console.log('[killBoss] No connector available')
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
+      console.log('[killBoss] No wallet connected')
       return
     }
     
     console.log('[killBoss] Starting boss kill...')
     console.log('[killBoss] Contract:', GAME_CONTRACT_ADDRESS)
     console.log('[killBoss] Value:', rakeFeeWei.toString(), 'wei')
-    console.log('[killBoss] Using connector:', connector.name)
     
     setTxStatus('preparing')
     setLastEvent(null)
     processedTxRef.current = null
+    setWriteError(null)
+    setIsWriting(true)
     
-    // Use wagmi's writeContract with explicit connector - DynamicWagmiConnector handles the rest
-    writeContract({
-      address: GAME_CONTRACT_ADDRESS,
-      abi: GAME_CONTRACT_ABI,
-      functionName: 'killBoss',
-      value: rakeFeeWei,
-      connector, // Pass connector explicitly for Dynamic embedded wallets
-    })
-  }, [writeContract, rakeFeeWei, connector])
+    try {
+      // Get the Ethereum provider from Dynamic - this works for both embedded and external wallets
+      const provider = await primaryWallet.getWalletClient()
+        .catch(async () => {
+          // If getWalletClient fails (embedded wallet on custom network), 
+          // create wallet client manually from the Ethereum provider
+          console.log('[killBoss] getWalletClient failed, using provider directly')
+          const ethProvider = await primaryWallet.connector?.getProvider?.() 
+            || await primaryWallet.getEthereumProvider?.()
+          
+          if (!ethProvider) {
+            throw new Error('Could not get Ethereum provider')
+          }
+          
+          return createWalletClient({
+            account: address,
+            chain: monad,
+            transport: custom(ethProvider)
+          })
+        })
+      
+      console.log('[killBoss] Got wallet client, sending transaction...')
+      
+      const hash = await provider.writeContract({
+        address: GAME_CONTRACT_ADDRESS,
+        abi: GAME_CONTRACT_ABI,
+        functionName: 'killBoss',
+        value: rakeFeeWei,
+        chain: monad,
+        account: address,
+      })
+      
+      console.log('[killBoss] Transaction sent:', hash)
+      setTxHash(hash)
+    } catch (err) {
+      console.error('[killBoss] Transaction error:', err)
+      setWriteError(err)
+      setTxStatus(null)
+    } finally {
+      setIsWriting(false)
+    }
+  }, [primaryWallet, rakeFeeWei, address])
 
   const resetTransaction = useCallback(() => {
     reset()
     setTxStatus(null)
     setLastEvent(null)
     processedTxRef.current = null
-  }, [reset])
+  }, [])
 
   // Parse inventory
   const inventoryItems = inventory ? inventory.map(item => ({
