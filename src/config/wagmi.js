@@ -12,7 +12,7 @@ export const monad = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ['https://monad-mainnet.infura.io'],
+      http: ['https://rpc.monad.xyz/'],
     },
   },
   blockExplorers: {
@@ -28,7 +28,7 @@ export const wagmiConfig = createConfig({
   chains: [monad],
   multiInjectedProviderDiscovery: false, // Dynamic handles this
   transports: {
-    [monad.id]: http('https://monad-mainnet.infura.io', {
+    [monad.id]: http('https://rpc.monad.xyz/', {
       retryCount: 0, // Disable retries to prevent rate limit blocking
       timeout: 30000,
     }),

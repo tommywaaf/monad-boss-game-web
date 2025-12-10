@@ -27,7 +27,7 @@ const monadNetwork = {
   chainName: 'Monad Testnet', // Required for internal lookup
   name: 'Monad',
   vanityName: 'Monad',
-  rpcUrls: ['https://monad-mainnet.infura.io'],
+  rpcUrls: ['https://rpc.monad.xyz/'],
   iconUrls: ['https://monad.socialscan.io/favicon-32x32.png'],
   nativeCurrency: {
     name: 'Monad',

@@ -10,10 +10,10 @@ export const monad = {
   },
   rpcUrls: {
     default: {
-      http: ['https://monad-mainnet.infura.io'],
+      http: ['https://rpc.monad.xyz/'],
     },
     public: {
-      http: ['https://monad-mainnet.infura.io'],
+      http: ['https://rpc.monad.xyz/'],
     },
   },
   blockExplorers: {
