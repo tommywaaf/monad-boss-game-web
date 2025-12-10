@@ -1,34 +1,21 @@
 import { useState, useEffect } from 'react'
-import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
-import { monad } from '../config/wagmi'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
-  const { address } = useAccount()
   const { primaryWallet } = useDynamicContext()
+  const address = primaryWallet?.address
   
-  // Track transaction state manually
   const [hash, setHash] = useState(null)
   const [isPending, setIsPending] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
   const [txError, setTxError] = useState(null)
-  
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-    query: { enabled: !!hash }
-  })
   
   const [toAddress, setToAddress] = useState('')
   const [error, setError] = useState('')
-  
-  // Reset function
-  const reset = () => {
-    setHash(null)
-    setIsPending(false)
-    setTxError(null)
-  }
 
   // Handle transaction error
   useEffect(() => {
@@ -50,13 +37,12 @@ function TransferModal({ item, onClose, onSuccess }) {
     if (isSuccess) {
       if (onSuccess) {
         setTimeout(() => {
-          reset()
           onSuccess()
           onClose()
         }, 1000)
       }
     }
-  }, [isSuccess, onSuccess, onClose, reset])
+  }, [isSuccess, onSuccess, onClose])
 
   const validateAddress = (addr) => {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
@@ -76,73 +62,48 @@ function TransferModal({ item, onClose, onSuccess }) {
       return
     }
 
-    if (!address || !primaryWallet || !isEthereumWallet(primaryWallet)) {
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
       setError('Wallet not connected.')
       return
     }
 
     console.log('[TransferModal] Transferring item', item.id, 'to:', toAddress)
-    console.log('[TransferModal] Wallet type:', primaryWallet.connector?.name)
     
     setIsPending(true)
     
     try {
-      // Try multiple methods to get wallet client
-      let walletClient
-      
-      // Method 1: Try connector's getWalletClient
-      try {
-        console.log('[TransferModal] Trying connector.getWalletClient()...')
-        walletClient = await primaryWallet.connector?.getWalletClient?.()
-        if (walletClient) console.log('[TransferModal] Got wallet client from connector')
-      } catch (e) {
-        console.log('[TransferModal] connector.getWalletClient failed:', e.message)
-      }
-      
-      // Method 2: Try wallet's getWalletClient with chainId
-      if (!walletClient) {
-        try {
-          console.log('[TransferModal] Trying wallet.getWalletClient("143")...')
-          walletClient = await primaryWallet.getWalletClient('143')
-          if (walletClient) console.log('[TransferModal] Got wallet client with chainId')
-        } catch (e) {
-          console.log('[TransferModal] wallet.getWalletClient("143") failed:', e.message)
-        }
-      }
-      
-      // Method 3: Try wallet's getWalletClient without chainId
-      if (!walletClient) {
-        try {
-          console.log('[TransferModal] Trying wallet.getWalletClient()...')
-          walletClient = await primaryWallet.getWalletClient()
-          if (walletClient) console.log('[TransferModal] Got wallet client without chainId')
-        } catch (e) {
-          console.log('[TransferModal] wallet.getWalletClient() failed:', e.message)
-        }
-      }
+      const walletClient = await primaryWallet.getWalletClient()
+      const publicClient = await primaryWallet.getPublicClient()
       
       if (!walletClient) {
-        throw new Error('Could not get wallet client from any method')
+        throw new Error('Could not get wallet client')
       }
-      
-      console.log('[TransferModal] Sending transaction with wallet client...')
-      
+
       const txHash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
         functionName: 'transferItem',
         args: [toAddress, BigInt(item.id)],
-        chain: monad,
         account: address,
       })
       
       console.log('[TransferModal] Transaction sent:', txHash)
       setHash(txHash)
+      setIsPending(false)
+      setIsConfirming(true)
+
+      // Wait for receipt
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
+      }
+      
+      setIsConfirming(false)
+      setIsSuccess(true)
     } catch (err) {
       console.error('[TransferModal] Transaction error:', err)
       setTxError(err)
-    } finally {
       setIsPending(false)
+      setIsConfirming(false)
     }
   }
 

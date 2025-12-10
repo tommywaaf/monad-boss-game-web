@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { parseEther } from 'viem'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
-import { monad } from '../config/wagmi'
 import './WithdrawModal.css'
 
 // Helper to format balance for display
@@ -18,29 +16,18 @@ const formatBalance = (balance) => {
 }
 
 function WithdrawModal({ onClose, currentBalance }) {
-  const { address } = useAccount()
   const { primaryWallet } = useDynamicContext()
+  const address = primaryWallet?.address
   
-  // Track transaction state manually
   const [hash, setHash] = useState(null)
   const [isPending, setIsPending] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
   const [txError, setTxError] = useState(null)
-  
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-    query: { enabled: !!hash }
-  })
   
   const [toAddress, setToAddress] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
-  
-  // Reset function
-  const reset = () => {
-    setHash(null)
-    setIsPending(false)
-    setTxError(null)
-  }
 
   // Handle transaction error
   useEffect(() => {
@@ -61,11 +48,10 @@ function WithdrawModal({ onClose, currentBalance }) {
   useEffect(() => {
     if (isSuccess) {
       setTimeout(() => {
-        reset()
         onClose()
       }, 2000)
     }
-  }, [isSuccess, onClose, reset])
+  }, [isSuccess, onClose])
 
   const validateAddress = (addr) => {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
@@ -73,7 +59,6 @@ function WithdrawModal({ onClose, currentBalance }) {
 
   const handleSetMax = () => {
     if (!currentBalance) return
-    // Leave 0.015 MON for gas
     const maxAmount = Number(currentBalance) / 1e18 - 0.015
     if (maxAmount > 0) {
       setAmount(maxAmount.toFixed(6))
@@ -109,71 +94,46 @@ function WithdrawModal({ onClose, currentBalance }) {
       return
     }
 
-    if (!address || !primaryWallet || !isEthereumWallet(primaryWallet)) {
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
       setError('Wallet not connected.')
       return
     }
 
     console.log('[WithdrawModal] Sending transaction to:', toAddress, 'amount:', amount, 'MON')
-    console.log('[WithdrawModal] Wallet type:', primaryWallet.connector?.name)
     
     setIsPending(true)
     
     try {
-      // Try multiple methods to get wallet client
-      let walletClient
-      
-      // Method 1: Try connector's getWalletClient
-      try {
-        console.log('[WithdrawModal] Trying connector.getWalletClient()...')
-        walletClient = await primaryWallet.connector?.getWalletClient?.()
-        if (walletClient) console.log('[WithdrawModal] Got wallet client from connector')
-      } catch (e) {
-        console.log('[WithdrawModal] connector.getWalletClient failed:', e.message)
-      }
-      
-      // Method 2: Try wallet's getWalletClient with chainId
-      if (!walletClient) {
-        try {
-          console.log('[WithdrawModal] Trying wallet.getWalletClient("143")...')
-          walletClient = await primaryWallet.getWalletClient('143')
-          if (walletClient) console.log('[WithdrawModal] Got wallet client with chainId')
-        } catch (e) {
-          console.log('[WithdrawModal] wallet.getWalletClient("143") failed:', e.message)
-        }
-      }
-      
-      // Method 3: Try wallet's getWalletClient without chainId
-      if (!walletClient) {
-        try {
-          console.log('[WithdrawModal] Trying wallet.getWalletClient()...')
-          walletClient = await primaryWallet.getWalletClient()
-          if (walletClient) console.log('[WithdrawModal] Got wallet client without chainId')
-        } catch (e) {
-          console.log('[WithdrawModal] wallet.getWalletClient() failed:', e.message)
-        }
-      }
+      const walletClient = await primaryWallet.getWalletClient()
+      const publicClient = await primaryWallet.getPublicClient()
       
       if (!walletClient) {
-        throw new Error('Could not get wallet client from any method')
+        throw new Error('Could not get wallet client')
       }
-      
-      console.log('[WithdrawModal] Sending transaction with wallet client...')
-      
+
       const txHash = await walletClient.sendTransaction({
         to: toAddress,
         value: parseEther(amount),
-        chain: monad,
         account: address,
       })
       
       console.log('[WithdrawModal] Transaction sent:', txHash)
       setHash(txHash)
+      setIsPending(false)
+      setIsConfirming(true)
+
+      // Wait for receipt
+      if (publicClient) {
+        await publicClient.waitForTransactionReceipt({ hash: txHash })
+      }
+      
+      setIsConfirming(false)
+      setIsSuccess(true)
     } catch (err) {
       console.error('[WithdrawModal] Transaction error:', err)
       setTxError(err)
-    } finally {
       setIsPending(false)
+      setIsConfirming(false)
     }
   }
 
