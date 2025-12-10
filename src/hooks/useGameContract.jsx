@@ -87,7 +87,8 @@ export function GameContractProvider({ children }) {
     
     try {
       console.log('[useGameContract] Getting receipt for:', hash)
-      const publicClient = await primaryWallet.getPublicClient()
+      // Pass chainId for embedded wallets on custom networks
+      const publicClient = await primaryWallet.getPublicClient('143')
       const receipt = await publicClient.waitForTransactionReceipt({ hash })
       
       console.log('[useGameContract] Receipt received:', receipt.status)
@@ -202,7 +203,8 @@ export function GameContractProvider({ children }) {
     
     try {
       // Use Dynamic's wallet client directly - works for both embedded and external wallets
-      const walletClient = await primaryWallet.getWalletClient()
+      // Pass chainId for embedded wallets on custom networks
+      const walletClient = await primaryWallet.getWalletClient('143')
       
       console.log('[killBoss] Got wallet client, sending transaction...')
       

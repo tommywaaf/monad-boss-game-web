@@ -55,7 +55,8 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
 
     try {
-      const publicClient = await primaryWallet.getPublicClient()
+      // Pass chainId for embedded wallets on custom networks
+      const publicClient = await primaryWallet.getPublicClient('143')
       
       const gasEstimate = await publicClient.estimateGas({
         to: toAddress,
@@ -128,7 +129,8 @@ function WithdrawModal({ onClose, currentBalance }) {
       const amountWei = parseMonToWei(amount)
       
       // Use Dynamic's wallet client directly - works for both embedded and external wallets
-      const walletClient = await primaryWallet.getWalletClient()
+      // Pass chainId for embedded wallets on custom networks
+      const walletClient = await primaryWallet.getWalletClient('143')
       
       console.log('[WithdrawModal] Got wallet client, sending transaction...')
       
@@ -143,8 +145,8 @@ function WithdrawModal({ onClose, currentBalance }) {
       setIsPending(false)
       setIsConfirming(true)
       
-      // Wait for receipt
-      const publicClient = await primaryWallet.getPublicClient()
+      // Wait for receipt - pass chainId for embedded wallets
+      const publicClient = await primaryWallet.getPublicClient('143')
       await publicClient.waitForTransactionReceipt({ hash: txHash })
       
       console.log('[WithdrawModal] Transaction confirmed!')

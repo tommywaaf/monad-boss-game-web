@@ -43,7 +43,8 @@ function TransferModal({ item, onClose, onSuccess }) {
       console.log('[TransferModal] Initiating transfer to:', toAddress, 'item:', item.id)
       
       // Use Dynamic's wallet client directly - works for both embedded and external wallets
-      const walletClient = await primaryWallet.getWalletClient()
+      // Pass chainId for embedded wallets on custom networks
+      const walletClient = await primaryWallet.getWalletClient('143')
       
       console.log('[TransferModal] Got wallet client, sending transaction...')
       
@@ -60,8 +61,8 @@ function TransferModal({ item, onClose, onSuccess }) {
       setIsPending(false)
       setIsConfirming(true)
       
-      // Wait for receipt
-      const publicClient = await primaryWallet.getPublicClient()
+      // Wait for receipt - pass chainId for embedded wallets
+      const publicClient = await primaryWallet.getPublicClient('143')
       await publicClient.waitForTransactionReceipt({ hash: txHash })
       
       console.log('[TransferModal] Transaction confirmed!')

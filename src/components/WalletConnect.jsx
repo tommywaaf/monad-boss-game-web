@@ -100,7 +100,8 @@ function WalletConnect() {
 
     const fetchBalance = async () => {
       try {
-        const publicClient = await primaryWallet.getPublicClient()
+        // Pass chainId for embedded wallets on custom networks
+        const publicClient = await primaryWallet.getPublicClient('143')
         if (cancelled || !publicClient || !address) return
 
         const balanceWei = await publicClient.getBalance({ address })
