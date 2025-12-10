@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
-import { createWalletClient, custom } from 'viem'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
@@ -83,29 +82,50 @@ function TransferModal({ item, onClose, onSuccess }) {
     }
 
     console.log('[TransferModal] Transferring item', item.id, 'to:', toAddress)
+    console.log('[TransferModal] Wallet type:', primaryWallet.connector?.name)
     
     setIsPending(true)
     
     try {
-      // Get wallet client, with fallback to manual creation for embedded wallets
-      const walletClient = await primaryWallet.getWalletClient()
-        .catch(async () => {
-          console.log('[TransferModal] getWalletClient failed, using provider directly')
-          const ethProvider = await primaryWallet.connector?.getProvider?.() 
-            || await primaryWallet.getEthereumProvider?.()
-          
-          if (!ethProvider) {
-            throw new Error('Could not get Ethereum provider')
-          }
-          
-          return createWalletClient({
-            account: address,
-            chain: monad,
-            transport: custom(ethProvider)
-          })
-        })
+      // Try multiple methods to get wallet client
+      let walletClient
       
-      console.log('[TransferModal] Got wallet client, sending transaction...')
+      // Method 1: Try connector's getWalletClient
+      try {
+        console.log('[TransferModal] Trying connector.getWalletClient()...')
+        walletClient = await primaryWallet.connector?.getWalletClient?.()
+        if (walletClient) console.log('[TransferModal] Got wallet client from connector')
+      } catch (e) {
+        console.log('[TransferModal] connector.getWalletClient failed:', e.message)
+      }
+      
+      // Method 2: Try wallet's getWalletClient with chainId
+      if (!walletClient) {
+        try {
+          console.log('[TransferModal] Trying wallet.getWalletClient("143")...')
+          walletClient = await primaryWallet.getWalletClient('143')
+          if (walletClient) console.log('[TransferModal] Got wallet client with chainId')
+        } catch (e) {
+          console.log('[TransferModal] wallet.getWalletClient("143") failed:', e.message)
+        }
+      }
+      
+      // Method 3: Try wallet's getWalletClient without chainId
+      if (!walletClient) {
+        try {
+          console.log('[TransferModal] Trying wallet.getWalletClient()...')
+          walletClient = await primaryWallet.getWalletClient()
+          if (walletClient) console.log('[TransferModal] Got wallet client without chainId')
+        } catch (e) {
+          console.log('[TransferModal] wallet.getWalletClient() failed:', e.message)
+        }
+      }
+      
+      if (!walletClient) {
+        throw new Error('Could not get wallet client from any method')
+      }
+      
+      console.log('[TransferModal] Sending transaction with wallet client...')
       
       const txHash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,

@@ -2,7 +2,7 @@ import { useReadContract, useWaitForTransactionReceipt, useAccount } from 'wagmi
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
 import { monad } from '../config/wagmi'
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
-import { formatEther, decodeEventLog, createWalletClient, custom } from 'viem'
+import { formatEther, decodeEventLog } from 'viem'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 
@@ -195,6 +195,7 @@ export function GameContractProvider({ children }) {
     console.log('[killBoss] Starting boss kill...')
     console.log('[killBoss] Contract:', GAME_CONTRACT_ADDRESS)
     console.log('[killBoss] Value:', rakeFeeWei.toString(), 'wei')
+    console.log('[killBoss] Wallet type:', primaryWallet.connector?.name)
     
     setTxStatus('preparing')
     setLastEvent(null)
@@ -203,29 +204,47 @@ export function GameContractProvider({ children }) {
     setIsWriting(true)
     
     try {
-      // Get the Ethereum provider from Dynamic - this works for both embedded and external wallets
-      const provider = await primaryWallet.getWalletClient()
-        .catch(async () => {
-          // If getWalletClient fails (embedded wallet on custom network), 
-          // create wallet client manually from the Ethereum provider
-          console.log('[killBoss] getWalletClient failed, using provider directly')
-          const ethProvider = await primaryWallet.connector?.getProvider?.() 
-            || await primaryWallet.getEthereumProvider?.()
-          
-          if (!ethProvider) {
-            throw new Error('Could not get Ethereum provider')
-          }
-          
-          return createWalletClient({
-            account: address,
-            chain: monad,
-            transport: custom(ethProvider)
-          })
-        })
+      // Try multiple methods to get wallet client
+      let walletClient
       
-      console.log('[killBoss] Got wallet client, sending transaction...')
+      // Method 1: Try connector's getWalletClient (works for most cases)
+      try {
+        console.log('[killBoss] Trying connector.getWalletClient()...')
+        walletClient = await primaryWallet.connector?.getWalletClient?.()
+        if (walletClient) console.log('[killBoss] Got wallet client from connector')
+      } catch (e) {
+        console.log('[killBoss] connector.getWalletClient failed:', e.message)
+      }
       
-      const hash = await provider.writeContract({
+      // Method 2: Try wallet's getWalletClient with chainId
+      if (!walletClient) {
+        try {
+          console.log('[killBoss] Trying wallet.getWalletClient("143")...')
+          walletClient = await primaryWallet.getWalletClient('143')
+          if (walletClient) console.log('[killBoss] Got wallet client with chainId')
+        } catch (e) {
+          console.log('[killBoss] wallet.getWalletClient("143") failed:', e.message)
+        }
+      }
+      
+      // Method 3: Try wallet's getWalletClient without chainId
+      if (!walletClient) {
+        try {
+          console.log('[killBoss] Trying wallet.getWalletClient()...')
+          walletClient = await primaryWallet.getWalletClient()
+          if (walletClient) console.log('[killBoss] Got wallet client without chainId')
+        } catch (e) {
+          console.log('[killBoss] wallet.getWalletClient() failed:', e.message)
+        }
+      }
+      
+      if (!walletClient) {
+        throw new Error('Could not get wallet client from any method')
+      }
+      
+      console.log('[killBoss] Sending transaction with wallet client...')
+      
+      const hash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
         functionName: 'killBoss',
