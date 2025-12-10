@@ -20,16 +20,20 @@ if (!dynamicEnvironmentId) {
 const queryClient = new QueryClient()
 
 // Monad network configuration for Dynamic
+// All required fields for custom EVM networks per Dynamic docs
 const monadNetwork = {
   blockExplorerUrls: ['https://monad.socialscan.io'],
   chainId: 143,
+  chainName: 'Monad Testnet', // Required for internal lookup
   name: 'Monad',
+  vanityName: 'Monad',
   rpcUrls: ['https://rpc.monad.xyz/'],
   iconUrls: ['https://monad.socialscan.io/favicon-32x32.png'],
   nativeCurrency: {
     name: 'Monad',
     symbol: 'MON',
     decimals: 18,
+    iconUrl: 'https://monad.socialscan.io/favicon-32x32.png',
   },
   networkId: 143,
 }

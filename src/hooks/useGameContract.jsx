@@ -202,8 +202,22 @@ export function GameContractProvider({ children }) {
     processedTxRef.current = null
     
     try {
-      // Use Dynamic's wallet client directly - works for both embedded and external wallets
-      // Pass chainId for embedded wallets on custom networks
+      // For embedded wallets, we need to switch to the Monad network first
+      const isEmbedded = primaryWallet.connector?.isEmbedded
+      console.log('[killBoss] Is embedded wallet:', isEmbedded)
+      
+      if (isEmbedded) {
+        // Switch to Monad network for embedded wallets
+        console.log('[killBoss] Switching embedded wallet to Monad network...')
+        try {
+          await primaryWallet.switchNetwork(143)
+          console.log('[killBoss] Network switched successfully')
+        } catch (switchError) {
+          console.log('[killBoss] Network switch error (may already be on network):', switchError.message)
+        }
+      }
+      
+      // Get wallet client - pass chainId as string for custom networks
       const walletClient = await primaryWallet.getWalletClient('143')
       
       console.log('[killBoss] Got wallet client, sending transaction...')

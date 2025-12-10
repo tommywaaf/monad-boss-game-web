@@ -128,8 +128,20 @@ function WithdrawModal({ onClose, currentBalance }) {
       
       const amountWei = parseMonToWei(amount)
       
-      // Use Dynamic's wallet client directly - works for both embedded and external wallets
-      // Pass chainId for embedded wallets on custom networks
+      // For embedded wallets, we need to switch to the Monad network first
+      const isEmbedded = primaryWallet.connector?.isEmbedded
+      console.log('[WithdrawModal] Is embedded wallet:', isEmbedded)
+      
+      if (isEmbedded) {
+        try {
+          await primaryWallet.switchNetwork(143)
+          console.log('[WithdrawModal] Network switched successfully')
+        } catch (switchError) {
+          console.log('[WithdrawModal] Network switch error:', switchError.message)
+        }
+      }
+      
+      // Get wallet client - pass chainId as string for custom networks
       const walletClient = await primaryWallet.getWalletClient('143')
       
       console.log('[WithdrawModal] Got wallet client, sending transaction...')

@@ -42,8 +42,20 @@ function TransferModal({ item, onClose, onSuccess }) {
       setIsPending(true)
       console.log('[TransferModal] Initiating transfer to:', toAddress, 'item:', item.id)
       
-      // Use Dynamic's wallet client directly - works for both embedded and external wallets
-      // Pass chainId for embedded wallets on custom networks
+      // For embedded wallets, we need to switch to the Monad network first
+      const isEmbedded = primaryWallet.connector?.isEmbedded
+      console.log('[TransferModal] Is embedded wallet:', isEmbedded)
+      
+      if (isEmbedded) {
+        try {
+          await primaryWallet.switchNetwork(143)
+          console.log('[TransferModal] Network switched successfully')
+        } catch (switchError) {
+          console.log('[TransferModal] Network switch error:', switchError.message)
+        }
+      }
+      
+      // Get wallet client - pass chainId as string for custom networks
       const walletClient = await primaryWallet.getWalletClient('143')
       
       console.log('[TransferModal] Got wallet client, sending transaction...')
