@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { useGameContract } from '../hooks/useGameContract'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
-  const { primaryWallet } = useDynamicContext()
+  const { sdkHasLoaded } = useDynamicContext()
+  const { getWalletClient, getPublicClient, primaryWallet } = useGameContract()
   const address = primaryWallet?.address
   
   const [hash, setHash] = useState(null)
@@ -52,6 +54,11 @@ function TransferModal({ item, onClose, onSuccess }) {
     setError('')
     setTxError(null)
     
+    if (!sdkHasLoaded) {
+      setError('Please wait for wallet to initialize...')
+      return
+    }
+    
     if (!toAddress) {
       setError('Please enter an address')
       return
@@ -72,13 +79,15 @@ function TransferModal({ item, onClose, onSuccess }) {
     setIsPending(true)
     
     try {
-      const walletClient = await primaryWallet.getWalletClient()
-      const publicClient = await primaryWallet.getPublicClient()
+      // Use the shared wallet client from context (same one Attack Boss uses)
+      const walletClient = await getWalletClient()
+      const publicClient = await getPublicClient()
       
       if (!walletClient) {
         throw new Error('Could not get wallet client')
       }
 
+      console.log('[TransferModal] Using shared wallet client...')
       const txHash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
@@ -107,7 +116,7 @@ function TransferModal({ item, onClose, onSuccess }) {
     }
   }
 
-  const clientsReady = !!address && !!primaryWallet && isEthereumWallet(primaryWallet)
+  const clientsReady = sdkHasLoaded && !!address && !!primaryWallet && isEthereumWallet(primaryWallet)
   const tierInfo = ITEM_TIERS[item.tier]
 
   return (

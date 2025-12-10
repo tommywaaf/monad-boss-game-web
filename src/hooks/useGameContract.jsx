@@ -30,7 +30,7 @@ export function useGameContract() {
 
 // Provider component
 export function GameContractProvider({ children }) {
-  const { primaryWallet } = useDynamicContext()
+  const { primaryWallet, sdkHasLoaded } = useDynamicContext()
   const address = primaryWallet?.address
   
   const [inventory, setInventory] = useState([])
@@ -50,15 +50,33 @@ export function GameContractProvider({ children }) {
   const walletClientRef = useRef(null)
   const initializedAddressRef = useRef(null)
 
-  // Initialize clients when wallet is available
+  // Initialize clients when wallet is available AND SDK has loaded
   useEffect(() => {
     const currentAddress = primaryWallet?.address
+    
+    // Wait for SDK to be fully loaded before initializing clients
+    if (!sdkHasLoaded) {
+      console.log('[useGameContract] Waiting for SDK to load...')
+      return
+    }
     
     if (primaryWallet && isEthereumWallet(primaryWallet) && currentAddress !== initializedAddressRef.current) {
       const initClients = async () => {
         try {
-          console.log('[useGameContract] Initializing wallet clients...')
+          console.log('[useGameContract] SDK loaded, initializing wallet clients...')
+          
+          // Get public client first (this usually works)
           const publicClient = await primaryWallet.getPublicClient()
+          publicClientRef.current = publicClient
+          
+          // For embedded wallets, wallet client initialization may need a delay
+          // to ensure the Waas SDK is fully ready
+          const isEmbedded = primaryWallet.connector?.isEmbedded
+          if (isEmbedded) {
+            console.log('[useGameContract] Embedded wallet detected, waiting for Waas SDK...')
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          }
+          
           const walletClient = await primaryWallet.getWalletClient()
           
           if (!publicClient || !walletClient) {
@@ -66,13 +84,12 @@ export function GameContractProvider({ children }) {
             return
           }
           
-          publicClientRef.current = publicClient
           walletClientRef.current = walletClient
           initializedAddressRef.current = currentAddress
           console.log('[useGameContract] Wallet clients initialized successfully')
         } catch (error) {
           console.error('[useGameContract] Failed to initialize clients:', error)
-          publicClientRef.current = null
+          // Don't null out publicClient if it was successful
           walletClientRef.current = null
           initializedAddressRef.current = null
         }
@@ -83,7 +100,7 @@ export function GameContractProvider({ children }) {
       walletClientRef.current = null
       initializedAddressRef.current = null
     }
-  }, [primaryWallet?.address])
+  }, [primaryWallet?.address, sdkHasLoaded])
 
   // Fetch contract data
   const fetchContractData = useCallback(async () => {
@@ -186,6 +203,13 @@ export function GameContractProvider({ children }) {
   }, [lastEvent, txStatus])
 
   const killBoss = useCallback(async () => {
+    if (!sdkHasLoaded) {
+      console.error('[killBoss] SDK not loaded yet')
+      setTxError(new Error('Please wait for wallet to initialize...'))
+      setTxStatus('failed')
+      return
+    }
+
     if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
       console.error('[killBoss] No wallet connected')
       setTxError(new Error('Please connect your wallet first'))
@@ -206,14 +230,22 @@ export function GameContractProvider({ children }) {
       setTxError(null)
       setLastEvent(null)
 
-      // Ensure clients are initialized
+      // Ensure clients are initialized - with retry for embedded wallets
       let walletClient = walletClientRef.current
       let publicClient = publicClientRef.current
 
       if (!walletClient || !publicClient) {
         console.log('[killBoss] Clients not ready, initializing...')
-        walletClient = await primaryWallet.getWalletClient()
+        
+        // For embedded wallets, add a small delay to ensure Waas SDK is ready
+        const isEmbedded = primaryWallet.connector?.isEmbedded
+        if (isEmbedded) {
+          console.log('[killBoss] Embedded wallet - waiting for Waas SDK...')
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        
         publicClient = await primaryWallet.getPublicClient()
+        walletClient = await primaryWallet.getWalletClient()
         
         if (!walletClient || !publicClient) {
           throw new Error('Failed to initialize wallet clients. Please try again.')
@@ -297,7 +329,7 @@ export function GameContractProvider({ children }) {
       setIsConfirming(false)
       setIsConfirmed(false)
     }
-  }, [primaryWallet, rakeFeeMon, fetchContractData])
+  }, [primaryWallet, rakeFeeMon, fetchContractData, sdkHasLoaded])
 
   const resetTransaction = useCallback(() => {
     setTxStatus(null)
@@ -308,6 +340,42 @@ export function GameContractProvider({ children }) {
     setTxError(null)
     setLastEvent(null)
   }, [])
+
+  // Getter for wallet client - for use by other components
+  const getWalletClient = useCallback(async () => {
+    if (walletClientRef.current) {
+      return walletClientRef.current
+    }
+    
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
+      throw new Error('Wallet not connected')
+    }
+    
+    // For embedded wallets, add a small delay
+    const isEmbedded = primaryWallet.connector?.isEmbedded
+    if (isEmbedded) {
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+    
+    const client = await primaryWallet.getWalletClient()
+    walletClientRef.current = client
+    return client
+  }, [primaryWallet])
+
+  // Getter for public client
+  const getPublicClient = useCallback(async () => {
+    if (publicClientRef.current) {
+      return publicClientRef.current
+    }
+    
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
+      throw new Error('Wallet not connected')
+    }
+    
+    const client = await primaryWallet.getPublicClient()
+    publicClientRef.current = client
+    return client
+  }, [primaryWallet])
 
   const value = {
     inventory,
@@ -326,6 +394,10 @@ export function GameContractProvider({ children }) {
     resetTransaction,
     lastEvent,
     clearLastEvent: () => setLastEvent(null),
+    // Expose clients for other components
+    getWalletClient,
+    getPublicClient,
+    primaryWallet,
   }
 
   return (
