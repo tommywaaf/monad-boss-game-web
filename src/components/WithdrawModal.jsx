@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { useSendTransaction, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { parseEther } from 'viem'
 import './WithdrawModal.css'
 
 // Helper to format balance for display
@@ -14,80 +14,62 @@ const formatBalance = (balance) => {
   return balanceNum.toFixed(6)
 }
 
-// Helper to parse MON to wei
-const parseMonToWei = (value) => {
-  const num = parseFloat(value)
-  if (isNaN(num) || num <= 0) return BigInt(0)
-  return BigInt(Math.floor(num * 1e18))
-}
-
 function WithdrawModal({ onClose, currentBalance }) {
-  const { primaryWallet } = useDynamicContext()
-  const address = primaryWallet?.address
+  const { address } = useAccount()
+  
+  // Use wagmi hooks - works through DynamicWagmiConnector for all wallet types
+  const { sendTransaction, data: hash, isPending, error: txError, reset } = useSendTransaction()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash,
+    query: { enabled: !!hash }
+  })
   
   const [toAddress, setToAddress] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
-  const [isPending, setIsPending] = useState(false)
-  const [isConfirming, setIsConfirming] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [hash, setHash] = useState(null)
+
+  // Handle transaction error
+  useEffect(() => {
+    if (txError) {
+      let errorMessage = 'Transaction failed. Please try again.'
+      if (txError.message?.includes('User rejected') || txError.message?.includes('rejected')) {
+        errorMessage = 'Transaction was rejected by user.'
+      } else if (txError.message?.includes('insufficient funds') || txError.message?.includes('Insufficient')) {
+        errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
+      } else if (txError.message) {
+        errorMessage = txError.message.slice(0, 100)
+      }
+      setError(errorMessage)
+    }
+  }, [txError])
+
+  // Close modal after success
+  useEffect(() => {
+    if (isSuccess) {
+      setTimeout(() => {
+        reset()
+        onClose()
+      }, 2000)
+    }
+  }, [isSuccess, onClose, reset])
 
   const validateAddress = (addr) => {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
   }
 
-  const handleSetMax = async () => {
-    if (!currentBalance || !primaryWallet || !isEthereumWallet(primaryWallet)) {
-      return
-    }
-
-    // If we don't have toAddress, use a conservative fallback
-    if (!toAddress || !validateAddress(toAddress)) {
-      const maxAmount = Number(currentBalance) / 1e18 - 0.015
-      if (maxAmount > 0) {
-        setAmount(maxAmount.toFixed(6))
-      } else {
-        setAmount('0')
-        setError('Balance too low to cover gas fees')
-      }
-      return
-    }
-
-    try {
-      // Pass chainId for embedded wallets on custom networks
-      const publicClient = await primaryWallet.getPublicClient('143')
-      
-      const gasEstimate = await publicClient.estimateGas({
-        to: toAddress,
-        value: currentBalance,
-        account: address,
-      })
-      
-      const gasPrice = await publicClient.getGasPrice()
-      const estimatedFee = (gasEstimate * gasPrice * BigInt(200)) / BigInt(100)
-      const maxSendable = currentBalance - estimatedFee
-      
-      if (maxSendable > BigInt(0)) {
-        const maxAmount = Number(maxSendable) / 1e18
-        setAmount(maxAmount.toFixed(6))
-      } else {
-        setAmount('0')
-        setError('Balance too low to cover gas fees')
-      }
-    } catch (err) {
-      console.log('[WithdrawModal] Gas estimation failed, using fallback:', err)
-      const maxAmount = Number(currentBalance) / 1e18 - 0.015
-      if (maxAmount > 0) {
-        setAmount(maxAmount.toFixed(6))
-      } else {
-        setAmount('0')
-        setError('Balance too low to cover gas fees')
-      }
+  const handleSetMax = () => {
+    if (!currentBalance) return
+    // Leave 0.015 MON for gas
+    const maxAmount = Number(currentBalance) / 1e18 - 0.015
+    if (maxAmount > 0) {
+      setAmount(maxAmount.toFixed(6))
+    } else {
+      setAmount('0')
+      setError('Balance too low to cover gas fees')
     }
   }
 
-  const handleWithdraw = async () => {
+  const handleWithdraw = () => {
     setError('')
     
     if (!toAddress) {
@@ -106,88 +88,27 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
 
     const amountNum = parseFloat(amount)
-    if (amountNum <= 0) {
-      setError('Amount must be greater than 0')
-      return
-    }
-
     const balanceNum = currentBalance ? Number(currentBalance) / 1e18 : 0
     if (amountNum > balanceNum) {
       setError('Insufficient balance')
       return
     }
 
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
-      setError('Wallet not connected. Please connect your wallet and try again.')
+    if (!address) {
+      setError('Wallet not connected.')
       return
     }
 
-    try {
-      setIsPending(true)
-      console.log('[WithdrawModal] Initiating withdrawal to:', toAddress, 'amount:', amount, 'MON')
-      
-      const amountWei = parseMonToWei(amount)
-      
-      // For embedded wallets, we need to switch to the Monad network first
-      const isEmbedded = primaryWallet.connector?.isEmbedded
-      console.log('[WithdrawModal] Is embedded wallet:', isEmbedded)
-      
-      if (isEmbedded) {
-        try {
-          await primaryWallet.switchNetwork(143)
-          console.log('[WithdrawModal] Network switched successfully')
-        } catch (switchError) {
-          console.log('[WithdrawModal] Network switch error:', switchError.message)
-        }
-      }
-      
-      // Get wallet client - pass chainId as string for custom networks
-      const walletClient = await primaryWallet.getWalletClient('143')
-      
-      console.log('[WithdrawModal] Got wallet client, sending transaction...')
-      
-      const txHash = await walletClient.sendTransaction({
-        to: toAddress,
-        value: amountWei,
-        account: primaryWallet.address,
-      })
-      
-      console.log('[WithdrawModal] Transaction submitted:', txHash)
-      setHash(txHash)
-      setIsPending(false)
-      setIsConfirming(true)
-      
-      // Wait for receipt - pass chainId for embedded wallets
-      const publicClient = await primaryWallet.getPublicClient('143')
-      await publicClient.waitForTransactionReceipt({ hash: txHash })
-      
-      console.log('[WithdrawModal] Transaction confirmed!')
-      setIsConfirming(false)
-      setIsSuccess(true)
-      
-      setTimeout(() => {
-        onClose()
-      }, 2000)
-      
-    } catch (err) {
-      console.error('[WithdrawModal] Withdrawal error:', err)
-      let errorMessage = 'Transaction failed. Please try again.'
-      if (err.message?.includes('User rejected') || err.message?.includes('rejected')) {
-        errorMessage = 'Transaction was rejected by user.'
-      } else if (err.message?.includes('insufficient funds') || err.message?.includes('Insufficient')) {
-        errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
-      } else if (err.message?.includes('EVM network not found')) {
-        errorMessage = 'Network not configured. Please switch to Monad network and try again.'
-      } else if (err.message) {
-        errorMessage = err.message.slice(0, 100)
-      }
-      setError(errorMessage)
-      setIsPending(false)
-      setIsConfirming(false)
-    }
+    console.log('[WithdrawModal] Sending transaction to:', toAddress, 'amount:', amount, 'MON')
+    
+    // Use wagmi's sendTransaction - works through DynamicWagmiConnector
+    sendTransaction({
+      to: toAddress,
+      value: parseEther(amount),
+    })
   }
 
-  const walletReady = !!primaryWallet && isEthereumWallet(primaryWallet)
+  const walletReady = !!address
   const formattedBalance = currentBalance ? formatBalance(currentBalance) : '0'
 
   return createPortal(

@@ -1,26 +1,54 @@
-import { useState } from 'react'
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { useState, useEffect } from 'react'
+import { useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
-  const { primaryWallet } = useDynamicContext()
+  const { address } = useAccount()
+  
+  // Use wagmi hooks - works through DynamicWagmiConnector for all wallet types
+  const { writeContract, data: hash, isPending, error: txError, reset } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+    hash,
+    query: { enabled: !!hash }
+  })
   
   const [toAddress, setToAddress] = useState('')
   const [error, setError] = useState('')
-  const [isPending, setIsPending] = useState(false)
-  const [isConfirming, setIsConfirming] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [hash, setHash] = useState(null)
-  
-  const clientsReady = !!primaryWallet && isEthereumWallet(primaryWallet)
+
+  // Handle transaction error
+  useEffect(() => {
+    if (txError) {
+      let errorMessage = 'Transaction failed. Please try again.'
+      if (txError.message?.includes('User rejected')) {
+        errorMessage = 'Transaction was rejected by user.'
+      } else if (txError.message?.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for gas.'
+      } else if (txError.message) {
+        errorMessage = txError.message.slice(0, 100)
+      }
+      setError(errorMessage)
+    }
+  }, [txError])
+
+  // Handle success
+  useEffect(() => {
+    if (isSuccess) {
+      if (onSuccess) {
+        setTimeout(() => {
+          reset()
+          onSuccess()
+          onClose()
+        }, 1000)
+      }
+    }
+  }, [isSuccess, onSuccess, onClose, reset])
 
   const validateAddress = (addr) => {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
   }
 
-  const handleTransfer = async () => {
+  const handleTransfer = () => {
     setError('')
     
     if (!toAddress) {
@@ -33,77 +61,23 @@ function TransferModal({ item, onClose, onSuccess }) {
       return
     }
 
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
-      setError('Wallet not connected. Please connect your wallet and try again.')
+    if (!address) {
+      setError('Wallet not connected.')
       return
     }
 
-    try {
-      setIsPending(true)
-      console.log('[TransferModal] Initiating transfer to:', toAddress, 'item:', item.id)
-      
-      // For embedded wallets, we need to switch to the Monad network first
-      const isEmbedded = primaryWallet.connector?.isEmbedded
-      console.log('[TransferModal] Is embedded wallet:', isEmbedded)
-      
-      if (isEmbedded) {
-        try {
-          await primaryWallet.switchNetwork(143)
-          console.log('[TransferModal] Network switched successfully')
-        } catch (switchError) {
-          console.log('[TransferModal] Network switch error:', switchError.message)
-        }
-      }
-      
-      // Get wallet client - pass chainId as string for custom networks
-      const walletClient = await primaryWallet.getWalletClient('143')
-      
-      console.log('[TransferModal] Got wallet client, sending transaction...')
-      
-      const txHash = await walletClient.writeContract({
-        address: GAME_CONTRACT_ADDRESS,
-        abi: GAME_CONTRACT_ABI,
-        functionName: 'transferItem',
-        args: [toAddress, BigInt(item.id)],
-        account: primaryWallet.address,
-      })
-      
-      console.log('[TransferModal] Transaction submitted:', txHash)
-      setHash(txHash)
-      setIsPending(false)
-      setIsConfirming(true)
-      
-      // Wait for receipt - pass chainId for embedded wallets
-      const publicClient = await primaryWallet.getPublicClient('143')
-      await publicClient.waitForTransactionReceipt({ hash: txHash })
-      
-      console.log('[TransferModal] Transaction confirmed!')
-      setIsConfirming(false)
-      setIsSuccess(true)
-      
-      if (onSuccess) {
-        setTimeout(() => {
-          onSuccess()
-          onClose()
-        }, 1000)
-      }
-      
-    } catch (err) {
-      console.error('[TransferModal] Transfer error:', err)
-      let errorMessage = 'Transaction failed. Please try again.'
-      if (err.message?.includes('User rejected')) {
-        errorMessage = 'Transaction was rejected by user.'
-      } else if (err.message?.includes('insufficient funds')) {
-        errorMessage = 'Insufficient funds for gas.'
-      } else if (err.message) {
-        errorMessage = err.message.slice(0, 100)
-      }
-      setError(errorMessage)
-      setIsPending(false)
-      setIsConfirming(false)
-    }
+    console.log('[TransferModal] Transferring item', item.id, 'to:', toAddress)
+    
+    // Use wagmi's writeContract - works through DynamicWagmiConnector
+    writeContract({
+      address: GAME_CONTRACT_ADDRESS,
+      abi: GAME_CONTRACT_ABI,
+      functionName: 'transferItem',
+      args: [toAddress, BigInt(item.id)],
+    })
   }
 
+  const clientsReady = !!address
   const tierInfo = ITEM_TIERS[item.tier]
 
   return (

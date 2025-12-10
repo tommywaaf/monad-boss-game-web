@@ -1,6 +1,4 @@
-import { useReadContract, useAccount } from 'wagmi'
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
-import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
 import { formatEther, decodeEventLog } from 'viem'
@@ -20,17 +18,22 @@ export function useGameContract() {
 // Provider component
 export function GameContractProvider({ children }) {
   const { address } = useAccount()
-  const { primaryWallet } = useDynamicContext()
-  
-  const [txHash, setTxHash] = useState(null)
-  const [isWriting, setIsWriting] = useState(false)
-  const [writeError, setWriteError] = useState(null)
+  const { writeContract, data: txHash, isPending: isWriting, reset, error: writeError } = useWriteContract()
   const [lastEvent, setLastEvent] = useState(null)
   const [txStatus, setTxStatus] = useState(null)
   const [inventoryVersion, setInventoryVersion] = useState(0)
-  const [isConfirming, setIsConfirming] = useState(false)
-  const [isConfirmed, setIsConfirmed] = useState(false)
   const processedTxRef = useRef(null)
+
+  // Wait for transaction receipt
+  const { isLoading: isConfirming, isSuccess: isConfirmed, data: receipt, error: receiptError } = useWaitForTransactionReceipt({
+    hash: txHash,
+    query: {
+      enabled: !!txHash,
+    }
+  })
+
+  // Combine errors
+  const txError = writeError || receiptError
 
   // Read inventory
   const { data: inventory, refetch: refetchInventory } = useReadContract({
@@ -80,184 +83,117 @@ export function GameContractProvider({ children }) {
     }
   })
 
-  // Process transaction receipt to extract event data
-  const processReceipt = useCallback(async (hash) => {
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) return
-    if (processedTxRef.current === hash) return
+  // Process receipt to extract BossKilled event
+  useEffect(() => {
+    if (!receipt || !isConfirmed || !receipt.logs) return
+    if (processedTxRef.current === receipt.transactionHash) return
     
-    try {
-      console.log('[useGameContract] Getting receipt for:', hash)
-      // Pass chainId for embedded wallets on custom networks
-      const publicClient = await primaryWallet.getPublicClient('143')
-      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+    console.log('[useGameContract] Processing receipt:', receipt.transactionHash)
+    processedTxRef.current = receipt.transactionHash
+    
+    // Find BossKilled event in logs
+    for (const log of receipt.logs) {
+      if (log.address?.toLowerCase() !== GAME_CONTRACT_ADDRESS.toLowerCase()) continue
       
-      console.log('[useGameContract] Receipt received:', receipt.status)
-      processedTxRef.current = hash
-      setIsConfirming(false)
-      setIsConfirmed(true)
-      
-      if (receipt.status === 'success' && receipt.logs) {
-        // Find BossKilled event in logs
-        for (const log of receipt.logs) {
-          if (log.address?.toLowerCase() !== GAME_CONTRACT_ADDRESS.toLowerCase()) continue
+      try {
+        const decoded = decodeEventLog({
+          abi: GAME_CONTRACT_ABI,
+          data: log.data,
+          topics: log.topics,
+        })
+        
+        console.log('[useGameContract] Decoded event:', decoded)
+        
+        if (decoded.eventName === 'BossKilled') {
+          const args = decoded.args
           
-          try {
-            const decoded = decodeEventLog({
-              abi: GAME_CONTRACT_ABI,
-              data: log.data,
-              topics: log.topics,
+          if (args.player?.toLowerCase() === address?.toLowerCase()) {
+            console.log('[useGameContract] BossKilled event found!')
+            
+            setLastEvent({
+              type: 'success',
+              tier: Number(args.tier),
+              itemId: args.itemId?.toString(),
+              baseRoll: args.baseRoll?.toString(),
+              baseTier: Number(args.baseTier),
+              upgraded: args.upgraded,
+              transactionHash: receipt.transactionHash,
             })
             
-            console.log('[useGameContract] Decoded event:', decoded)
+            // Refetch data
+            setTimeout(() => {
+              refetchInventory()
+              refetchBoosts()
+              refetchGlobalKills()
+              setInventoryVersion(v => v + 1)
+            }, 500)
             
-            if (decoded.eventName === 'BossKilled') {
-              const args = decoded.args
-              
-              if (args.player?.toLowerCase() === address?.toLowerCase()) {
-                console.log('[useGameContract] BossKilled event found!')
-                
-                setLastEvent({
-                  type: 'success',
-                  tier: Number(args.tier),
-                  itemId: args.itemId?.toString(),
-                  baseRoll: args.baseRoll?.toString(),
-                  baseTier: Number(args.baseTier),
-                  upgraded: args.upgraded,
-                  transactionHash: hash,
-                })
-                
-                // Refetch data
-                setTimeout(() => {
-                  refetchInventory()
-                  refetchBoosts()
-                  refetchGlobalKills()
-                  setInventoryVersion(v => v + 1)
-                }, 500)
-                
-                break
-              }
-            }
-          } catch (e) {
-            console.log('[useGameContract] Could not decode log:', e.message)
+            break
           }
         }
+      } catch (e) {
+        console.log('[useGameContract] Could not decode log:', e.message)
       }
-    } catch (error) {
-      console.error('[useGameContract] Error processing receipt:', error)
-      setWriteError(error)
-      setIsConfirming(false)
     }
-  }, [primaryWallet, address, refetchInventory, refetchBoosts, refetchGlobalKills])
+  }, [receipt, isConfirmed, address, refetchInventory, refetchBoosts, refetchGlobalKills])
 
-  // Reset status when event is received
-  useEffect(() => {
-    if (lastEvent && (txStatus === 'waiting-event' || txStatus === 'confirmed')) {
-      setTimeout(() => {
-        setTxStatus(null)
-        setTxHash(null)
-        setIsWriting(false)
-        setIsConfirming(false)
-        setIsConfirmed(false)
-        processedTxRef.current = null
-      }, 1000)
-    }
-  }, [lastEvent, txStatus])
-
-  // Update status based on state
+  // Track transaction status
   useEffect(() => {
     if (isWriting && !txHash) {
       setTxStatus('preparing')
+    } else if (txHash && !isConfirming && !isConfirmed) {
+      setTxStatus('submitted')
     } else if (txHash && isConfirming) {
       setTxStatus('confirming')
     } else if (txHash && isConfirmed && !lastEvent) {
       setTxStatus('waiting-event')
     } else if (txHash && isConfirmed && lastEvent) {
       setTxStatus('confirmed')
+    } else if (!isWriting && !txHash && !isConfirming) {
+      setTxStatus(null)
     }
   }, [isWriting, txHash, isConfirming, isConfirmed, lastEvent])
 
-  const killBoss = useCallback(async () => {
+  // Reset status when event is received
+  useEffect(() => {
+    if (lastEvent && (txStatus === 'waiting-event' || txStatus === 'confirmed')) {
+      setTimeout(() => {
+        setTxStatus(null)
+        reset()
+        processedTxRef.current = null
+      }, 1000)
+    }
+  }, [lastEvent, txStatus, reset])
+
+  const killBoss = useCallback(() => {
     if (!rakeFeeWei) {
       console.log('[killBoss] No rake fee, cannot kill boss')
-      return
-    }
-    
-    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
-      console.log('[killBoss] No wallet or not Ethereum wallet')
       return
     }
     
     console.log('[killBoss] Starting boss kill...')
     console.log('[killBoss] Contract:', GAME_CONTRACT_ADDRESS)
     console.log('[killBoss] Value:', rakeFeeWei.toString(), 'wei')
-    console.log('[killBoss] Wallet type:', primaryWallet.connector?.name || 'unknown')
     
     setTxStatus('preparing')
     setLastEvent(null)
-    setWriteError(null)
-    setIsWriting(true)
-    setTxHash(null)
-    setIsConfirming(false)
-    setIsConfirmed(false)
     processedTxRef.current = null
     
-    try {
-      // For embedded wallets, we need to switch to the Monad network first
-      const isEmbedded = primaryWallet.connector?.isEmbedded
-      console.log('[killBoss] Is embedded wallet:', isEmbedded)
-      
-      if (isEmbedded) {
-        // Switch to Monad network for embedded wallets
-        console.log('[killBoss] Switching embedded wallet to Monad network...')
-        try {
-          await primaryWallet.switchNetwork(143)
-          console.log('[killBoss] Network switched successfully')
-        } catch (switchError) {
-          console.log('[killBoss] Network switch error (may already be on network):', switchError.message)
-        }
-      }
-      
-      // Get wallet client - pass chainId as string for custom networks
-      const walletClient = await primaryWallet.getWalletClient('143')
-      
-      console.log('[killBoss] Got wallet client, sending transaction...')
-      
-      const hash = await walletClient.writeContract({
-        address: GAME_CONTRACT_ADDRESS,
-        abi: GAME_CONTRACT_ABI,
-        functionName: 'killBoss',
-        value: rakeFeeWei,
-        account: primaryWallet.address,
-      })
-      
-      console.log('[killBoss] Transaction submitted:', hash)
-      setTxHash(hash)
-      setIsWriting(false)
-      setIsConfirming(true)
-      setTxStatus('submitted')
-      
-      // Process the receipt
-      await processReceipt(hash)
-      
-    } catch (error) {
-      console.error('[killBoss] Error:', error)
-      setWriteError(error)
-      setTxStatus('failed')
-      setIsWriting(false)
-      setIsConfirming(false)
-    }
-  }, [primaryWallet, rakeFeeWei, processReceipt])
+    // Use wagmi's writeContract - works through DynamicWagmiConnector for all wallet types
+    writeContract({
+      address: GAME_CONTRACT_ADDRESS,
+      abi: GAME_CONTRACT_ABI,
+      functionName: 'killBoss',
+      value: rakeFeeWei,
+    })
+  }, [writeContract, rakeFeeWei])
 
   const resetTransaction = useCallback(() => {
-    setTxHash(null)
+    reset()
     setTxStatus(null)
     setLastEvent(null)
-    setWriteError(null)
-    setIsWriting(false)
-    setIsConfirming(false)
-    setIsConfirmed(false)
     processedTxRef.current = null
-  }, [])
+  }, [reset])
 
   // Parse inventory
   const inventoryItems = inventory ? inventory.map(item => ({
@@ -281,7 +217,7 @@ export function GameContractProvider({ children }) {
     isKilling: isWriting || isConfirming || !!txStatus,
     txStatus,
     txHash,
-    txError: writeError,
+    txError,
     isConfirming,
     isConfirmed,
     resetTransaction,
