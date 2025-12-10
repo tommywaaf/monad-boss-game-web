@@ -1,7 +1,9 @@
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useReadContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
 import { formatEther, decodeEventLog } from 'viem'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
 
 // Create context for sharing game state
 const GameContractContext = createContext(null)
@@ -18,11 +20,24 @@ export function useGameContract() {
 // Provider component
 export function GameContractProvider({ children }) {
   const { address } = useAccount()
-  const { writeContract, data: txHash, isPending: isWriting, reset, error: writeError } = useWriteContract()
+  const { primaryWallet } = useDynamicContext()
+  
+  // Track transaction state manually since we use Dynamic's wallet client
+  const [txHash, setTxHash] = useState(null)
+  const [isWriting, setIsWriting] = useState(false)
+  const [writeError, setWriteError] = useState(null)
+  
   const [lastEvent, setLastEvent] = useState(null)
   const [txStatus, setTxStatus] = useState(null)
   const [inventoryVersion, setInventoryVersion] = useState(0)
   const processedTxRef = useRef(null)
+
+  // Reset function to clear transaction state
+  const reset = useCallback(() => {
+    setTxHash(null)
+    setIsWriting(false)
+    setWriteError(null)
+  }, [])
 
   // Wait for transaction receipt
   const { isLoading: isConfirming, isSuccess: isConfirmed, data: receipt, error: receiptError } = useWaitForTransactionReceipt({
@@ -165,9 +180,14 @@ export function GameContractProvider({ children }) {
     }
   }, [lastEvent, txStatus, reset])
 
-  const killBoss = useCallback(() => {
+  const killBoss = useCallback(async () => {
     if (!rakeFeeWei) {
       console.log('[killBoss] No rake fee, cannot kill boss')
+      return
+    }
+    
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
+      console.log('[killBoss] No wallet connected')
       return
     }
     
@@ -178,22 +198,37 @@ export function GameContractProvider({ children }) {
     setTxStatus('preparing')
     setLastEvent(null)
     processedTxRef.current = null
+    setWriteError(null)
+    setIsWriting(true)
     
-    // Use wagmi's writeContract - works through DynamicWagmiConnector for all wallet types
-    writeContract({
-      address: GAME_CONTRACT_ADDRESS,
-      abi: GAME_CONTRACT_ABI,
-      functionName: 'killBoss',
-      value: rakeFeeWei,
-    })
-  }, [writeContract, rakeFeeWei])
+    try {
+      // Use Dynamic's wallet client for transaction - works for both embedded and external wallets
+      const walletClient = await primaryWallet.getWalletClient()
+      
+      const hash = await walletClient.writeContract({
+        address: GAME_CONTRACT_ADDRESS,
+        abi: GAME_CONTRACT_ABI,
+        functionName: 'killBoss',
+        value: rakeFeeWei,
+      })
+      
+      console.log('[killBoss] Transaction sent:', hash)
+      setTxHash(hash)
+    } catch (err) {
+      console.error('[killBoss] Transaction error:', err)
+      setWriteError(err)
+      setTxStatus(null)
+    } finally {
+      setIsWriting(false)
+    }
+  }, [primaryWallet, rakeFeeWei])
 
   const resetTransaction = useCallback(() => {
     reset()
     setTxStatus(null)
     setLastEvent(null)
     processedTxRef.current = null
-  }, [reset])
+  }, [])
 
   // Parse inventory
   const inventoryItems = inventory ? inventory.map(item => ({

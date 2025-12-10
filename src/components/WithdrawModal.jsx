@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { useSendTransaction, useWaitForTransactionReceipt, useAccount } from 'wagmi'
+import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { parseEther } from 'viem'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import './WithdrawModal.css'
 
 // Helper to format balance for display
@@ -16,9 +18,13 @@ const formatBalance = (balance) => {
 
 function WithdrawModal({ onClose, currentBalance }) {
   const { address } = useAccount()
+  const { primaryWallet } = useDynamicContext()
   
-  // Use wagmi hooks - works through DynamicWagmiConnector for all wallet types
-  const { sendTransaction, data: hash, isPending, error: txError, reset } = useSendTransaction()
+  // Track transaction state manually since we use Dynamic's wallet client
+  const [hash, setHash] = useState(null)
+  const [isPending, setIsPending] = useState(false)
+  const [txError, setTxError] = useState(null)
+  
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
     query: { enabled: !!hash }
@@ -27,6 +33,13 @@ function WithdrawModal({ onClose, currentBalance }) {
   const [toAddress, setToAddress] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
+  
+  // Reset function to clear transaction state
+  const reset = () => {
+    setHash(null)
+    setIsPending(false)
+    setTxError(null)
+  }
 
   // Handle transaction error
   useEffect(() => {
@@ -69,8 +82,9 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
   }
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     setError('')
+    setTxError(null)
     
     if (!toAddress) {
       setError('Please enter a destination address')
@@ -94,21 +108,35 @@ function WithdrawModal({ onClose, currentBalance }) {
       return
     }
 
-    if (!address) {
+    if (!address || !primaryWallet || !isEthereumWallet(primaryWallet)) {
       setError('Wallet not connected.')
       return
     }
 
     console.log('[WithdrawModal] Sending transaction to:', toAddress, 'amount:', amount, 'MON')
     
-    // Use wagmi's sendTransaction - works through DynamicWagmiConnector
-    sendTransaction({
-      to: toAddress,
-      value: parseEther(amount),
-    })
+    setIsPending(true)
+    
+    try {
+      // Use Dynamic's wallet client for transaction - works for both embedded and external wallets
+      const walletClient = await primaryWallet.getWalletClient()
+      
+      const txHash = await walletClient.sendTransaction({
+        to: toAddress,
+        value: parseEther(amount),
+      })
+      
+      console.log('[WithdrawModal] Transaction sent:', txHash)
+      setHash(txHash)
+    } catch (err) {
+      console.error('[WithdrawModal] Transaction error:', err)
+      setTxError(err)
+    } finally {
+      setIsPending(false)
+    }
   }
 
-  const walletReady = !!address
+  const walletReady = !!address && !!primaryWallet && isEthereumWallet(primaryWallet)
   const formattedBalance = currentBalance ? formatBalance(currentBalance) : '0'
 
   return createPortal(
