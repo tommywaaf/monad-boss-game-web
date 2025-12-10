@@ -1,5 +1,6 @@
 import { useReadContract, useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
+import { monad } from '../config/wagmi'
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
 import { formatEther, decodeEventLog } from 'viem'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
@@ -203,14 +204,16 @@ export function GameContractProvider({ children }) {
     
     try {
       // Use Dynamic's wallet client for transaction - works for both embedded and external wallets
-      // Pass chainId '143' for Monad network so embedded wallets can find the network config
-      const walletClient = await primaryWallet.getWalletClient('143')
+      // Don't pass chainId to getWalletClient - instead pass chain config to the transaction
+      const walletClient = await primaryWallet.getWalletClient()
       
       const hash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
         functionName: 'killBoss',
         value: rakeFeeWei,
+        chain: monad,
+        account: walletClient.account,
       })
       
       console.log('[killBoss] Transaction sent:', hash)

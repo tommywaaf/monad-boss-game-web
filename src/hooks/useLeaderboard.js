@@ -36,10 +36,10 @@ export function useLeaderboard() {
           },
           rpcUrls: {
             default: {
-              http: ['https://rpc.monad.xyz/'],
+              http: ['https://monad-mainnet.infura.io'],
             },
             public: {
-              http: ['https://rpc.monad.xyz/'],
+              http: ['https://monad-mainnet.infura.io'],
             },
           },
           blockExplorers: {
@@ -53,7 +53,7 @@ export function useLeaderboard() {
         
         const publicClient = createPublicClient({
           chain: monadChain,
-          transport: http('https://rpc.monad.xyz/')
+          transport: http('https://monad-mainnet.infura.io')
         })
         publicClientRef.current = publicClient
         setIsClientReady(true)

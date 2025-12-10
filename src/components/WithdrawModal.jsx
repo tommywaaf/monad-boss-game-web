@@ -4,6 +4,7 @@ import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { parseEther } from 'viem'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { monad } from '../config/wagmi'
 import './WithdrawModal.css'
 
 // Helper to format balance for display
@@ -119,12 +120,14 @@ function WithdrawModal({ onClose, currentBalance }) {
     
     try {
       // Use Dynamic's wallet client for transaction - works for both embedded and external wallets
-      // Pass chainId '143' for Monad network so embedded wallets can find the network config
-      const walletClient = await primaryWallet.getWalletClient('143')
+      // Don't pass chainId to getWalletClient - instead pass chain config to the transaction
+      const walletClient = await primaryWallet.getWalletClient()
       
       const txHash = await walletClient.sendTransaction({
         to: toAddress,
         value: parseEther(amount),
+        chain: monad,
+        account: walletClient.account,
       })
       
       console.log('[WithdrawModal] Transaction sent:', txHash)

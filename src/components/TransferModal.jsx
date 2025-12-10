@@ -3,6 +3,7 @@ import { useWaitForTransactionReceipt, useAccount } from 'wagmi'
 import { GAME_CONTRACT_ADDRESS, GAME_CONTRACT_ABI, ITEM_TIERS } from '../config/gameContract'
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { monad } from '../config/wagmi'
 import './TransferModal.css'
 
 function TransferModal({ item, onClose, onSuccess }) {
@@ -86,14 +87,16 @@ function TransferModal({ item, onClose, onSuccess }) {
     
     try {
       // Use Dynamic's wallet client for transaction - works for both embedded and external wallets
-      // Pass chainId '143' for Monad network so embedded wallets can find the network config
-      const walletClient = await primaryWallet.getWalletClient('143')
+      // Don't pass chainId to getWalletClient - instead pass chain config to the transaction
+      const walletClient = await primaryWallet.getWalletClient()
       
       const txHash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
         abi: GAME_CONTRACT_ABI,
         functionName: 'transferItem',
         args: [toAddress, BigInt(item.id)],
+        chain: monad,
+        account: walletClient.account,
       })
       
       console.log('[TransferModal] Transaction sent:', txHash)
