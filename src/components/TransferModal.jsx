@@ -86,7 +86,8 @@ function TransferModal({ item, onClose, onSuccess }) {
     
     try {
       // Use Dynamic's wallet client for transaction - works for both embedded and external wallets
-      const walletClient = await primaryWallet.getWalletClient()
+      // Pass chainId '143' for Monad network so embedded wallets can find the network config
+      const walletClient = await primaryWallet.getWalletClient('143')
       
       const txHash = await walletClient.writeContract({
         address: GAME_CONTRACT_ADDRESS,
