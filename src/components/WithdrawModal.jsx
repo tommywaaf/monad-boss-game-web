@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useSendTransaction, useWaitForTransactionReceipt, usePublicClient, useAccount } from 'wagmi'
+import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
+import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import './WithdrawModal.css'
 
 // Helper to format balance for display
@@ -21,62 +22,28 @@ const parseMonToWei = (value) => {
 }
 
 function WithdrawModal({ onClose, currentBalance }) {
-  const { address } = useAccount()
-  const publicClient = usePublicClient()
-  
-  // Use wagmi's useSendTransaction hook
-  const { sendTransaction, data: hash, isPending, error: txError } = useSendTransaction()
-  
-  // Use wagmi's useWaitForTransactionReceipt hook
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-    query: {
-      enabled: !!hash,
-    }
-  })
+  const { primaryWallet } = useDynamicContext()
+  const address = primaryWallet?.address
   
   const [toAddress, setToAddress] = useState('')
   const [amount, setAmount] = useState('')
   const [error, setError] = useState('')
-
-  // Close modal after successful transaction
-  useEffect(() => {
-    if (isSuccess) {
-      setTimeout(() => {
-        onClose()
-      }, 2000)
-    }
-  }, [isSuccess, onClose])
-
-  // Set error from transaction error
-  useEffect(() => {
-    if (txError) {
-      let errorMessage = 'Transaction failed. Please try again.'
-      if (txError.message?.includes('User rejected') || txError.message?.includes('rejected')) {
-        errorMessage = 'Transaction was rejected by user.'
-      } else if (txError.message?.includes('insufficient funds') || txError.message?.includes('Insufficient')) {
-        errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
-      } else if (txError.message?.includes('EVM network not found')) {
-        errorMessage = 'Network not configured. Please switch to Monad network and try again.'
-      } else if (txError.message) {
-        errorMessage = txError.message.slice(0, 100)
-      }
-      setError(errorMessage)
-    }
-  }, [txError])
+  const [isPending, setIsPending] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [hash, setHash] = useState(null)
 
   const validateAddress = (addr) => {
     return /^0x[a-fA-F0-9]{40}$/.test(addr)
   }
 
   const handleSetMax = async () => {
-    if (!currentBalance) {
+    if (!currentBalance || !primaryWallet || !isEthereumWallet(primaryWallet)) {
       return
     }
 
-    // If we don't have publicClient or toAddress, use a conservative fallback
-    if (!publicClient || !toAddress || !validateAddress(toAddress)) {
-      // Fallback: leave 0.015 MON for gas (conservative estimate)
+    // If we don't have toAddress, use a conservative fallback
+    if (!toAddress || !validateAddress(toAddress)) {
       const maxAmount = Number(currentBalance) / 1e18 - 0.015
       if (maxAmount > 0) {
         setAmount(maxAmount.toFixed(6))
@@ -88,20 +55,16 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
 
     try {
-      // Try to estimate gas for the transaction
+      const publicClient = await primaryWallet.getPublicClient()
+      
       const gasEstimate = await publicClient.estimateGas({
         to: toAddress,
         value: currentBalance,
         account: address,
       })
       
-      // Get current gas price
       const gasPrice = await publicClient.getGasPrice()
-      
-      // Calculate estimated fee with 100% buffer for safety (2x the estimate)
       const estimatedFee = (gasEstimate * gasPrice * BigInt(200)) / BigInt(100)
-      
-      // Calculate max sendable amount
       const maxSendable = currentBalance - estimatedFee
       
       if (maxSendable > BigInt(0)) {
@@ -113,7 +76,6 @@ function WithdrawModal({ onClose, currentBalance }) {
       }
     } catch (err) {
       console.log('[WithdrawModal] Gas estimation failed, using fallback:', err)
-      // Fallback: leave 0.015 MON for gas
       const maxAmount = Number(currentBalance) / 1e18 - 0.015
       if (maxAmount > 0) {
         setAmount(maxAmount.toFixed(6))
@@ -124,7 +86,7 @@ function WithdrawModal({ onClose, currentBalance }) {
     }
   }
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     setError('')
     
     if (!toAddress) {
@@ -154,23 +116,64 @@ function WithdrawModal({ onClose, currentBalance }) {
       return
     }
 
-    if (!address) {
+    if (!primaryWallet || !isEthereumWallet(primaryWallet)) {
       setError('Wallet not connected. Please connect your wallet and try again.')
       return
     }
 
-    console.log('[WithdrawModal] Initiating withdrawal to:', toAddress, 'amount:', amount, 'MON')
-    
-    // Convert amount to wei and send transaction
-    const amountWei = parseMonToWei(amount)
-    
-    sendTransaction({
-      to: toAddress,
-      value: amountWei,
-    })
+    try {
+      setIsPending(true)
+      console.log('[WithdrawModal] Initiating withdrawal to:', toAddress, 'amount:', amount, 'MON')
+      
+      const amountWei = parseMonToWei(amount)
+      
+      // Use Dynamic's wallet client directly - works for both embedded and external wallets
+      const walletClient = await primaryWallet.getWalletClient()
+      
+      console.log('[WithdrawModal] Got wallet client, sending transaction...')
+      
+      const txHash = await walletClient.sendTransaction({
+        to: toAddress,
+        value: amountWei,
+        account: primaryWallet.address,
+      })
+      
+      console.log('[WithdrawModal] Transaction submitted:', txHash)
+      setHash(txHash)
+      setIsPending(false)
+      setIsConfirming(true)
+      
+      // Wait for receipt
+      const publicClient = await primaryWallet.getPublicClient()
+      await publicClient.waitForTransactionReceipt({ hash: txHash })
+      
+      console.log('[WithdrawModal] Transaction confirmed!')
+      setIsConfirming(false)
+      setIsSuccess(true)
+      
+      setTimeout(() => {
+        onClose()
+      }, 2000)
+      
+    } catch (err) {
+      console.error('[WithdrawModal] Withdrawal error:', err)
+      let errorMessage = 'Transaction failed. Please try again.'
+      if (err.message?.includes('User rejected') || err.message?.includes('rejected')) {
+        errorMessage = 'Transaction was rejected by user.'
+      } else if (err.message?.includes('insufficient funds') || err.message?.includes('Insufficient')) {
+        errorMessage = 'Insufficient funds. Try reducing the amount slightly.'
+      } else if (err.message?.includes('EVM network not found')) {
+        errorMessage = 'Network not configured. Please switch to Monad network and try again.'
+      } else if (err.message) {
+        errorMessage = err.message.slice(0, 100)
+      }
+      setError(errorMessage)
+      setIsPending(false)
+      setIsConfirming(false)
+    }
   }
 
-  const walletReady = !!address
+  const walletReady = !!primaryWallet && isEthereumWallet(primaryWallet)
   const formattedBalance = currentBalance ? formatBalance(currentBalance) : '0'
 
   return createPortal(
