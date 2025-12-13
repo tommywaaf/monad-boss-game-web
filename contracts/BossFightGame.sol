@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 // Version: Fixed randomness - use full hash value instead of bit extraction for uniform distribution
 
 /// @notice Prototype, NOT production-secure randomness.
-/// Good enough for testing and playing with Fireblocks / MetaMask, etc.
+/// Good enough for testing and playing with MetaMask, etc.
 contract BossFightGame {
     // -------------------------
     // Types & storage
