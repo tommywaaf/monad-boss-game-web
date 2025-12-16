@@ -49,13 +49,6 @@ function WalletConnect() {
       return
     }
 
-    // For embedded wallets, Monad (143) is the only configured network
-    // So we can safely default to it without needing network detection
-    if (primaryWallet.connector.isEmbedded) {
-      setChainId(143)
-      return
-    }
-
     let cancelled = false
     
     const updateChainId = async () => {
@@ -97,43 +90,36 @@ function WalletConnect() {
 
   // Fetch balance when wallet is connected and on Monad network
   useEffect(() => {
-    // Only clear balance if we're explicitly on a different network (not when chainId is null/loading)
-    if (!isConnected || !primaryWallet || !isEthereumWallet(primaryWallet)) {
+    if (!isConnected || !primaryWallet || !isEthereumWallet(primaryWallet) || !address) {
       setBalance(null)
       return
     }
 
-    // If chainId is explicitly set and not 143, clear balance
-    if (chainId !== null && chainId !== 143) {
-      setBalance(null)
-      return
+    // For embedded wallets, always try to fetch balance (they're only configured for Monad)
+    // For external wallets, only fetch if chainId is 143
+    if (!isDynamicWallet) {
+      // External wallet - need to be on Monad
+      if (chainId !== null && chainId !== 143) {
+        setBalance(null)
+        return
+      }
+      // If chainId is still loading (null), wait for it
+      if (chainId === null) {
+        return
+      }
     }
 
-    // If chainId is still loading (null), don't clear balance - wait for it to load
-    if (chainId === null) {
-      return
-    }
-
-    // Now we know chainId === 143, fetch balance
     let cancelled = false
 
     const fetchBalance = async () => {
       try {
-        let publicClient = null
+        // Always use direct viem client for reliable balance fetching on Monad
+        const publicClient = createPublicClient({
+          chain: monadChain,
+          transport: http('https://rpc.monad.xyz/'),
+        })
         
-        // For embedded wallets, create a viem public client directly
-        // This is more reliable than relying on the wallet's getPublicClient method
-        if (isDynamicWallet) {
-          publicClient = createPublicClient({
-            chain: monadChain,
-            transport: http('https://rpc.monad.xyz/'),
-          })
-        } else {
-          // For external wallets (MetaMask etc), use the wallet's public client
-          publicClient = await primaryWallet.getPublicClient()
-        }
-        
-        if (cancelled || !publicClient || !address) return
+        if (cancelled || !address) return
 
         const balanceWei = await publicClient.getBalance({ address })
         if (!cancelled) {
@@ -141,17 +127,21 @@ function WalletConnect() {
         }
       } catch (error) {
         console.error('Error fetching balance:', error)
-        // Don't clear balance on error, just log it
       }
     }
 
-    fetchBalance()
+    // For embedded wallets, add a delay to wait for network switch
+    const initialDelay = isDynamicWallet ? 3000 : 0
+    const timer = setTimeout(() => {
+      fetchBalance()
+    }, initialDelay)
     
-    // REDUCED polling to prevent rate limiting - poll every 60 seconds instead of 10
-    const interval = setInterval(fetchBalance, 60000)
+    // Poll every 30 seconds
+    const interval = setInterval(fetchBalance, 30000)
 
     return () => {
       cancelled = true
+      clearTimeout(timer)
       clearInterval(interval)
     }
   }, [isConnected, primaryWallet, address, chainId, isDynamicWallet])

@@ -22,13 +22,6 @@ function App() {
       return
     }
 
-    // For embedded wallets, Monad (143) is the only configured network
-    // So we can safely default to it without needing network detection
-    if (primaryWallet.connector.isEmbedded) {
-      setChainId(143)
-      return
-    }
-
     let cancelled = false
     
     const updateChainId = async () => {
@@ -72,11 +65,23 @@ function App() {
   
   // Automatically switch to Monad network when wallet connects (only once)
   useEffect(() => {
-    if (!isConnected || !primaryWallet || isMonadNetwork || hasSwitchedRef.current) {
-      if (!isConnected) {
-        // Reset when disconnected
-        hasSwitchedRef.current = false
-      }
+    if (!isConnected || !primaryWallet) {
+      // Reset when disconnected
+      hasSwitchedRef.current = false
+      return
+    }
+    
+    // For embedded wallets, ALWAYS try to switch to Monad (don't check isMonadNetwork)
+    // because our chainId detection defaults to 143 but the wallet isn't actually on Monad yet
+    const isEmbedded = primaryWallet.connector?.isEmbedded
+    
+    // Skip if already switched (unless it's an embedded wallet on first connect)
+    if (hasSwitchedRef.current) {
+      return
+    }
+    
+    // For external wallets, skip if already on Monad
+    if (!isEmbedded && isMonadNetwork) {
       return
     }
 
@@ -85,14 +90,21 @@ function App() {
     
     const switchToMonad = async () => {
       try {
-        // Check if the connector supports network switching
+        console.log(`Auto-switching ${isEmbedded ? 'embedded' : 'external'} wallet to Monad network...`)
+        
+        // Try connector method first
         if (primaryWallet.connector?.supportsNetworkSwitching?.()) {
-          console.log('Auto-switching to Monad network...')
-          await primaryWallet.switchNetwork({ networkChainId: 143 })
+          await primaryWallet.connector.switchNetwork({ networkChainId: 143 })
         } else if (primaryWallet.switchNetwork) {
-          // Try direct switchNetwork method
-          console.log('Auto-switching to Monad network (direct method)...')
+          // Try direct wallet method
           await primaryWallet.switchNetwork({ networkChainId: 143 })
+        } else {
+          console.warn('Network switching not supported by this wallet')
+        }
+        
+        // After switching, update chainId
+        if (isEmbedded) {
+          setChainId(143)
         }
       } catch (error) {
         console.error('Failed to auto-switch to Monad network:', error)
@@ -102,7 +114,9 @@ function App() {
     }
     
     // Small delay to ensure wallet is fully initialized
-    const timer = setTimeout(switchToMonad, 1000)
+    // Embedded wallets need more time for the Waas SDK
+    const delay = isEmbedded ? 2000 : 1000
+    const timer = setTimeout(switchToMonad, delay)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, primaryWallet?.address]) // Only depend on address, not entire wallet or chainId
