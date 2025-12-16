@@ -64,6 +64,11 @@
   gap: 1rem;
 }
 
+/* Dynamic Widget Styling */
+.navbar-right [class*="dynamic-widget"] {
+  /* Let Dynamic's widget styles through but ensure it fits */
+}
+
 .app-main {
   width: 100%;
   max-width: 100%;
@@ -223,6 +228,16 @@
   border-radius: 12px;
   cursor: pointer;
   margin-top: 1rem;
+}
+
+/* Account Section */
+.account-section {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  animation: fadeInUp 0.6s ease-out;
+  animation-delay: 0.2s;
+  animation-fill-mode: backwards;
 }
 
 .app-footer {

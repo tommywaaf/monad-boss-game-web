@@ -1,8 +1,8 @@
-import { useDynamicContext, getNetwork } from '@dynamic-labs/sdk-react-core'
+import { useDynamicContext, getNetwork, DynamicWidget, DynamicUserProfile } from '@dynamic-labs/sdk-react-core'
 import { useEffect, useRef, useState } from 'react'
-import WalletConnect from './components/WalletConnect'
 import BossFight from './components/BossFight'
 import Inventory from './components/Inventory'
+import AccountPanel from './components/AccountPanel'
 // import Leaderboard from './components/Leaderboard' // DISABLED - causing RPC issues
 import { GameContractProvider } from './hooks/useGameContract'
 import { GAME_CONTRACT_ADDRESS } from './config/gameContract'
@@ -104,6 +104,7 @@ function App() {
 
   return (
     <GameContractProvider>
+      <DynamicUserProfile />
       <div className="app">
       <nav className="app-navbar">
         <div className="navbar-content">
@@ -111,7 +112,7 @@ function App() {
             <h1 className="navbar-title">🎮 Monad Boss Game</h1>
           </div>
           <div className="navbar-right">
-            <WalletConnect />
+            <DynamicWidget />
           </div>
         </div>
       </nav>
@@ -194,12 +195,18 @@ function App() {
         )}
 
         {isConnected && isMonadNetwork && isContractDeployed && (
-          <div className="game-section">
-            <div className="game-grid">
-              <BossFight />
-              <Inventory />
+          <>
+            <div className="game-section">
+              <div className="game-grid">
+                <BossFight />
+                <Inventory />
+              </div>
             </div>
-          </div>
+            
+            <div className="account-section">
+              <AccountPanel />
+            </div>
+          </>
         )}
       </main>
 
