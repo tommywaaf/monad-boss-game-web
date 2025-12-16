@@ -1,7 +1,16 @@
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
+import { createPublicClient, http } from 'viem'
 import { GAME_CONTRACT_ABI, GAME_CONTRACT_ADDRESS } from '../config/gameContract'
 import { useState, useEffect, useCallback, createContext, useContext, useRef } from 'react'
+
+// Monad chain config for viem (for embedded wallets)
+const monadChain = {
+  id: 143,
+  name: 'Monad',
+  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
+  rpcUrls: { default: { http: ['https://rpc.monad.xyz/'] } },
+}
 
 // Helper functions
 const formatEther = (value) => {
@@ -65,17 +74,25 @@ export function GameContractProvider({ children }) {
         try {
           console.log('[useGameContract] SDK loaded, initializing wallet clients...')
           
-          // Get public client first (this usually works)
-          const publicClient = await primaryWallet.getPublicClient()
-          publicClientRef.current = publicClient
-          
-          // For embedded wallets, wallet client initialization may need a delay
-          // to ensure the Waas SDK is fully ready
           const isEmbedded = primaryWallet.connector?.isEmbedded
+          let publicClient
+          
+          // For embedded wallets, create a viem public client directly
+          // This is more reliable than the wallet's getPublicClient method for custom networks
           if (isEmbedded) {
-            console.log('[useGameContract] Embedded wallet detected, waiting for Waas SDK...')
+            console.log('[useGameContract] Embedded wallet detected, creating direct viem client...')
+            publicClient = createPublicClient({
+              chain: monadChain,
+              transport: http('https://rpc.monad.xyz/'),
+            })
+            // Give embedded wallet SDK time to fully initialize
             await new Promise(resolve => setTimeout(resolve, 1000))
+          } else {
+            // For external wallets (MetaMask etc), use the wallet's public client
+            publicClient = await primaryWallet.getPublicClient()
           }
+          
+          publicClientRef.current = publicClient
           
           const walletClient = await primaryWallet.getWalletClient()
           
@@ -237,14 +254,19 @@ export function GameContractProvider({ children }) {
       if (!walletClient || !publicClient) {
         console.log('[killBoss] Clients not ready, initializing...')
         
-        // For embedded wallets, add a small delay to ensure Waas SDK is ready
         const isEmbedded = primaryWallet.connector?.isEmbedded
         if (isEmbedded) {
-          console.log('[killBoss] Embedded wallet - waiting for Waas SDK...')
+          console.log('[killBoss] Embedded wallet - creating direct viem client...')
           await new Promise(resolve => setTimeout(resolve, 500))
+          // Create viem public client directly for embedded wallets
+          publicClient = createPublicClient({
+            chain: monadChain,
+            transport: http('https://rpc.monad.xyz/'),
+          })
+        } else {
+          publicClient = await primaryWallet.getPublicClient()
         }
         
-        publicClient = await primaryWallet.getPublicClient()
         walletClient = await primaryWallet.getWalletClient()
         
         if (!walletClient || !publicClient) {
@@ -372,7 +394,18 @@ export function GameContractProvider({ children }) {
       throw new Error('Wallet not connected')
     }
     
-    const client = await primaryWallet.getPublicClient()
+    let client
+    const isEmbedded = primaryWallet.connector?.isEmbedded
+    if (isEmbedded) {
+      // Create viem public client directly for embedded wallets
+      client = createPublicClient({
+        chain: monadChain,
+        transport: http('https://rpc.monad.xyz/'),
+      })
+    } else {
+      client = await primaryWallet.getPublicClient()
+    }
+    
     publicClientRef.current = client
     return client
   }, [primaryWallet])
