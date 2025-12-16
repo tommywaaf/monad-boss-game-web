@@ -22,6 +22,13 @@ function App() {
       return
     }
 
+    // For embedded wallets, Monad (143) is the only configured network
+    // So we can safely default to it without needing network detection
+    if (primaryWallet.connector.isEmbedded) {
+      setChainId(143)
+      return
+    }
+
     let cancelled = false
     
     const updateChainId = async () => {

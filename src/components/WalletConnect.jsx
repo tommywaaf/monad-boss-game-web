@@ -1,8 +1,17 @@
 import { useDynamicContext, getNetwork } from '@dynamic-labs/sdk-react-core'
 import { isEthereumWallet } from '@dynamic-labs/ethereum'
 import { useEffect, useState } from 'react'
+import { createPublicClient, http } from 'viem'
 import WithdrawModal from './WithdrawModal'
 import './WalletConnect.css'
+
+// Monad chain config for viem fallback
+const monadChain = {
+  id: 143,
+  name: 'Monad',
+  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
+  rpcUrls: { default: { http: ['https://rpc.monad.xyz/'] } },
+}
 
 // Helper to format balance
 const formatBalance = (balance) => {
@@ -30,10 +39,20 @@ function WalletConnect() {
   const [copySuccess, setCopySuccess] = useState(false)
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   
+  // Check if user is connected via Dynamic embedded wallet
+  const isDynamicWallet = primaryWallet?.connector?.isEmbedded || false
+
   // Get chain ID using Dynamic's getNetwork utility
   useEffect(() => {
     if (!primaryWallet?.connector) {
       setChainId(null)
+      return
+    }
+
+    // For embedded wallets, Monad (143) is the only configured network
+    // So we can safely default to it without needing network detection
+    if (primaryWallet.connector.isEmbedded) {
+      setChainId(143)
       return
     }
 
@@ -100,8 +119,20 @@ function WalletConnect() {
 
     const fetchBalance = async () => {
       try {
-        // Pass chainId for embedded wallets on custom networks
-        const publicClient = await primaryWallet.getPublicClient('143')
+        let publicClient = null
+        
+        // For embedded wallets, create a viem public client directly
+        // This is more reliable than relying on the wallet's getPublicClient method
+        if (isDynamicWallet) {
+          publicClient = createPublicClient({
+            chain: monadChain,
+            transport: http('https://rpc.monad.xyz/'),
+          })
+        } else {
+          // For external wallets (MetaMask etc), use the wallet's public client
+          publicClient = await primaryWallet.getPublicClient()
+        }
+        
         if (cancelled || !publicClient || !address) return
 
         const balanceWei = await publicClient.getBalance({ address })
@@ -123,7 +154,7 @@ function WalletConnect() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [isConnected, primaryWallet, address, chainId])
+  }, [isConnected, primaryWallet, address, chainId, isDynamicWallet])
 
   const isMonadNetwork = chainId === 143
 
@@ -153,9 +184,6 @@ function WalletConnect() {
       document.body.removeChild(textArea)
     }
   }
-
-  // Check if user is connected via Dynamic embedded wallet
-  const isDynamicWallet = primaryWallet?.connector?.isEmbedded || false
 
   const handleCreateWallet = () => {
     // Open Dynamic auth flow to create embedded wallet
