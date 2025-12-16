@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { DynamicContextProvider, mergeNetworks } from '@dynamic-labs/sdk-react-core'
+import { DynamicContextProvider } from '@dynamic-labs/sdk-react-core'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
 import { WagmiProvider } from 'wagmi'
@@ -83,19 +83,11 @@ if (!dynamicEnvironmentId) {
         settings={{
           environmentId: dynamicEnvironmentId,
           walletConnectors: [EthereumWalletConnectors],
-          overrides: {
-            evmNetworks: (networks) => {
-              // Merge Monad network with dashboard networks, putting Monad first
-              const merged = mergeNetworks([monadNetwork], networks)
-              // Ensure Monad is first in the list (default network)
-              const monadIndex = merged.findIndex(n => n.chainId === 143)
-              if (monadIndex > 0) {
-                const monad = merged.splice(monadIndex, 1)[0]
-                merged.unshift(monad)
-              }
-              return merged
-            },
-          },
+        overrides: {
+          // Only allow Monad network - ignore dashboard networks to prevent Wagmi mismatch
+          // This ensures embedded wallets always use Monad and don't get stuck on other chains
+          evmNetworks: () => [monadNetwork],
+        },
           walletConnectPreferredChains: ['eip155:143'], // Prefer Monad for WalletConnect
         }}
       >
