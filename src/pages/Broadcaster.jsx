@@ -3,20 +3,179 @@ import './Broadcaster.css'
 
 const NETWORKS = [
   // EVM Networks
-  { id: 'ethereum', name: 'Ethereum', rpc: 'https://eth.llamarpc.com', type: 'evm' },
-  { id: 'worldchain', name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', type: 'evm' },
-  { id: 'optimism', name: 'Optimism', rpc: 'https://mainnet.optimism.io', type: 'evm' },
-  { id: 'base', name: 'Base', rpc: 'https://mainnet.base.org', type: 'evm' },
-  { id: 'arbitrum', name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc', type: 'evm' },
-  { id: 'polygon', name: 'Polygon', rpc: 'https://polygon-rpc.com', type: 'evm' },
-  { id: 'bsc', name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org', type: 'evm' },
-  { id: 'avalanche', name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc', type: 'evm' },
-  { id: 'fantom', name: 'Fantom', rpc: 'https://rpcapi.fantom.network', type: 'evm' },
+  { id: 'auto-evm', name: '🔄 Auto (Detect Chain)', rpc: '', type: 'evm', isAuto: true },
+  { id: 'ethereum', name: 'Ethereum', rpc: 'https://eth.llamarpc.com', type: 'evm', chainId: 1 },
+  { id: 'worldchain', name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', type: 'evm', chainId: 480 },
+  { id: 'optimism', name: 'Optimism', rpc: 'https://mainnet.optimism.io', type: 'evm', chainId: 10 },
+  { id: 'base', name: 'Base', rpc: 'https://mainnet.base.org', type: 'evm', chainId: 8453 },
+  { id: 'arbitrum', name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc', type: 'evm', chainId: 42161 },
+  { id: 'polygon', name: 'Polygon', rpc: 'https://polygon-rpc.com', type: 'evm', chainId: 137 },
+  { id: 'bsc', name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org', type: 'evm', chainId: 56 },
+  { id: 'avalanche', name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc', type: 'evm', chainId: 43114 },
+  { id: 'fantom', name: 'Fantom', rpc: 'https://rpcapi.fantom.network', type: 'evm', chainId: 250 },
   { id: 'custom-evm', name: 'Custom EVM RPC...', rpc: '', type: 'evm' },
   // Solana Networks
   { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
 ]
+
+// Chain ID to network mapping for auto-detection
+const CHAIN_ID_MAP = {
+  1: { name: 'Ethereum', rpc: 'https://eth.llamarpc.com' },
+  10: { name: 'Optimism', rpc: 'https://mainnet.optimism.io' },
+  56: { name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org' },
+  137: { name: 'Polygon', rpc: 'https://polygon-rpc.com' },
+  250: { name: 'Fantom', rpc: 'https://rpcapi.fantom.network' },
+  480: { name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public' },
+  8453: { name: 'Base', rpc: 'https://mainnet.base.org' },
+  42161: { name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc' },
+  43114: { name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc' },
+}
+
+// Decode RLP to extract chain ID from EVM transaction
+const decodeRlpChainId = (rlpHex) => {
+  try {
+    const hex = rlpHex.startsWith('0x') ? rlpHex.slice(2) : rlpHex
+    const bytes = new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)))
+    
+    // Check transaction type (EIP-2718)
+    const txType = bytes[0]
+    
+    if (txType === 0x01) {
+      // EIP-2930 (Type 1) - chain ID is first item after type byte
+      return decodeRlpItem(bytes, 1).chainId
+    } else if (txType === 0x02) {
+      // EIP-1559 (Type 2) - chain ID is first item after type byte
+      return decodeRlpItem(bytes, 1).chainId
+    } else if (txType === 0x03) {
+      // EIP-4844 (Type 3) - chain ID is first item after type byte
+      return decodeRlpItem(bytes, 1).chainId
+    } else if (txType >= 0xc0) {
+      // Legacy transaction (starts with RLP list prefix)
+      // Chain ID derived from v value: chainId = (v - 35) / 2 for EIP-155
+      // Or v = 27/28 for pre-EIP-155 (mainnet assumed)
+      return decodeLegacyChainId(bytes)
+    }
+    
+    return null
+  } catch (e) {
+    console.error('Failed to decode RLP:', e)
+    return null
+  }
+}
+
+// Decode RLP item to get chain ID (for typed transactions)
+const decodeRlpItem = (bytes, offset) => {
+  // Skip the type byte, then decode the RLP list
+  const listByte = bytes[offset]
+  let listStart = offset + 1
+  let listLength = 0
+  
+  if (listByte <= 0xf7) {
+    // Short list (0-55 bytes)
+    listLength = listByte - 0xc0
+  } else {
+    // Long list
+    const lengthOfLength = listByte - 0xf7
+    listLength = 0
+    for (let i = 0; i < lengthOfLength; i++) {
+      listLength = (listLength << 8) + bytes[listStart + i]
+    }
+    listStart += lengthOfLength
+  }
+  
+  // First item in the list is the chain ID
+  const chainIdByte = bytes[listStart]
+  let chainId = 0
+  
+  if (chainIdByte <= 0x7f) {
+    // Single byte value
+    chainId = chainIdByte
+  } else if (chainIdByte <= 0xb7) {
+    // String 0-55 bytes
+    const strLength = chainIdByte - 0x80
+    for (let i = 0; i < strLength; i++) {
+      chainId = (chainId << 8) + bytes[listStart + 1 + i]
+    }
+  }
+  
+  return { chainId }
+}
+
+// Decode legacy transaction to get chain ID from v value
+const decodeLegacyChainId = (bytes) => {
+  // Parse the RLP list to find the v value (7th item: nonce, gasPrice, gasLimit, to, value, data, v, r, s)
+  let offset = 0
+  const listByte = bytes[offset]
+  
+  if (listByte <= 0xf7) {
+    offset = 1
+  } else {
+    const lengthOfLength = listByte - 0xf7
+    offset = 1 + lengthOfLength
+  }
+  
+  // Skip first 6 items (nonce, gasPrice, gasLimit, to, value, data)
+  for (let i = 0; i < 6; i++) {
+    offset = skipRlpItem(bytes, offset)
+  }
+  
+  // Now read v value
+  const vByte = bytes[offset]
+  let v = 0
+  
+  if (vByte <= 0x7f) {
+    v = vByte
+  } else if (vByte <= 0xb7) {
+    const strLength = vByte - 0x80
+    for (let i = 0; i < strLength; i++) {
+      v = (v << 8) + bytes[offset + 1 + i]
+    }
+  }
+  
+  // EIP-155: v = chainId * 2 + 35 or chainId * 2 + 36
+  // So chainId = (v - 35) / 2
+  if (v === 27 || v === 28) {
+    // Pre-EIP-155, assume mainnet
+    return 1
+  } else if (v >= 35) {
+    return Math.floor((v - 35) / 2)
+  }
+  
+  return null
+}
+
+// Skip an RLP item and return the new offset
+const skipRlpItem = (bytes, offset) => {
+  const byte = bytes[offset]
+  
+  if (byte <= 0x7f) {
+    // Single byte
+    return offset + 1
+  } else if (byte <= 0xb7) {
+    // String 0-55 bytes
+    return offset + 1 + (byte - 0x80)
+  } else if (byte <= 0xbf) {
+    // String > 55 bytes
+    const lengthOfLength = byte - 0xb7
+    let strLength = 0
+    for (let i = 0; i < lengthOfLength; i++) {
+      strLength = (strLength << 8) + bytes[offset + 1 + i]
+    }
+    return offset + 1 + lengthOfLength + strLength
+  } else if (byte <= 0xf7) {
+    // List 0-55 bytes
+    return offset + 1 + (byte - 0xc0)
+  } else {
+    // List > 55 bytes
+    const lengthOfLength = byte - 0xf7
+    let listLength = 0
+    for (let i = 0; i < lengthOfLength; i++) {
+      listLength = (listLength << 8) + bytes[offset + 1 + i]
+    }
+    return offset + 1 + lengthOfLength + listLength
+  }
+}
 
 // Base58 alphabet for Solana
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -114,6 +273,33 @@ function Broadcaster() {
   const [solanaSkipPreflight, setSolanaSkipPreflight] = useState(false)
   
   const isSolana = selectedNetwork.type === 'solana'
+  const isAutoMode = selectedNetwork.id === 'auto-evm'
+  
+  // Get chain info for a transaction (for auto mode)
+  const getChainInfo = (txPayload) => {
+    if (!isAutoMode) {
+      return { 
+        chainId: selectedNetwork.chainId || null, 
+        chainName: selectedNetwork.name, 
+        rpc: getRpcUrl() 
+      }
+    }
+    
+    const chainId = decodeRlpChainId(txPayload)
+    if (chainId && CHAIN_ID_MAP[chainId]) {
+      return {
+        chainId,
+        chainName: CHAIN_ID_MAP[chainId].name,
+        rpc: CHAIN_ID_MAP[chainId].rpc
+      }
+    }
+    
+    return {
+      chainId,
+      chainName: chainId ? `Unknown (${chainId})` : 'Unknown',
+      rpc: null
+    }
+  }
 
   const normalizeTransaction = (tx, networkType) => {
     const trimmed = tx.trim().replace(/^["']|["']$/g, '')
@@ -312,8 +498,18 @@ function Broadcaster() {
     return false
   }
 
-  const broadcastTransaction = async (txPayload, signal) => {
-    const rpcUrl = getRpcUrl()
+  const broadcastTransaction = async (txPayload, signal, overrideRpc = null) => {
+    const rpcUrl = overrideRpc || getRpcUrl()
+    
+    if (!rpcUrl) {
+      return {
+        success: false,
+        error: 'No RPC URL available for this chain',
+        txHash: null,
+        retryable: false,
+        httpStatus: null
+      }
+    }
     
     try {
       let body
@@ -394,7 +590,7 @@ function Broadcaster() {
     }
   }
 
-  const broadcastWithRetry = async (rlpHex, signal, onRetry) => {
+  const broadcastWithRetry = async (rlpHex, signal, onRetry, overrideRpc = null) => {
     let lastResult = null
     let attempts = 0
     
@@ -403,7 +599,7 @@ function Broadcaster() {
         return { ...lastResult, attempts, aborted: true }
       }
       
-      lastResult = await broadcastTransaction(rlpHex, signal)
+      lastResult = await broadcastTransaction(rlpHex, signal, overrideRpc)
       attempts++
       
       // Success or non-retryable error - we're done
@@ -443,10 +639,13 @@ function Broadcaster() {
       return
     }
 
-    const rpcUrl = getRpcUrl()
-    if (!rpcUrl) {
-      alert('Please enter a valid RPC URL')
-      return
+    // For non-auto mode, validate RPC URL
+    if (!isAutoMode) {
+      const rpcUrl = getRpcUrl()
+      if (!rpcUrl) {
+        alert('Please enter a valid RPC URL')
+        return
+      }
     }
 
     // Create abort controller
@@ -467,8 +666,11 @@ function Broadcaster() {
       const tx = transactions[i]
       const txStartTime = Date.now()
 
-      // Broadcast with retry support
-      const result = await broadcastWithRetry(tx, signal)
+      // Get chain info (for auto mode, this decodes the tx)
+      const chainInfo = getChainInfo(tx)
+
+      // Broadcast with retry support, using chain-specific RPC for auto mode
+      const result = await broadcastWithRetry(tx, signal, null, chainInfo.rpc)
       
       newResults.push({
         index: i + 1,
@@ -479,7 +681,10 @@ function Broadcaster() {
         timestamp: new Date().toISOString(),
         attempts: result.attempts || 1,
         retryable: result.retryable,
-        exhaustedRetries: result.exhaustedRetries
+        exhaustedRetries: result.exhaustedRetries,
+        chainId: chainInfo.chainId,
+        chainName: chainInfo.chainName,
+        rpcUsed: chainInfo.rpc
       })
       
       setBroadcastProgress({ current: i + 1, total: transactions.length })
@@ -505,7 +710,7 @@ function Broadcaster() {
       return
     }
 
-    const headers = ['Index', 'RLP', 'Success', 'TxHash', 'Error', 'Attempts', 'Retryable', 'Timestamp']
+    const headers = ['Index', 'RLP', 'Success', 'TxHash', 'Error', 'Attempts', 'Retryable', 'ChainId', 'ChainName', 'RpcUsed', 'Timestamp']
     const rows = results.map(r => [
       r.index,
       `"${r.rlp}"`,
@@ -514,6 +719,9 @@ function Broadcaster() {
       `"${(r.error || '').replace(/"/g, '""')}"`,
       r.attempts || 1,
       r.retryable ? 'yes' : 'no',
+      r.chainId || '',
+      r.chainName || '',
+      `"${r.rpcUsed || ''}"`,
       r.timestamp
     ])
 
@@ -583,6 +791,11 @@ function Broadcaster() {
                 placeholder={`Enter custom ${isSolana ? 'Solana' : 'EVM'} RPC URL...`}
                 className="custom-rpc-input"
               />
+            ) : isAutoMode ? (
+              <div className="rpc-display auto-mode">
+                <span className="rpc-label">Mode:</span>
+                <code>Auto-detect chain from transaction</code>
+              </div>
             ) : (
               <div className="rpc-display">
                 <span className="rpc-label">RPC:</span>
@@ -594,6 +807,12 @@ function Broadcaster() {
           {isSolana && (
             <div className="network-type-badge solana">
               ◎ Solana Mode
+            </div>
+          )}
+          
+          {isAutoMode && (
+            <div className="network-type-badge auto">
+              🔄 Auto Mode - chains detected: {Object.keys(CHAIN_ID_MAP).length}
             </div>
           )}
         </section>
@@ -698,7 +917,9 @@ function Broadcaster() {
           <p className="input-hint">
             {isSolana 
               ? 'Paste signed Solana transactions (one per line) - supports base64, base58, or hex format'
-              : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
+              : isAutoMode
+                ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
+                : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
             }
           </p>
           
@@ -818,6 +1039,7 @@ function Broadcaster() {
                 <thead>
                   <tr>
                     <th>#</th>
+                    {isAutoMode && <th>Chain</th>}
                     <th>RLP (truncated)</th>
                     <th>Status</th>
                     <th>Tries</th>
@@ -828,6 +1050,14 @@ function Broadcaster() {
                   {results.map((result, idx) => (
                     <tr key={idx} className={`${result.success ? 'row-success' : 'row-error'} ${result.attempts > 1 ? 'row-retried' : ''}`}>
                       <td>{result.index}</td>
+                      {isAutoMode && (
+                        <td className="chain-cell" title={result.rpcUsed || 'Unknown RPC'}>
+                          <span className="chain-badge">
+                            {result.chainName || 'Unknown'}
+                            {result.chainId && <span className="chain-id">({result.chainId})</span>}
+                          </span>
+                        </td>
+                      )}
                       <td className="rlp-cell" title={result.rlp}>
                         <code>{result.rlp.slice(0, 20)}...{result.rlp.slice(-8)}</code>
                       </td>
