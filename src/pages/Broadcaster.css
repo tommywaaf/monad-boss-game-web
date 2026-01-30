@@ -1016,6 +1016,14 @@ section {
   cursor: help;
 }
 
+.explorer-cell {
+  text-align: center;
+}
+
+.no-explorer {
+  color: #52525b;
+}
+
 .attempts-cell {
   text-align: center;
   font-weight: 600;

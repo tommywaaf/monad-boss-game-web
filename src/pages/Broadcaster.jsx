@@ -39,12 +39,8 @@ const NETWORKS = [
   // Solana Networks
   { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana', explorer: 'https://solscan.io/tx/' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
-  // XRP Ledger Networks
-  { id: 'xrp', name: 'XRP Ledger (xrplcluster.com)', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
-  { id: 'xrp-ws', name: 'XRP Ledger (xrpl.ws)', rpc: 'https://xrpl.ws/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
-  { id: 'xrp-ripple-s1', name: 'XRP Ledger (Ripple s1) ⚠️', rpc: 'https://s1.ripple.com:51234/', type: 'xrp', explorer: 'https://xrpscan.com/tx/', noCors: true },
-  { id: 'xrp-ripple-s2', name: 'XRP Ledger (Ripple s2) ⚠️', rpc: 'https://s2.ripple.com:51234/', type: 'xrp', explorer: 'https://xrpscan.com/tx/', noCors: true },
-  { id: 'custom-xrp', name: 'Custom XRP RPC...', rpc: '', type: 'xrp' },
+  // XRP Ledger
+  { id: 'xrp', name: 'XRP Ledger Mainnet', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
 ]
 
 // Chain ID to network mapping for auto-detection
@@ -990,17 +986,9 @@ function Broadcaster() {
           )}
           
           {isXrp && (
-            <>
-              <div className="network-type-badge xrp">
-                ✕ XRP Ledger Mode
-              </div>
-              {selectedNetwork.noCors && (
-                <div className="cors-warning">
-                  ⚠️ Ripple nodes don't support CORS. 
-                  Use "xrplcluster.com" or "xrpl.ws" for browser-based broadcasting.
-                </div>
-              )}
-            </>
+            <div className="network-type-badge xrp">
+              ✕ XRP Ledger Mode
+            </div>
           )}
           
           {isAutoMode && (
@@ -1286,10 +1274,11 @@ function Broadcaster() {
                   <tr>
                     <th>#</th>
                     {isAutoMode && <th>Chain</th>}
-                    <th>RLP (truncated)</th>
+                    <th>TX (truncated)</th>
                     <th>Status</th>
                     <th>Tries</th>
                     <th>Result</th>
+                    <th>Explorer</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1325,26 +1314,29 @@ function Broadcaster() {
                       </td>
                       <td className="result-cell">
                         {result.success ? (
-                          result.explorer && result.txHash ? (
-                            <a 
-                              href={`${result.explorer}${result.txHash}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="tx-link"
-                              title={`View on explorer: ${result.txHash}`}
-                            >
-                              {result.txHash?.slice(0, 10)}...{result.txHash?.slice(-8)} ↗
-                            </a>
-                          ) : (
-                            <code className="tx-hash" title={result.txHash}>
-                              {result.txHash?.slice(0, 10)}...{result.txHash?.slice(-8)}
-                            </code>
-                          )
+                          <code className="tx-hash" title={result.txHash}>
+                            {result.txHash?.slice(0, 10)}...{result.txHash?.slice(-8)}
+                          </code>
                         ) : (
                           <span className="error-msg" title={result.error}>
                             {result.error?.slice(0, 40)}{result.error?.length > 40 ? '...' : ''}
                           </span>
                         )}
+                      </td>
+                      <td className="explorer-cell">
+                        {result.success && result.explorer && result.txHash ? (
+                          <a 
+                            href={`${result.explorer}${result.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="tx-link"
+                            title={`View on explorer`}
+                          >
+                            View ↗
+                          </a>
+                        ) : result.success ? (
+                          <span className="no-explorer">—</span>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
