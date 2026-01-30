@@ -4,7 +4,7 @@ import './Broadcaster.css'
 const NETWORKS = [
   // EVM Networks
   { id: 'auto-evm', name: '🔄 Auto (Detect Chain)', rpc: '', type: 'evm', isAuto: true },
-  { id: 'ethereum', name: 'Ethereum', rpc: 'https://eth.llamarpc.com', type: 'evm', chainId: 1, explorer: 'https://etherscan.io/tx/' },
+  { id: 'ethereum', name: 'Ethereum', rpc: 'https://ethereum-rpc.publicnode.com', type: 'evm', chainId: 1, explorer: 'https://etherscan.io/tx/' },
   { id: 'arbitrum', name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc', type: 'evm', chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
   { id: 'astar', name: 'Astar', rpc: 'https://evm.astar.network', type: 'evm', chainId: 592, explorer: 'https://astar.blockscout.com/tx/' },
   { id: 'aurora', name: 'Aurora', rpc: 'https://mainnet.aurora.dev', type: 'evm', chainId: 1313161554, explorer: 'https://explorer.aurora.dev/tx/' },
@@ -45,7 +45,7 @@ const NETWORKS = [
 
 // Chain ID to network mapping for auto-detection
 const CHAIN_ID_MAP = {
-  1: { name: 'Ethereum', rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io/tx/' },
+  1: { name: 'Ethereum', rpc: 'https://ethereum-rpc.publicnode.com', explorer: 'https://etherscan.io/tx/' },
   10: { name: 'Optimism', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io/tx/' },
   19: { name: 'Songbird', rpc: 'https://songbird-api.flare.network/ext/C/rpc', explorer: 'https://songbird-explorer.flare.network/tx/' },
   30: { name: 'RSK', rpc: 'https://public-node.rsk.co', explorer: 'https://explorer.rsk.co/tx/' },
