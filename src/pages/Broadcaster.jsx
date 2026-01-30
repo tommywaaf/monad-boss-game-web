@@ -324,6 +324,14 @@ function Broadcaster() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all') // 'all', 'success', 'failed'
   
+  // Copy to clipboard with visual feedback
+  const [copiedId, setCopiedId] = useState(null)
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 1000)
+  }
+  
   const isSolana = selectedNetwork.type === 'solana'
   const isXrp = selectedNetwork.type === 'xrp'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
@@ -1293,8 +1301,15 @@ function Broadcaster() {
                           </span>
                         </td>
                       )}
-                      <td className="rlp-cell" title={result.rlp}>
-                        <code>{result.rlp.slice(0, 20)}...{result.rlp.slice(-8)}</code>
+                      <td className="rlp-cell">
+                        <code 
+                          className="clickable"
+                          title="Click to copy full transaction"
+                          onClick={() => copyToClipboard(result.rlp, `rlp-${result.index}`)}
+                        >
+                          {result.rlp.slice(0, 20)}...{result.rlp.slice(-8)}
+                          {copiedId === `rlp-${result.index}` && <span className="copied-badge">Copied!</span>}
+                        </code>
                       </td>
                       <td>
                         <span className={`status-badge ${result.success ? 'success' : 'error'}`}>
@@ -1317,14 +1332,10 @@ function Broadcaster() {
                           <code 
                             className="tx-hash clickable" 
                             title="Click to copy"
-                            onClick={() => {
-                              navigator.clipboard.writeText(result.txHash)
-                              // Brief visual feedback
-                              const el = document.activeElement
-                              el?.blur()
-                            }}
+                            onClick={() => copyToClipboard(result.txHash, `hash-${result.index}`)}
                           >
                             {result.txHash}
+                            {copiedId === `hash-${result.index}` && <span className="copied-badge">Copied!</span>}
                           </code>
                         ) : (
                           <span className="error-msg" title={result.error}>
