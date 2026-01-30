@@ -564,6 +564,19 @@ function Broadcaster() {
     /execution reverted/i,
     /contract creation code storage out of gas/i,
     /max initcode size exceeded/i,
+    // XRP errors
+    /tefPAST_SEQ/i,
+    /tefMAX_LEDGER/i,
+    /tecUNFUNDED/i,
+    /tecNO_DST/i,
+    /tecNO_DST_INSUF_XRP/i,
+    /tecPATH_DRY/i,
+    /tecINSUF_FEE/i,
+    /temBAD_SEQUENCE/i,
+    /temBAD_FEE/i,
+    /temBAD_SIGNATURE/i,
+    /temINVALID/i,
+    /tefALREADY/i,
   ]
 
   const isRetryableError = (error, httpStatus) => {
@@ -620,6 +633,16 @@ function Broadcaster() {
             }
           ]
         }
+      } else if (isXrp) {
+        // XRP Ledger transaction
+        body = {
+          method: 'submit',
+          params: [
+            {
+              tx_blob: txPayload
+            }
+          ]
+        }
       } else {
         // EVM transaction
         body = {
@@ -641,6 +664,44 @@ function Broadcaster() {
 
       const httpStatus = response.status
       const data = await response.json()
+      
+      // Handle XRP response format
+      if (isXrp) {
+        const result = data.result
+        if (!result) {
+          return {
+            success: false,
+            error: 'No result in response',
+            txHash: null,
+            retryable: true,
+            httpStatus
+          }
+        }
+        
+        // XRP success codes start with "tes" (e.g., tesSUCCESS)
+        const engineResult = result.engine_result || ''
+        const isSuccess = engineResult.startsWith('tes')
+        const txHash = result.tx_json?.hash || result.hash || null
+        
+        if (isSuccess) {
+          return {
+            success: true,
+            error: null,
+            txHash,
+            retryable: false,
+            httpStatus
+          }
+        } else {
+          const errorMsg = `${engineResult}: ${result.engine_result_message || 'Unknown error'}`
+          return {
+            success: false,
+            error: errorMsg,
+            txHash,
+            retryable: isRetryableError(errorMsg, httpStatus),
+            httpStatus
+          }
+        }
+      }
       
       if (data.error) {
         const errorMsg = data.error.message || JSON.stringify(data.error)
@@ -839,13 +900,20 @@ function Broadcaster() {
   // Group networks by type for the dropdown
   const evmNetworks = NETWORKS.filter(n => n.type === 'evm')
   const solanaNetworks = NETWORKS.filter(n => n.type === 'solana')
+  const xrpNetworks = NETWORKS.filter(n => n.type === 'xrp')
+  
+  const getNetworkTypeLabel = () => {
+    if (isSolana) return 'Solana'
+    if (isXrp) return 'XRP Ledger'
+    return 'EVM'
+  }
 
   return (
     <div className="broadcaster-page">
       <div className="broadcaster-container">
         <header className="broadcaster-header">
-          <h1>⚡ {isSolana ? 'Solana' : 'EVM'} Broadcaster</h1>
-          <p>Broadcast raw transactions to any {isSolana ? 'Solana cluster' : 'EVM chain'}</p>
+          <h1>⚡ {getNetworkTypeLabel()} Broadcaster</h1>
+          <p>Broadcast raw transactions to any {isSolana ? 'Solana cluster' : isXrp ? 'XRP Ledger node' : 'EVM chain'}</p>
         </header>
 
         <section className="network-section">
@@ -873,14 +941,21 @@ function Broadcaster() {
                   </option>
                 ))}
               </optgroup>
+              <optgroup label="XRP Ledger">
+                {xrpNetworks.map(network => (
+                  <option key={network.id} value={network.id}>
+                    {network.name}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             
-            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana') ? (
+            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp') ? (
               <input
                 type="text"
                 value={customRpc}
                 onChange={(e) => setCustomRpc(e.target.value)}
-                placeholder={`Enter custom ${isSolana ? 'Solana' : 'EVM'} RPC URL...`}
+                placeholder={`Enter custom ${getNetworkTypeLabel()} RPC URL...`}
                 className="custom-rpc-input"
               />
             ) : isAutoMode ? (
@@ -899,6 +974,12 @@ function Broadcaster() {
           {isSolana && (
             <div className="network-type-badge solana">
               ◎ Solana Mode
+            </div>
+          )}
+          
+          {isXrp && (
+            <div className="network-type-badge xrp">
+              ✕ XRP Ledger Mode
             </div>
           )}
           
@@ -1009,9 +1090,11 @@ function Broadcaster() {
           <p className="input-hint">
             {isSolana 
               ? 'Paste signed Solana transactions (one per line) - supports base64, base58, or hex format'
-              : isAutoMode
-                ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
-                : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
+              : isXrp
+                ? 'Paste signed XRP transaction blobs (one per line) - hex format'
+                : isAutoMode
+                  ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
+                  : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
             }
           </p>
           

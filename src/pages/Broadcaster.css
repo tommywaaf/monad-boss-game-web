@@ -171,6 +171,12 @@ section {
   color: #667eea;
 }
 
+.network-type-badge.xrp {
+  background: linear-gradient(135deg, rgba(35, 41, 47, 0.3) 0%, rgba(0, 0, 0, 0.2) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
 .rpc-display.auto-mode {
   background: rgba(102, 126, 234, 0.05);
   border-color: rgba(102, 126, 234, 0.15);
