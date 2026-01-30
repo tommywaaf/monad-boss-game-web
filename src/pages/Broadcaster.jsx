@@ -21,6 +21,7 @@ const NETWORKS = [
   { id: 'kava', name: 'KAVA EVM', rpc: 'https://evm.kava.io', type: 'evm', chainId: 2222, explorer: 'https://kavascan.com/tx/' },
   { id: 'plasma', name: 'Plasma Mainnet', rpc: 'https://rpc.plasma.to', type: 'evm', chainId: 9745, explorer: 'https://plasmascan.to/tx/' },
   { id: 'linea', name: 'Linea', rpc: 'https://rpc.linea.build', type: 'evm', chainId: 59144, explorer: 'https://lineascan.build/tx/' },
+  { id: 'monad', name: 'Monad', rpc: 'https://rpc3.monad.xyz', type: 'evm', chainId: 143, explorer: 'https://monadvision.com/tx/' },
   { id: 'moonbeam', name: 'Moonbeam', rpc: 'https://rpc.api.moonbeam.network', type: 'evm', chainId: 1284, explorer: 'https://moonscan.io/tx/' },
   { id: 'moonriver', name: 'Moonriver', rpc: 'https://rpc.api.moonriver.moonbeam.network', type: 'evm', chainId: 1285, explorer: 'https://moonriver.moonscan.io/tx/' },
   { id: 'oasys', name: 'Oasys', rpc: 'https://rpc.mainnet.oasys.games', type: 'evm', chainId: 248, explorer: 'https://scan.oasys.games/tx/' },
@@ -40,7 +41,9 @@ const NETWORKS = [
   { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana', explorer: 'https://solscan.io/tx/' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
   // XRP Ledger
-  { id: 'xrp', name: 'XRP Ledger Mainnet', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
+  { id: 'xrp', name: 'XRP Mainnet', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
+  // Stellar (XLM)
+  { id: 'stellar', name: 'Stellar Mainnet', rpc: 'https://horizon.stellar.org', type: 'stellar', explorer: 'https://stellar.expert/explorer/public/tx/' },
 ]
 
 // Chain ID to network mapping for auto-detection
@@ -54,6 +57,7 @@ const CHAIN_ID_MAP = {
   100: { name: 'Gnosis Chain', rpc: 'https://rpc.gnosischain.com', explorer: 'https://gnosisscan.io/tx/' },
   106: { name: 'Velas', rpc: 'https://evmexplorer.velas.com/rpc', explorer: 'https://evmexplorer.velas.com/tx/' },
   137: { name: 'Polygon', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com/tx/' },
+  143: { name: 'Monad', rpc: 'https://rpc3.monad.xyz', explorer: 'https://monadvision.com/tx/' },
   148: { name: 'Shimmer EVM', rpc: 'https://json-rpc.evm.shimmer.network', explorer: 'https://explorer.evm.shimmer.network/tx/' },
   248: { name: 'Oasys', rpc: 'https://rpc.mainnet.oasys.games', explorer: 'https://scan.oasys.games/tx/' },
   250: { name: 'Fantom', rpc: 'https://rpcapi.fantom.network', explorer: 'https://ftmscan.com/tx/' },
@@ -340,6 +344,7 @@ function Broadcaster() {
   
   const isSolana = selectedNetwork.type === 'solana'
   const isXrp = selectedNetwork.type === 'xrp'
+  const isStellar = selectedNetwork.type === 'stellar'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
   
   // Filter and paginate results
@@ -420,6 +425,11 @@ function Broadcaster() {
     if (networkType === 'xrp') {
       // For XRP, strip 0x prefix if present (XRP expects raw hex)
       return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed
+    }
+    
+    if (networkType === 'stellar') {
+      // For Stellar, return the base64 encoded transaction as-is
+      return trimmed
     }
     
     // For EVM, ensure 0x prefix
@@ -637,6 +647,49 @@ function Broadcaster() {
     }
     
     try {
+      let response
+      
+      if (isStellar) {
+        // Stellar uses form-encoded POST to /transactions endpoint
+        const formBody = new URLSearchParams()
+        formBody.append('tx', txPayload)
+        
+        response = await fetch(`${rpcUrl}/transactions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: formBody.toString(),
+          signal
+        })
+        
+        const httpStatus = response.status
+        const data = await response.json()
+        
+        if (response.ok && data.hash) {
+          return {
+            success: true,
+            error: null,
+            txHash: data.hash,
+            retryable: false,
+            httpStatus
+          }
+        } else {
+          // Stellar error response
+          const errorMsg = data.extras?.result_codes?.transaction || 
+                          data.title || 
+                          data.detail || 
+                          'Transaction failed'
+          return {
+            success: false,
+            error: errorMsg,
+            txHash: null,
+            retryable: isRetryableError(errorMsg, httpStatus),
+            httpStatus
+          }
+        }
+      }
+      
       let body
       
       if (isSolana) {
@@ -675,7 +728,7 @@ function Broadcaster() {
         }
       }
       
-      const response = await fetch(rpcUrl, {
+      response = await fetch(rpcUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -923,10 +976,12 @@ function Broadcaster() {
   const evmNetworks = NETWORKS.filter(n => n.type === 'evm')
   const solanaNetworks = NETWORKS.filter(n => n.type === 'solana')
   const xrpNetworks = NETWORKS.filter(n => n.type === 'xrp')
+  const stellarNetworks = NETWORKS.filter(n => n.type === 'stellar')
   
   const getNetworkTypeLabel = () => {
     if (isSolana) return 'Solana'
     if (isXrp) return 'XRP Ledger'
+    if (isStellar) return 'Stellar (XLM)'
     return 'EVM'
   }
 
@@ -935,7 +990,7 @@ function Broadcaster() {
       <div className="broadcaster-container">
         <header className="broadcaster-header">
           <h1>⚡ {getNetworkTypeLabel()} Broadcaster</h1>
-          <p>Broadcast raw transactions to any {isSolana ? 'Solana cluster' : isXrp ? 'XRP Ledger node' : 'EVM chain'}</p>
+          <p>Broadcast raw transactions to any {isSolana ? 'Solana cluster' : isXrp ? 'XRP Ledger node' : isStellar ? 'Stellar Horizon server' : 'EVM chain'}</p>
         </header>
 
         <section className="network-section">
@@ -965,6 +1020,13 @@ function Broadcaster() {
               </optgroup>
               <optgroup label="XRP Ledger">
                 {xrpNetworks.map(network => (
+                  <option key={network.id} value={network.id}>
+                    {network.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Stellar (XLM)">
+                {stellarNetworks.map(network => (
                   <option key={network.id} value={network.id}>
                     {network.name}
                   </option>
@@ -1002,6 +1064,12 @@ function Broadcaster() {
           {isXrp && (
             <div className="network-type-badge xrp">
               ✕ XRP Ledger Mode
+            </div>
+          )}
+          
+          {isStellar && (
+            <div className="network-type-badge stellar">
+              ✦ Stellar Mode
             </div>
           )}
           
@@ -1114,9 +1182,11 @@ function Broadcaster() {
               ? 'Paste signed Solana transactions (one per line) - supports base64, base58, or hex format'
               : isXrp
                 ? 'Paste signed XRP transaction blobs (one per line) - hex format'
-                : isAutoMode
-                  ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
-                  : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
+                : isStellar
+                  ? 'Paste signed Stellar transactions (one per line) - base64 XDR format'
+                  : isAutoMode
+                    ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
+                    : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
             }
           </p>
           
