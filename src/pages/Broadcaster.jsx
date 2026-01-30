@@ -11,13 +11,6 @@ const EVM_NETWORKS = [
   { id: 'bsc', name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org' },
   { id: 'avalanche', name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc' },
   { id: 'fantom', name: 'Fantom', rpc: 'https://rpc.ftm.tools' },
-  { id: 'gnosis', name: 'Gnosis', rpc: 'https://rpc.gnosischain.com' },
-  { id: 'zksync', name: 'zkSync Era', rpc: 'https://mainnet.era.zksync.io' },
-  { id: 'linea', name: 'Linea', rpc: 'https://rpc.linea.build' },
-  { id: 'scroll', name: 'Scroll', rpc: 'https://rpc.scroll.io' },
-  { id: 'mantle', name: 'Mantle', rpc: 'https://rpc.mantle.xyz' },
-  { id: 'blast', name: 'Blast', rpc: 'https://rpc.blast.io' },
-  { id: 'monad', name: 'Monad Testnet', rpc: 'https://testnet-rpc.monad.xyz' },
   { id: 'custom', name: 'Custom RPC...', rpc: '' },
 ]
 
