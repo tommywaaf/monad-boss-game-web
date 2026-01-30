@@ -1314,8 +1314,17 @@ function Broadcaster() {
                       </td>
                       <td className="result-cell">
                         {result.success ? (
-                          <code className="tx-hash" title={result.txHash}>
-                            {result.txHash?.slice(0, 10)}...{result.txHash?.slice(-8)}
+                          <code 
+                            className="tx-hash clickable" 
+                            title="Click to copy"
+                            onClick={() => {
+                              navigator.clipboard.writeText(result.txHash)
+                              // Brief visual feedback
+                              const el = document.activeElement
+                              el?.blur()
+                            }}
+                          >
+                            {result.txHash}
                           </code>
                         ) : (
                           <span className="error-msg" title={result.error}>

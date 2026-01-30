@@ -980,13 +980,34 @@ section {
 }
 
 .result-cell {
-  max-width: 250px;
+  max-width: 450px;
+  min-width: 200px;
 }
 
 .tx-hash {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: #2dd4bf;
-  cursor: help;
+  word-break: break-all;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.tx-hash.clickable {
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  background: rgba(45, 212, 191, 0.08);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  display: inline-block;
+}
+
+.tx-hash.clickable:hover {
+  background: rgba(45, 212, 191, 0.2);
+  color: #5eead4;
+}
+
+.tx-hash.clickable:active {
+  background: rgba(45, 212, 191, 0.3);
+  transform: scale(0.98);
 }
 
 .tx-link {
