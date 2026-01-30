@@ -39,6 +39,10 @@ const NETWORKS = [
   // Solana Networks
   { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana', explorer: 'https://solscan.io/tx/' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
+  // XRP Ledger Networks
+  { id: 'xrp', name: 'XRP Ledger Mainnet', rpc: 'https://s1.ripple.com:51234', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
+  { id: 'xrp-s2', name: 'XRP Ledger (s2)', rpc: 'https://s2.ripple.com:51234', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
+  { id: 'custom-xrp', name: 'Custom XRP RPC...', rpc: '', type: 'xrp' },
 ]
 
 // Chain ID to network mapping for auto-detection
@@ -323,6 +327,7 @@ function Broadcaster() {
   const [statusFilter, setStatusFilter] = useState('all') // 'all', 'success', 'failed'
   
   const isSolana = selectedNetwork.type === 'solana'
+  const isXrp = selectedNetwork.type === 'xrp'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
   
   // Filter and paginate results
@@ -398,6 +403,11 @@ function Broadcaster() {
     if (networkType === 'solana') {
       // For Solana, return the raw string - encoding will be detected at broadcast time
       return trimmed
+    }
+    
+    if (networkType === 'xrp') {
+      // For XRP, strip 0x prefix if present (XRP expects raw hex)
+      return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed
     }
     
     // For EVM, ensure 0x prefix
