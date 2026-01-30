@@ -316,8 +316,51 @@ function Broadcaster() {
   // Solana-specific settings
   const [solanaSkipPreflight, setSolanaSkipPreflight] = useState(false)
   
+  // Pagination and search for results
+  const [resultsPage, setResultsPage] = useState(1)
+  const [resultsPerPage, setResultsPerPage] = useState(100)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all') // 'all', 'success', 'failed'
+  
   const isSolana = selectedNetwork.type === 'solana'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
+  
+  // Filter and paginate results
+  const filteredResults = results.filter(r => {
+    // Status filter
+    if (statusFilter === 'success' && !r.success) return false
+    if (statusFilter === 'failed' && r.success) return false
+    
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      const matchesTxHash = r.txHash?.toLowerCase().includes(query)
+      const matchesError = r.error?.toLowerCase().includes(query)
+      const matchesChain = r.chainName?.toLowerCase().includes(query)
+      const matchesIndex = r.index.toString().includes(query)
+      const matchesRlp = r.rlp?.toLowerCase().includes(query)
+      return matchesTxHash || matchesError || matchesChain || matchesIndex || matchesRlp
+    }
+    
+    return true
+  })
+  
+  const totalPages = Math.ceil(filteredResults.length / resultsPerPage)
+  const paginatedResults = filteredResults.slice(
+    (resultsPage - 1) * resultsPerPage,
+    resultsPage * resultsPerPage
+  )
+  
+  // Reset to page 1 when filters change
+  const handleSearchChange = (query) => {
+    setSearchQuery(query)
+    setResultsPage(1)
+  }
+  
+  const handleStatusFilterChange = (filter) => {
+    setStatusFilter(filter)
+    setResultsPage(1)
+  }
   
   // Get chain info for a transaction (for auto mode)
   const getChainInfo = (txPayload) => {
@@ -1083,6 +1126,57 @@ function Broadcaster() {
               </button>
             </div>
 
+            {/* Search and Filter Controls */}
+            <div className="results-controls">
+              <div className="search-box">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  placeholder="Search by tx hash, chain, error, index..."
+                  className="search-input"
+                />
+                {searchQuery && (
+                  <button onClick={() => handleSearchChange('')} className="search-clear">×</button>
+                )}
+              </div>
+              
+              <div className="filter-controls">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => handleStatusFilterChange(e.target.value)}
+                  className="status-filter"
+                >
+                  <option value="all">All ({results.length})</option>
+                  <option value="success">Success ({successCount})</option>
+                  <option value="failed">Failed ({failCount})</option>
+                </select>
+                
+                <select
+                  value={resultsPerPage}
+                  onChange={(e) => { setResultsPerPage(Number(e.target.value)); setResultsPage(1); }}
+                  className="per-page-select"
+                >
+                  <option value={50}>50 per page</option>
+                  <option value={100}>100 per page</option>
+                  <option value={250}>250 per page</option>
+                  <option value={500}>500 per page</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Results Info */}
+            <div className="results-info-bar">
+              {searchQuery || statusFilter !== 'all' ? (
+                <span>Showing {filteredResults.length} of {results.length} results</span>
+              ) : (
+                <span>Showing {paginatedResults.length} of {results.length} results</span>
+              )}
+              {totalPages > 1 && (
+                <span className="page-info">Page {resultsPage} of {totalPages}</span>
+              )}
+            </div>
+
             <div className="results-table-wrapper">
               <table className="results-table">
                 <thead>
@@ -1096,8 +1190,8 @@ function Broadcaster() {
                   </tr>
                 </thead>
                 <tbody>
-                  {results.map((result, idx) => (
-                    <tr key={idx} className={`${result.success ? 'row-success' : 'row-error'} ${result.attempts > 1 ? 'row-retried' : ''}`}>
+                  {paginatedResults.map((result, idx) => (
+                    <tr key={result.index} className={`${result.success ? 'row-success' : 'row-error'} ${result.attempts > 1 ? 'row-retried' : ''}`}>
                       <td>{result.index}</td>
                       {isAutoMode && (
                         <td className="chain-cell" title={result.rpcUsed || 'Unknown RPC'}>
@@ -1154,6 +1248,66 @@ function Broadcaster() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="pagination-controls">
+                <button
+                  onClick={() => setResultsPage(1)}
+                  disabled={resultsPage === 1}
+                  className="pagination-btn"
+                >
+                  ⏮ First
+                </button>
+                <button
+                  onClick={() => setResultsPage(p => Math.max(1, p - 1))}
+                  disabled={resultsPage === 1}
+                  className="pagination-btn"
+                >
+                  ◀ Prev
+                </button>
+                
+                <div className="pagination-pages">
+                  {/* Show page numbers */}
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum
+                    if (totalPages <= 5) {
+                      pageNum = i + 1
+                    } else if (resultsPage <= 3) {
+                      pageNum = i + 1
+                    } else if (resultsPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i
+                    } else {
+                      pageNum = resultsPage - 2 + i
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setResultsPage(pageNum)}
+                        className={`pagination-page ${resultsPage === pageNum ? 'active' : ''}`}
+                      >
+                        {pageNum}
+                      </button>
+                    )
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => setResultsPage(p => Math.min(totalPages, p + 1))}
+                  disabled={resultsPage === totalPages}
+                  className="pagination-btn"
+                >
+                  Next ▶
+                </button>
+                <button
+                  onClick={() => setResultsPage(totalPages)}
+                  disabled={resultsPage === totalPages}
+                  className="pagination-btn"
+                >
+                  Last ⏭
+                </button>
+              </div>
+            )}
           </section>
         )}
       </div>
