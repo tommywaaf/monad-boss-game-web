@@ -39,9 +39,11 @@ const NETWORKS = [
   // Solana Networks
   { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana', explorer: 'https://solscan.io/tx/' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
-  // XRP Ledger Networks (Note: public Ripple nodes don't support CORS, using xrplcluster.com)
-  { id: 'xrp', name: 'XRP Ledger (xrplcluster)', rpc: 'https://xrplcluster.com', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
-  { id: 'xrp-ripple', name: 'XRP Ledger (Ripple s1) ⚠️', rpc: 'https://s1.ripple.com:51234', type: 'xrp', explorer: 'https://xrpscan.com/tx/', noCors: true },
+  // XRP Ledger Networks
+  { id: 'xrp', name: 'XRP Ledger (xrplcluster.com)', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
+  { id: 'xrp-ws', name: 'XRP Ledger (xrpl.ws)', rpc: 'https://xrpl.ws/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
+  { id: 'xrp-ripple-s1', name: 'XRP Ledger (Ripple s1) ⚠️', rpc: 'https://s1.ripple.com:51234/', type: 'xrp', explorer: 'https://xrpscan.com/tx/', noCors: true },
+  { id: 'xrp-ripple-s2', name: 'XRP Ledger (Ripple s2) ⚠️', rpc: 'https://s2.ripple.com:51234/', type: 'xrp', explorer: 'https://xrpscan.com/tx/', noCors: true },
   { id: 'custom-xrp', name: 'Custom XRP RPC...', rpc: '', type: 'xrp' },
 ]
 
@@ -994,8 +996,8 @@ function Broadcaster() {
               </div>
               {selectedNetwork.noCors && (
                 <div className="cors-warning">
-                  ⚠️ This endpoint may not work from browsers due to CORS restrictions. 
-                  Use "XRP Ledger (xrplcluster)" or provide a CORS-enabled RPC.
+                  ⚠️ Ripple nodes don't support CORS. 
+                  Use "xrplcluster.com" or "xrpl.ws" for browser-based broadcasting.
                 </div>
               )}
             </>
