@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { DynamicContextProvider } from '@dynamic-labs/sdk-react-core'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
@@ -8,6 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { wagmiConfig } from './config/wagmi'
 import './index.css'
 import App from './App.jsx'
+import Broadcaster from './pages/Broadcaster.jsx'
 
 // Get Dynamic Environment ID from environment variable
 const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
@@ -38,10 +40,10 @@ const monadNetwork = {
   networkId: 143,
 }
 
-// Only render if we have an environment ID, otherwise show error
-if (!dynamicEnvironmentId) {
-  createRoot(document.getElementById('root')).render(
-    <StrictMode>
+// Main app with all providers (wallet connection, etc.)
+function MainApp() {
+  if (!dynamicEnvironmentId) {
+    return (
       <div style={{ 
         display: 'flex', 
         justifyContent: 'center', 
@@ -74,31 +76,40 @@ if (!dynamicEnvironmentId) {
           </ol>
         </div>
       </div>
-    </StrictMode>
-  )
-} else {
-  createRoot(document.getElementById('root')).render(
-    <StrictMode>
-      <DynamicContextProvider
-        settings={{
-          environmentId: dynamicEnvironmentId,
-          walletConnectors: [EthereumWalletConnectors],
+    )
+  }
+
+  return (
+    <DynamicContextProvider
+      settings={{
+        environmentId: dynamicEnvironmentId,
+        walletConnectors: [EthereumWalletConnectors],
         overrides: {
           // Only allow Monad network - ignore dashboard networks to prevent Wagmi mismatch
           // This ensures embedded wallets always use Monad and don't get stuck on other chains
           evmNetworks: () => [monadNetwork],
         },
-          walletConnectPreferredChains: ['eip155:143'], // Prefer Monad for WalletConnect
-        }}
-      >
-        <WagmiProvider config={wagmiConfig}>
-          <QueryClientProvider client={queryClient}>
-            <DynamicWagmiConnector>
-              <App />
-            </DynamicWagmiConnector>
-          </QueryClientProvider>
-        </WagmiProvider>
-      </DynamicContextProvider>
-    </StrictMode>,
+        walletConnectPreferredChains: ['eip155:143'], // Prefer Monad for WalletConnect
+      }}
+    >
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+          <DynamicWagmiConnector>
+            <App />
+          </DynamicWagmiConnector>
+        </QueryClientProvider>
+      </WagmiProvider>
+    </DynamicContextProvider>
   )
 }
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/broadcaster" element={<Broadcaster />} />
+        <Route path="/*" element={<MainApp />} />
+      </Routes>
+    </BrowserRouter>
+  </StrictMode>,
+)
