@@ -450,6 +450,12 @@ section {
   border-color: #a855f7;
 }
 
+.settings-input.rate-input {
+  width: 120px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
 .settings-hint {
   font-size: 0.75rem;
   color: #52525b;

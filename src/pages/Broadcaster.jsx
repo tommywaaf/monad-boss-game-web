@@ -91,15 +91,6 @@ const detectSolanaEncoding = (input) => {
   }
 }
 
-const RATE_PRESETS = [
-  { label: 'Slow (5/sec)', rps: 5, delay: 200 },
-  { label: 'Medium (20/sec)', rps: 20, delay: 50 },
-  { label: 'Fast (50/sec)', rps: 50, delay: 20 },
-  { label: 'Blazing (100/sec)', rps: 100, delay: 10 },
-  { label: 'No Limit', rps: 0, delay: 0 },
-  { label: 'Custom', rps: -1, delay: -1 },
-]
-
 function Broadcaster() {
   const [selectedNetwork, setSelectedNetwork] = useState(NETWORKS[0])
   const [customRpc, setCustomRpc] = useState('')
@@ -110,10 +101,8 @@ function Broadcaster() {
   const [broadcastProgress, setBroadcastProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef(null)
   
-  // Rate limiting state
-  const [ratePreset, setRatePreset] = useState(RATE_PRESETS[1]) // Medium by default
-  const [customDelay, setCustomDelay] = useState(50)
-  const [batchSize, setBatchSize] = useState(1) // Concurrent requests
+  // Rate limiting - simple tx per minute
+  const [txPerMinute, setTxPerMinute] = useState(50)
   const abortControllerRef = useRef(null)
   const [showSettings, setShowSettings] = useState(false)
   
@@ -123,7 +112,6 @@ function Broadcaster() {
   
   // Solana-specific settings
   const [solanaSkipPreflight, setSolanaSkipPreflight] = useState(false)
-  const [solanaMaxRetries, setSolanaMaxRetries] = useState(3)
   
   const isSolana = selectedNetwork.type === 'solana'
 
@@ -219,8 +207,10 @@ function Broadcaster() {
   }
 
   const getDelay = () => {
-    if (ratePreset.rps === -1) return customDelay
-    return ratePreset.delay
+    // Calculate delay in ms from tx per minute
+    // txPerMinute = 50 means 1 tx every 1200ms (60000ms / 50)
+    if (txPerMinute <= 0) return 0
+    return Math.ceil(60000 / txPerMinute)
   }
 
   const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
@@ -340,7 +330,7 @@ function Broadcaster() {
             {
               encoding: encoding,
               skipPreflight: solanaSkipPreflight,
-              maxRetries: solanaMaxRetries,
+              maxRetries: maxRetries,
             }
           ]
         }
@@ -469,42 +459,36 @@ function Broadcaster() {
 
     const newResults = []
     const delay = getDelay()
-    const concurrency = batchSize
 
-    // Process in batches with rate limiting
-    for (let i = 0; i < transactions.length; i += concurrency) {
+    // Process transactions one at a time with rate limiting
+    for (let i = 0; i < transactions.length; i++) {
       if (signal.aborted) break
 
-      const batch = transactions.slice(i, i + concurrency)
-      const batchStartTime = Date.now()
+      const tx = transactions[i]
+      const txStartTime = Date.now()
 
-      // Process batch concurrently with retry support
-      const batchPromises = batch.map(async (tx, batchIdx) => {
-        const globalIdx = i + batchIdx
-        const result = await broadcastWithRetry(tx, signal)
-        return {
-          index: globalIdx + 1,
-          rlp: tx,
-          success: result.success,
-          txHash: result.txHash,
-          error: result.error,
-          timestamp: new Date().toISOString(),
-          attempts: result.attempts || 1,
-          retryable: result.retryable,
-          exhaustedRetries: result.exhaustedRetries
-        }
-      })
-
-      const batchResults = await Promise.all(batchPromises)
-      newResults.push(...batchResults)
+      // Broadcast with retry support
+      const result = await broadcastWithRetry(tx, signal)
       
-      setBroadcastProgress({ current: Math.min(i + concurrency, transactions.length), total: transactions.length })
+      newResults.push({
+        index: i + 1,
+        rlp: tx,
+        success: result.success,
+        txHash: result.txHash,
+        error: result.error,
+        timestamp: new Date().toISOString(),
+        attempts: result.attempts || 1,
+        retryable: result.retryable,
+        exhaustedRetries: result.exhaustedRetries
+      })
+      
+      setBroadcastProgress({ current: i + 1, total: transactions.length })
       setResults([...newResults])
 
-      // Rate limiting delay (only if not last batch and delay > 0)
-      if (delay > 0 && i + concurrency < transactions.length && !signal.aborted) {
-        const elapsed = Date.now() - batchStartTime
-        const waitTime = Math.max(0, delay * concurrency - elapsed)
+      // Rate limiting delay (only if not last tx and delay > 0)
+      if (delay > 0 && i < transactions.length - 1 && !signal.aborted) {
+        const elapsed = Date.now() - txStartTime
+        const waitTime = Math.max(0, delay - elapsed)
         if (waitTime > 0) {
           await sleep(waitTime)
         }
@@ -619,59 +603,47 @@ function Broadcaster() {
             className="settings-toggle"
             onClick={() => setShowSettings(!showSettings)}
           >
-            ⚙️ {isSolana ? 'Solana & Rate Limiting' : 'Rate Limiting'} Settings {showSettings ? '▼' : '▶'}
+            ⚙️ Settings {showSettings ? '▼' : '▶'}
           </button>
           
           {showSettings && (
             <div className="settings-panel">
               <div className="settings-row">
-                <label>Rate Preset:</label>
-                <select
-                  value={ratePreset.label}
-                  onChange={(e) => {
-                    const preset = RATE_PRESETS.find(p => p.label === e.target.value)
-                    setRatePreset(preset)
-                  }}
-                  className="settings-select"
-                >
-                  {RATE_PRESETS.map(preset => (
-                    <option key={preset.label} value={preset.label}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {ratePreset.rps === -1 && (
-                <div className="settings-row">
-                  <label>Custom Delay (ms):</label>
-                  <input
-                    type="number"
-                    value={customDelay}
-                    onChange={(e) => setCustomDelay(Math.max(0, parseInt(e.target.value) || 0))}
-                    min="0"
-                    className="settings-input"
-                  />
-                  <span className="settings-hint">
-                    {customDelay > 0 ? `≈ ${Math.round(1000 / customDelay)} req/sec` : 'No delay'}
-                  </span>
-                </div>
-              )}
-
-              <div className="settings-row">
-                <label>Batch Size:</label>
+                <label>Rate Limit:</label>
                 <input
                   type="number"
-                  value={batchSize}
-                  onChange={(e) => setBatchSize(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                  value={txPerMinute}
+                  onChange={(e) => setTxPerMinute(Math.max(1, parseInt(e.target.value) || 50))}
                   min="1"
-                  max="100"
-                  className="settings-input"
+                  className="settings-input rate-input"
                 />
                 <span className="settings-hint">
-                  Concurrent requests (1 = sequential)
+                  transactions per minute {txPerMinute > 0 && `(~${Math.round(getDelay())}ms between each)`}
                 </span>
               </div>
+
+              {isSolana && (
+                <>
+                  <div className="settings-divider">
+                    <span>Solana Settings</span>
+                  </div>
+
+                  <div className="settings-row">
+                    <label>Skip Preflight:</label>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={solanaSkipPreflight}
+                        onChange={(e) => setSolanaSkipPreflight(e.target.checked)}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                    <span className="settings-hint">
+                      {solanaSkipPreflight ? 'Skipping preflight checks (faster, riskier)' : 'Preflight checks enabled (safer)'}
+                    </span>
+                  </div>
+                </>
+              )}
 
               <div className="settings-divider">
                 <span>Retry Settings</span>
@@ -703,68 +675,16 @@ function Broadcaster() {
                   className="settings-input"
                 />
                 <span className="settings-hint">
-                  Base delay in ms (uses exponential backoff: {retryDelay}ms → {retryDelay * 2}ms → {retryDelay * 4}ms)
+                  Base delay in ms (exponential backoff)
                 </span>
               </div>
 
-              {isSolana && (
-                <>
-                  <div className="settings-divider">
-                    <span>Solana Settings</span>
-                  </div>
-
-                  <div className="settings-row">
-                    <label>Skip Preflight:</label>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={solanaSkipPreflight}
-                        onChange={(e) => setSolanaSkipPreflight(e.target.checked)}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                    <span className="settings-hint">
-                      {solanaSkipPreflight ? 'Skipping preflight checks (faster, riskier)' : 'Preflight checks enabled (safer)'}
-                    </span>
-                  </div>
-
-                  <div className="settings-row">
-                    <label>RPC Max Retries:</label>
-                    <input
-                      type="number"
-                      value={solanaMaxRetries}
-                      onChange={(e) => setSolanaMaxRetries(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
-                      min="0"
-                      max="10"
-                      className="settings-input"
-                    />
-                    <span className="settings-hint">
-                      Solana RPC-level retries (separate from our retry logic)
-                    </span>
-                  </div>
-                </>
-              )}
-
               <div className="settings-info">
-                <p>
-                  <strong>Current config:</strong>{' '}
-                  {ratePreset.rps === 0 ? (
-                    <span className="warn">No rate limiting - may hit RPC limits!</span>
-                  ) : (
-                    <>
-                      ~{batchSize > 1 
-                        ? `${Math.round(1000 / getDelay() * batchSize)} req/sec (${batchSize} concurrent)`
-                        : `${ratePreset.rps === -1 ? Math.round(1000 / customDelay) : ratePreset.rps} req/sec`
-                      }
-                    </>
-                  )}
-                </p>
                 <p className="est-time">
                   Est. time for {transactions.length.toLocaleString()} txs:{' '}
                   <strong>
                     {transactions.length === 0 ? '—' : 
-                      ratePreset.rps === 0 ? '< 1 min (no throttling)' :
-                      formatTime(Math.ceil(transactions.length / batchSize) * getDelay() / 1000)
+                      formatTime((transactions.length / txPerMinute) * 60)
                     }
                   </strong>
                 </p>
