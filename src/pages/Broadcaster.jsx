@@ -14,6 +14,15 @@ const EVM_NETWORKS = [
   { id: 'custom', name: 'Custom RPC...', rpc: '' }
 ]
 
+const RATE_PRESETS = [
+  { label: 'Slow (5/sec)', rps: 5, delay: 200 },
+  { label: 'Medium (20/sec)', rps: 20, delay: 50 },
+  { label: 'Fast (50/sec)', rps: 50, delay: 20 },
+  { label: 'Blazing (100/sec)', rps: 100, delay: 10 },
+  { label: 'No Limit', rps: 0, delay: 0 },
+  { label: 'Custom', rps: -1, delay: -1 },
+]
+
 function Broadcaster() {
   const [selectedNetwork, setSelectedNetwork] = useState(EVM_NETWORKS[0])
   const [customRpc, setCustomRpc] = useState('')
@@ -23,6 +32,13 @@ function Broadcaster() {
   const [isBroadcasting, setIsBroadcasting] = useState(false)
   const [broadcastProgress, setBroadcastProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef(null)
+  
+  // Rate limiting state
+  const [ratePreset, setRatePreset] = useState(RATE_PRESETS[1]) // Medium by default
+  const [customDelay, setCustomDelay] = useState(50)
+  const [batchSize, setBatchSize] = useState(1) // Concurrent requests
+  const abortControllerRef = useRef(null)
+  const [showSettings, setShowSettings] = useState(false)
 
   const normalizeRlp = (rlp) => {
     const trimmed = rlp.trim()
@@ -97,7 +113,22 @@ function Broadcaster() {
     return selectedNetwork.id === 'custom' ? customRpc : selectedNetwork.rpc
   }
 
-  const broadcastTransaction = async (rlpHex) => {
+  const getDelay = () => {
+    if (ratePreset.rps === -1) return customDelay
+    return ratePreset.delay
+  }
+
+  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
+  const formatTime = (seconds) => {
+    if (seconds < 60) return `${Math.ceil(seconds)}s`
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.ceil(seconds % 60)}s`
+    const hours = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    return `${hours}h ${mins}m`
+  }
+
+  const broadcastTransaction = async (rlpHex, signal) => {
     const rpcUrl = getRpcUrl()
     
     try {
@@ -111,7 +142,8 @@ function Broadcaster() {
           id: 1,
           method: 'eth_sendRawTransaction',
           params: [rlpHex]
-        })
+        }),
+        signal
       })
 
       const data = await response.json()
@@ -130,11 +162,24 @@ function Broadcaster() {
         txHash: data.result
       }
     } catch (err) {
+      if (err.name === 'AbortError') {
+        return {
+          success: false,
+          error: 'Aborted',
+          txHash: null
+        }
+      }
       return {
         success: false,
         error: err.message,
         txHash: null
       }
+    }
+  }
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
     }
   }
 
@@ -150,31 +195,57 @@ function Broadcaster() {
       return
     }
 
+    // Create abort controller
+    abortControllerRef.current = new AbortController()
+    const signal = abortControllerRef.current.signal
+
     setIsBroadcasting(true)
     setBroadcastProgress({ current: 0, total: transactions.length })
     setResults([])
 
     const newResults = []
+    const delay = getDelay()
+    const concurrency = batchSize
 
-    for (let i = 0; i < transactions.length; i++) {
-      const tx = transactions[i]
-      setBroadcastProgress({ current: i + 1, total: transactions.length })
-      
-      const result = await broadcastTransaction(tx)
-      
-      newResults.push({
-        index: i + 1,
-        rlp: tx,
-        success: result.success,
-        txHash: result.txHash,
-        error: result.error,
-        timestamp: new Date().toISOString()
+    // Process in batches with rate limiting
+    for (let i = 0; i < transactions.length; i += concurrency) {
+      if (signal.aborted) break
+
+      const batch = transactions.slice(i, i + concurrency)
+      const batchStartTime = Date.now()
+
+      // Process batch concurrently
+      const batchPromises = batch.map(async (tx, batchIdx) => {
+        const globalIdx = i + batchIdx
+        const result = await broadcastTransaction(tx, signal)
+        return {
+          index: globalIdx + 1,
+          rlp: tx,
+          success: result.success,
+          txHash: result.txHash,
+          error: result.error,
+          timestamp: new Date().toISOString()
+        }
       })
 
+      const batchResults = await Promise.all(batchPromises)
+      newResults.push(...batchResults)
+      
+      setBroadcastProgress({ current: Math.min(i + concurrency, transactions.length), total: transactions.length })
       setResults([...newResults])
+
+      // Rate limiting delay (only if not last batch and delay > 0)
+      if (delay > 0 && i + concurrency < transactions.length && !signal.aborted) {
+        const elapsed = Date.now() - batchStartTime
+        const waitTime = Math.max(0, delay * concurrency - elapsed)
+        if (waitTime > 0) {
+          await sleep(waitTime)
+        }
+      }
     }
 
     setIsBroadcasting(false)
+    abortControllerRef.current = null
   }
 
   const downloadCSV = () => {
@@ -255,6 +326,93 @@ function Broadcaster() {
           </div>
         </section>
 
+        <section className="settings-section">
+          <button 
+            className="settings-toggle"
+            onClick={() => setShowSettings(!showSettings)}
+          >
+            ⚙️ Rate Limiting Settings {showSettings ? '▼' : '▶'}
+          </button>
+          
+          {showSettings && (
+            <div className="settings-panel">
+              <div className="settings-row">
+                <label>Rate Preset:</label>
+                <select
+                  value={ratePreset.label}
+                  onChange={(e) => {
+                    const preset = RATE_PRESETS.find(p => p.label === e.target.value)
+                    setRatePreset(preset)
+                  }}
+                  className="settings-select"
+                >
+                  {RATE_PRESETS.map(preset => (
+                    <option key={preset.label} value={preset.label}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {ratePreset.rps === -1 && (
+                <div className="settings-row">
+                  <label>Custom Delay (ms):</label>
+                  <input
+                    type="number"
+                    value={customDelay}
+                    onChange={(e) => setCustomDelay(Math.max(0, parseInt(e.target.value) || 0))}
+                    min="0"
+                    className="settings-input"
+                  />
+                  <span className="settings-hint">
+                    {customDelay > 0 ? `≈ ${Math.round(1000 / customDelay)} req/sec` : 'No delay'}
+                  </span>
+                </div>
+              )}
+
+              <div className="settings-row">
+                <label>Batch Size:</label>
+                <input
+                  type="number"
+                  value={batchSize}
+                  onChange={(e) => setBatchSize(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                  min="1"
+                  max="100"
+                  className="settings-input"
+                />
+                <span className="settings-hint">
+                  Concurrent requests (1 = sequential)
+                </span>
+              </div>
+
+              <div className="settings-info">
+                <p>
+                  <strong>Current config:</strong>{' '}
+                  {ratePreset.rps === 0 ? (
+                    <span className="warn">No rate limiting - may hit RPC limits!</span>
+                  ) : (
+                    <>
+                      ~{batchSize > 1 
+                        ? `${Math.round(1000 / getDelay() * batchSize)} req/sec (${batchSize} concurrent)`
+                        : `${ratePreset.rps === -1 ? Math.round(1000 / customDelay) : ratePreset.rps} req/sec`
+                      }
+                    </>
+                  )}
+                </p>
+                <p className="est-time">
+                  Est. time for {transactions.length.toLocaleString()} txs:{' '}
+                  <strong>
+                    {transactions.length === 0 ? '—' : 
+                      ratePreset.rps === 0 ? '< 1 min (no throttling)' :
+                      formatTime(Math.ceil(transactions.length / batchSize) * getDelay() / 1000)
+                    }
+                  </strong>
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
+
         <section className="input-section">
           <label className="section-label">Transaction Input</label>
           <p className="input-hint">Paste RLP-encoded transactions (one per line), with or without 0x prefix</p>
@@ -315,20 +473,28 @@ function Broadcaster() {
         </section>
 
         <section className="broadcast-section">
-          <button
-            onClick={handleBroadcast}
-            disabled={isBroadcasting || transactions.length === 0}
-            className="broadcast-btn"
-          >
-            {isBroadcasting ? (
-              <>
-                <span className="spinner"></span>
-                Broadcasting {broadcastProgress.current}/{broadcastProgress.total}...
-              </>
-            ) : (
-              <>🚀 Broadcast {transactions.length > 0 ? `(${transactions.length})` : ''}</>
+          <div className="broadcast-buttons">
+            <button
+              onClick={handleBroadcast}
+              disabled={isBroadcasting || transactions.length === 0}
+              className="broadcast-btn"
+            >
+              {isBroadcasting ? (
+                <>
+                  <span className="spinner"></span>
+                  Broadcasting {broadcastProgress.current}/{broadcastProgress.total}...
+                </>
+              ) : (
+                <>🚀 Broadcast {transactions.length > 0 ? `(${transactions.length})` : ''}</>
+              )}
+            </button>
+
+            {isBroadcasting && (
+              <button onClick={handleStop} className="stop-btn">
+                ⏹️ Stop
+              </button>
             )}
-          </button>
+          </div>
 
           {isBroadcasting && (
             <div className="progress-bar-container">
@@ -336,6 +502,9 @@ function Broadcaster() {
                 className="progress-bar"
                 style={{ width: `${(broadcastProgress.current / broadcastProgress.total) * 100}%` }}
               />
+              <span className="progress-text">
+                {Math.round((broadcastProgress.current / broadcastProgress.total) * 100)}%
+              </span>
             </div>
           )}
         </section>

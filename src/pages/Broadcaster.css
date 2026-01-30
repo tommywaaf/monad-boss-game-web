@@ -277,12 +277,155 @@ section {
   color: #52525b;
 }
 
+/* Settings Section */
+.settings-section {
+  margin-bottom: 1.5rem;
+}
+
+.settings-toggle {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #a1a1aa;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #e4e4e7;
+}
+
+.settings-panel {
+  margin-top: 0.75rem;
+  padding: 1.25rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.settings-row:last-child {
+  margin-bottom: 0;
+}
+
+.settings-row label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #a1a1aa;
+  min-width: 120px;
+}
+
+.settings-select {
+  flex: 1;
+  min-width: 180px;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #e4e4e7;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.875rem;
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: #a855f7;
+}
+
+.settings-select option {
+  background: #1a1a1f;
+  color: #e4e4e7;
+}
+
+.settings-input {
+  width: 100px;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #e4e4e7;
+  text-align: center;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: #a855f7;
+}
+
+.settings-hint {
+  font-size: 0.75rem;
+  color: #52525b;
+}
+
+.settings-info {
+  margin-top: 1rem;
+  padding: 0.875rem 1rem;
+  background: rgba(168, 85, 247, 0.05);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  border-radius: 8px;
+}
+
+.settings-info p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #a1a1aa;
+}
+
+.settings-info p + p {
+  margin-top: 0.5rem;
+}
+
+.settings-info strong {
+  color: #e4e4e7;
+}
+
+.settings-info .warn {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.est-time {
+  color: #71717a !important;
+}
+
 .broadcast-section {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
   padding: 2rem 0;
+}
+
+.broadcast-buttons {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
 }
 
 .broadcast-btn {
@@ -330,20 +473,53 @@ section {
   to { transform: rotate(360deg); }
 }
 
+.stop-btn {
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  color: #ef4444;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stop-btn:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
 .progress-bar-container {
   width: 100%;
   max-width: 400px;
-  height: 6px;
+  height: 8px;
   background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
+  position: relative;
 }
 
 .progress-bar {
   height: 100%;
   background: linear-gradient(90deg, #2dd4bf, #a855f7);
-  border-radius: 3px;
+  border-radius: 4px;
   transition: width 0.3s ease;
+}
+
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .results-section {
