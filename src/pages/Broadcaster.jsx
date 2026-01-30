@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import './Broadcaster.css'
 
 const NETWORKS = [
@@ -305,6 +305,12 @@ function Broadcaster() {
   const [isBroadcasting, setIsBroadcasting] = useState(false)
   const [broadcastProgress, setBroadcastProgress] = useState({ current: 0, total: 0 })
   const fileInputRef = useRef(null)
+  
+  // Set page title
+  useEffect(() => {
+    document.title = 'Rebroadcaster Tool'
+    return () => { document.title = 'Monad Boss Game' }
+  }, [])
   
   // Rate limiting - simple tx per minute
   const [txPerMinute, setTxPerMinute] = useState(50)
