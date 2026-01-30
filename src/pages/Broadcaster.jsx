@@ -10,7 +10,7 @@ const EVM_NETWORKS = [
   { id: 'polygon', name: 'Polygon', rpc: 'https://polygon-rpc.com' },
   { id: 'bsc', name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org' },
   { id: 'avalanche', name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc' },
-  { id: 'fantom', name: 'Fantom', rpc: 'https://rpc.ftm.tools' },
+  { id: 'fantom', name: 'Fantom', rpc: 'https://rpcapi.fantom.network' }
   { id: 'custom', name: 'Custom RPC...', rpc: '' },
 ]
 
