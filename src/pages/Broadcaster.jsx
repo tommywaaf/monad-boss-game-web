@@ -4,32 +4,32 @@ import './Broadcaster.css'
 const NETWORKS = [
   // EVM Networks
   { id: 'auto-evm', name: '🔄 Auto (Detect Chain)', rpc: '', type: 'evm', isAuto: true },
-  { id: 'ethereum', name: 'Ethereum', rpc: 'https://eth.llamarpc.com', type: 'evm', chainId: 1 },
-  { id: 'worldchain', name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', type: 'evm', chainId: 480 },
-  { id: 'optimism', name: 'Optimism', rpc: 'https://mainnet.optimism.io', type: 'evm', chainId: 10 },
-  { id: 'base', name: 'Base', rpc: 'https://mainnet.base.org', type: 'evm', chainId: 8453 },
-  { id: 'arbitrum', name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc', type: 'evm', chainId: 42161 },
-  { id: 'polygon', name: 'Polygon', rpc: 'https://polygon-rpc.com', type: 'evm', chainId: 137 },
-  { id: 'bsc', name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org', type: 'evm', chainId: 56 },
-  { id: 'avalanche', name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc', type: 'evm', chainId: 43114 },
-  { id: 'fantom', name: 'Fantom', rpc: 'https://rpcapi.fantom.network', type: 'evm', chainId: 250 },
+  { id: 'ethereum', name: 'Ethereum', rpc: 'https://eth.llamarpc.com', type: 'evm', chainId: 1, explorer: 'https://etherscan.io/tx/' },
+  { id: 'worldchain', name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', type: 'evm', chainId: 480, explorer: 'https://worldscan.org/tx/' },
+  { id: 'optimism', name: 'Optimism', rpc: 'https://mainnet.optimism.io', type: 'evm', chainId: 10, explorer: 'https://optimistic.etherscan.io/tx/' },
+  { id: 'base', name: 'Base', rpc: 'https://mainnet.base.org', type: 'evm', chainId: 8453, explorer: 'https://basescan.org/tx/' },
+  { id: 'arbitrum', name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc', type: 'evm', chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
+  { id: 'polygon', name: 'Polygon', rpc: 'https://polygon-rpc.com', type: 'evm', chainId: 137, explorer: 'https://polygonscan.com/tx/' },
+  { id: 'bsc', name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org', type: 'evm', chainId: 56, explorer: 'https://bscscan.com/tx/' },
+  { id: 'avalanche', name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc', type: 'evm', chainId: 43114, explorer: 'https://snowtrace.io/tx/' },
+  { id: 'fantom', name: 'Fantom', rpc: 'https://rpcapi.fantom.network', type: 'evm', chainId: 250, explorer: 'https://ftmscan.com/tx/' },
   { id: 'custom-evm', name: 'Custom EVM RPC...', rpc: '', type: 'evm' },
   // Solana Networks
-  { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana' },
+  { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana', explorer: 'https://solscan.io/tx/' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
 ]
 
 // Chain ID to network mapping for auto-detection
 const CHAIN_ID_MAP = {
-  1: { name: 'Ethereum', rpc: 'https://eth.llamarpc.com' },
-  10: { name: 'Optimism', rpc: 'https://mainnet.optimism.io' },
-  56: { name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org' },
-  137: { name: 'Polygon', rpc: 'https://polygon-rpc.com' },
-  250: { name: 'Fantom', rpc: 'https://rpcapi.fantom.network' },
-  480: { name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public' },
-  8453: { name: 'Base', rpc: 'https://mainnet.base.org' },
-  42161: { name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc' },
-  43114: { name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc' },
+  1: { name: 'Ethereum', rpc: 'https://eth.llamarpc.com', explorer: 'https://etherscan.io/tx/' },
+  10: { name: 'Optimism', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io/tx/' },
+  56: { name: 'BNB Smart Chain', rpc: 'https://bsc-dataseed.binance.org', explorer: 'https://bscscan.com/tx/' },
+  137: { name: 'Polygon', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com/tx/' },
+  250: { name: 'Fantom', rpc: 'https://rpcapi.fantom.network', explorer: 'https://ftmscan.com/tx/' },
+  480: { name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', explorer: 'https://worldscan.org/tx/' },
+  8453: { name: 'Base', rpc: 'https://mainnet.base.org', explorer: 'https://basescan.org/tx/' },
+  42161: { name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc', explorer: 'https://arbiscan.io/tx/' },
+  43114: { name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io/tx/' },
 }
 
 // Decode RLP to extract chain ID from EVM transaction
@@ -281,7 +281,8 @@ function Broadcaster() {
       return { 
         chainId: selectedNetwork.chainId || null, 
         chainName: selectedNetwork.name, 
-        rpc: getRpcUrl() 
+        rpc: getRpcUrl(),
+        explorer: selectedNetwork.explorer || null
       }
     }
     
@@ -290,14 +291,16 @@ function Broadcaster() {
       return {
         chainId,
         chainName: CHAIN_ID_MAP[chainId].name,
-        rpc: CHAIN_ID_MAP[chainId].rpc
+        rpc: CHAIN_ID_MAP[chainId].rpc,
+        explorer: CHAIN_ID_MAP[chainId].explorer
       }
     }
     
     return {
       chainId,
       chainName: chainId ? `Unknown (${chainId})` : 'Unknown',
-      rpc: null
+      rpc: null,
+      explorer: null
     }
   }
 
@@ -684,7 +687,8 @@ function Broadcaster() {
         exhaustedRetries: result.exhaustedRetries,
         chainId: chainInfo.chainId,
         chainName: chainInfo.chainName,
-        rpcUsed: chainInfo.rpc
+        rpcUsed: chainInfo.rpc,
+        explorer: chainInfo.explorer
       })
       
       setBroadcastProgress({ current: i + 1, total: transactions.length })
@@ -710,12 +714,13 @@ function Broadcaster() {
       return
     }
 
-    const headers = ['Index', 'RLP', 'Success', 'TxHash', 'Error', 'Attempts', 'Retryable', 'ChainId', 'ChainName', 'RpcUsed', 'Timestamp']
+    const headers = ['Index', 'RLP', 'Success', 'TxHash', 'ExplorerLink', 'Error', 'Attempts', 'Retryable', 'ChainId', 'ChainName', 'RpcUsed', 'Timestamp']
     const rows = results.map(r => [
       r.index,
       `"${r.rlp}"`,
       r.success,
       r.txHash || '',
+      r.success && r.explorer && r.txHash ? `${r.explorer}${r.txHash}` : '',
       `"${(r.error || '').replace(/"/g, '""')}"`,
       r.attempts || 1,
       r.retryable ? 'yes' : 'no',
@@ -812,7 +817,7 @@ function Broadcaster() {
           
           {isAutoMode && (
             <div className="network-type-badge auto">
-              🔄 Auto Mode - chains detected: {Object.keys(CHAIN_ID_MAP).length}
+              🔄 Auto Mode - chains supported: {Object.keys(CHAIN_ID_MAP).length}
             </div>
           )}
         </section>
@@ -1079,9 +1084,21 @@ function Broadcaster() {
                       </td>
                       <td className="result-cell">
                         {result.success ? (
-                          <code className="tx-hash" title={result.txHash}>
-                            {result.txHash?.slice(0, 10)}...{result.txHash?.slice(-8)}
-                          </code>
+                          result.explorer && result.txHash ? (
+                            <a 
+                              href={`${result.explorer}${result.txHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="tx-link"
+                              title={`View on explorer: ${result.txHash}`}
+                            >
+                              {result.txHash?.slice(0, 10)}...{result.txHash?.slice(-8)} ↗
+                            </a>
+                          ) : (
+                            <code className="tx-hash" title={result.txHash}>
+                              {result.txHash?.slice(0, 10)}...{result.txHash?.slice(-8)}
+                            </code>
+                          )
                         ) : (
                           <span className="error-msg" title={result.error}>
                             {result.error?.slice(0, 40)}{result.error?.length > 40 ? '...' : ''}

@@ -798,6 +798,27 @@ section {
   cursor: help;
 }
 
+.tx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: #2dd4bf;
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  background: rgba(45, 212, 191, 0.1);
+  border: 1px solid rgba(45, 212, 191, 0.2);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.tx-link:hover {
+  background: rgba(45, 212, 191, 0.2);
+  border-color: rgba(45, 212, 191, 0.4);
+  color: #5eead4;
+}
+
 .error-msg {
   font-size: 0.8rem;
   color: #ef4444;
