@@ -47,7 +47,7 @@ const NETWORKS = [
   // Bitcoin-style chains
   { id: 'bitcoin', name: 'Bitcoin (BTC)', rpc: 'https://mempool.space/api', type: 'bitcoin', explorer: 'https://mempool.space/tx/' },
   { id: 'litecoin', name: 'Litecoin (LTC)', rpc: 'https://api.blockcypher.com/v1/ltc/main', type: 'bitcoin', explorer: 'https://blockchair.com/litecoin/transaction/' },
-  { id: 'bitcoincash', name: 'Bitcoin Cash (BCH)', rpc: 'https://api.blockcypher.com/v1/bch/main', type: 'bitcoin', explorer: 'https://blockchair.com/bitcoin-cash/transaction/' },
+  { id: 'bitcoincash', name: 'Bitcoin Cash (BCH)', rpc: 'https://rest.bitcoin.com/v2/rawtransactions', type: 'bitcoincash', explorer: 'https://blockchair.com/bitcoin-cash/transaction/' },
 ]
 
 // Chain ID to network mapping for auto-detection
@@ -349,7 +349,7 @@ function Broadcaster() {
   const isSolana = selectedNetwork.type === 'solana'
   const isXrp = selectedNetwork.type === 'xrp'
   const isStellar = selectedNetwork.type === 'stellar'
-  const isBitcoin = selectedNetwork.type === 'bitcoin'
+  const isBitcoin = selectedNetwork.type === 'bitcoin' || selectedNetwork.type === 'bitcoincash'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
   
   // Filter and paginate results
@@ -437,7 +437,7 @@ function Broadcaster() {
       return trimmed
     }
     
-    if (networkType === 'bitcoin') {
+    if (networkType === 'bitcoin' || networkType === 'bitcoincash') {
       // For Bitcoin-style chains, return raw hex (strip 0x if present)
       return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed
     }
@@ -704,6 +704,7 @@ function Broadcaster() {
         // Bitcoin-style chains use different APIs
         // Mempool.space: POST raw hex to /tx
         // BlockCypher: POST JSON to /txs/push
+        // Bitcoin.com: POST JSON to /sendRawTransaction
         let endpoint
         let requestBody
         let headers = {}
@@ -715,6 +716,10 @@ function Broadcaster() {
         } else if (rpcUrl.includes('blockcypher')) {
           endpoint = `${rpcUrl}/txs/push`
           requestBody = JSON.stringify({ tx: txPayload })
+          headers = { 'Content-Type': 'application/json' }
+        } else if (rpcUrl.includes('bitcoin.com')) {
+          endpoint = `${rpcUrl}/sendRawTransaction`
+          requestBody = JSON.stringify({ hexes: [txPayload] })
           headers = { 'Content-Type': 'application/json' }
         } else {
           // Default to mempool.space format
@@ -736,11 +741,19 @@ function Broadcaster() {
           const responseText = await response.text()
           // Mempool.space returns just the txid as plain text
           // BlockCypher returns JSON with tx.hash
+          // Bitcoin.com returns JSON array [txid]
           let txHash
           try {
             const jsonData = JSON.parse(responseText)
-            txHash = jsonData.tx?.hash || jsonData.txid || responseText.trim()
+            if (Array.isArray(jsonData) && jsonData.length > 0) {
+              // Bitcoin.com format
+              txHash = jsonData[0]
+            } else {
+              // BlockCypher or other JSON format
+              txHash = jsonData.tx?.hash || jsonData.txid || responseText.trim()
+            }
           } catch {
+            // Plain text response (mempool.space)
             txHash = responseText.trim()
           }
           
@@ -1050,7 +1063,7 @@ function Broadcaster() {
   const solanaNetworks = NETWORKS.filter(n => n.type === 'solana')
   const xrpNetworks = NETWORKS.filter(n => n.type === 'xrp')
   const stellarNetworks = NETWORKS.filter(n => n.type === 'stellar')
-  const bitcoinNetworks = NETWORKS.filter(n => n.type === 'bitcoin')
+  const bitcoinNetworks = NETWORKS.filter(n => n.type === 'bitcoin' || n.type === 'bitcoincash')
   
   const getNetworkTypeLabel = () => {
     if (isSolana) return 'Solana'
