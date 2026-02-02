@@ -44,6 +44,10 @@ const NETWORKS = [
   { id: 'xrp', name: 'XRP Mainnet', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
   // Stellar (XLM)
   { id: 'stellar', name: 'Stellar Mainnet', rpc: 'https://horizon.stellar.org', type: 'stellar', explorer: 'https://stellar.expert/explorer/public/tx/' },
+  // Bitcoin-style chains
+  { id: 'bitcoin', name: 'Bitcoin (BTC)', rpc: 'https://mempool.space/api', type: 'bitcoin', explorer: 'https://mempool.space/tx/' },
+  { id: 'litecoin', name: 'Litecoin (LTC)', rpc: 'https://api.blockcypher.com/v1/ltc/main', type: 'bitcoin', explorer: 'https://blockchair.com/litecoin/transaction/' },
+  { id: 'bitcoincash', name: 'Bitcoin Cash (BCH)', rpc: 'https://api.blockcypher.com/v1/bch/main', type: 'bitcoin', explorer: 'https://blockchair.com/bitcoin-cash/transaction/' },
 ]
 
 // Chain ID to network mapping for auto-detection
@@ -345,6 +349,7 @@ function Broadcaster() {
   const isSolana = selectedNetwork.type === 'solana'
   const isXrp = selectedNetwork.type === 'xrp'
   const isStellar = selectedNetwork.type === 'stellar'
+  const isBitcoin = selectedNetwork.type === 'bitcoin'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
   
   // Filter and paginate results
@@ -430,6 +435,11 @@ function Broadcaster() {
     if (networkType === 'stellar') {
       // For Stellar, return the base64 encoded transaction as-is
       return trimmed
+    }
+    
+    if (networkType === 'bitcoin') {
+      // For Bitcoin-style chains, return raw hex (strip 0x if present)
+      return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed
     }
     
     // For EVM, ensure 0x prefix
@@ -685,6 +695,69 @@ function Broadcaster() {
             error: errorMsg,
             txHash: null,
             retryable: isRetryableError(errorMsg, httpStatus),
+            httpStatus
+          }
+        }
+      }
+      
+      if (isBitcoin) {
+        // Bitcoin-style chains use different APIs
+        // Mempool.space: POST raw hex to /tx
+        // BlockCypher: POST JSON to /txs/push
+        let endpoint
+        let requestBody
+        let headers = {}
+        
+        if (rpcUrl.includes('mempool.space')) {
+          endpoint = `${rpcUrl}/tx`
+          requestBody = txPayload
+          headers = { 'Content-Type': 'text/plain' }
+        } else if (rpcUrl.includes('blockcypher')) {
+          endpoint = `${rpcUrl}/txs/push`
+          requestBody = JSON.stringify({ tx: txPayload })
+          headers = { 'Content-Type': 'application/json' }
+        } else {
+          // Default to mempool.space format
+          endpoint = `${rpcUrl}/tx`
+          requestBody = txPayload
+          headers = { 'Content-Type': 'text/plain' }
+        }
+        
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: requestBody,
+          signal
+        })
+        
+        const httpStatus = response.status
+        
+        if (response.ok) {
+          const responseText = await response.text()
+          // Mempool.space returns just the txid as plain text
+          // BlockCypher returns JSON with tx.hash
+          let txHash
+          try {
+            const jsonData = JSON.parse(responseText)
+            txHash = jsonData.tx?.hash || jsonData.txid || responseText.trim()
+          } catch {
+            txHash = responseText.trim()
+          }
+          
+          return {
+            success: true,
+            error: null,
+            txHash,
+            retryable: false,
+            httpStatus
+          }
+        } else {
+          const errorText = await response.text()
+          return {
+            success: false,
+            error: errorText || `HTTP ${httpStatus}`,
+            txHash: null,
+            retryable: isRetryableError(errorText, httpStatus),
             httpStatus
           }
         }
@@ -977,11 +1050,13 @@ function Broadcaster() {
   const solanaNetworks = NETWORKS.filter(n => n.type === 'solana')
   const xrpNetworks = NETWORKS.filter(n => n.type === 'xrp')
   const stellarNetworks = NETWORKS.filter(n => n.type === 'stellar')
+  const bitcoinNetworks = NETWORKS.filter(n => n.type === 'bitcoin')
   
   const getNetworkTypeLabel = () => {
     if (isSolana) return 'Solana'
     if (isXrp) return 'XRP Ledger'
     if (isStellar) return 'Stellar (XLM)'
+    if (isBitcoin) return 'Bitcoin'
     return 'EVM'
   }
 
@@ -990,7 +1065,7 @@ function Broadcaster() {
       <div className="broadcaster-container">
         <header className="broadcaster-header">
           <h1>⚡ {getNetworkTypeLabel()} Broadcaster</h1>
-          <p>Broadcast raw transactions to any {isSolana ? 'Solana cluster' : isXrp ? 'XRP Ledger node' : isStellar ? 'Stellar Horizon server' : 'EVM chain'}</p>
+          <p>Broadcast raw transactions to any {isSolana ? 'Solana cluster' : isXrp ? 'XRP Ledger node' : isStellar ? 'Stellar Horizon server' : isBitcoin ? 'Bitcoin-style blockchain' : 'EVM chain'}</p>
         </header>
 
         <section className="network-section">
@@ -1027,6 +1102,13 @@ function Broadcaster() {
               </optgroup>
               <optgroup label="Stellar (XLM)">
                 {stellarNetworks.map(network => (
+                  <option key={network.id} value={network.id}>
+                    {network.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Bitcoin & Forks">
+                {bitcoinNetworks.map(network => (
                   <option key={network.id} value={network.id}>
                     {network.name}
                   </option>
@@ -1070,6 +1152,12 @@ function Broadcaster() {
           {isStellar && (
             <div className="network-type-badge stellar">
               ✦ Stellar Mode
+            </div>
+          )}
+          
+          {isBitcoin && (
+            <div className="network-type-badge bitcoin">
+              ₿ Bitcoin Mode
             </div>
           )}
           
@@ -1184,9 +1272,11 @@ function Broadcaster() {
                 ? 'Paste signed XRP transaction blobs (one per line) - hex format'
                 : isStellar
                   ? 'Paste signed Stellar transactions (one per line) - base64 XDR format'
-                  : isAutoMode
-                    ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
-                    : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
+                  : isBitcoin
+                    ? 'Paste signed Bitcoin transactions (one per line) - raw hex format'
+                    : isAutoMode
+                      ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
+                      : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
             }
           </p>
           
