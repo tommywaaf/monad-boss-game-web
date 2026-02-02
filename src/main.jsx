@@ -10,6 +10,7 @@ import { wagmiConfig } from './config/wagmi'
 import './index.css'
 import App from './App.jsx'
 import Broadcaster from './pages/Broadcaster.jsx'
+import Decoder from './pages/Decoder.jsx'
 
 // Get Dynamic Environment ID from environment variable
 const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
@@ -108,6 +109,7 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <Routes>
         <Route path="/broadcaster" element={<Broadcaster />} />
+        <Route path="/decoder" element={<Decoder />} />
         <Route path="/*" element={<MainApp />} />
       </Routes>
     </BrowserRouter>
