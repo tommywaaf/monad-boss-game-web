@@ -90,7 +90,7 @@ const CHAIN_ID_MAP = {
   1313161554: { name: 'Aurora', rpc: 'https://mainnet.aurora.dev', explorer: 'https://explorer.aurora.dev/tx/' },
 }
 
-// Decode RLP to extract chain ID from EVM transaction
+// Decode RLP to extract chain ID from EVM transaction for AUTO MODE
 const decodeRlpChainId = (rlpHex) => {
   try {
     const hex = rlpHex.startsWith('0x') ? rlpHex.slice(2) : rlpHex
