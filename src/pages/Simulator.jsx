@@ -955,7 +955,7 @@ function Simulator() {
       // Prepare transaction for simulation
       // Note: We omit `gas` from eth_call to avoid out-of-gas reverts masking real errors
       const tx = {
-        ...(from ? { from } : {}),  // include only if known (but contract calls enforce it above)
+        ...(from ? { account: from } : {}),  // ✅ Viem v2 uses `account`, not `from`
         to: decoded.to,
         value: decoded.value !== '0x0' && decoded.value !== '0x' ? BigInt(decoded.value) : undefined,
         data: decoded.data !== '0x' ? decoded.data : undefined,
@@ -980,6 +980,7 @@ function Simulator() {
       try {
         result = await client.call({
           ...tx,
+          ...(from ? { account: from } : {}),  // ✅ Viem v2 uses `account`
           blockNumber,
         })
       } catch (callError) {
@@ -1008,6 +1009,7 @@ function Simulator() {
       try {
         gasEstimate = await client.estimateGas({
           ...tx,
+          ...(from ? { account: from } : {}),  // ✅ Viem v2 uses `account`
         })
       } catch (e) {
         console.warn('Gas estimation failed:', e)
@@ -1048,7 +1050,13 @@ function Simulator() {
       let parsedTrace = null
       if (decoded.to && decoded.data && decoded.data !== '0x') {
         try {
-          trace = await getExecutionTrace(rpcUrl, tx, blockNumber)
+          // Convert account back to from for JSON-RPC calls
+          const traceTx = { ...tx }
+          if (traceTx.account) {
+            traceTx.from = traceTx.account
+            delete traceTx.account
+          }
+          trace = await getExecutionTrace(rpcUrl, traceTx, blockNumber)
           if (trace) {
             parsedTrace = parseTrace(trace)
           }
