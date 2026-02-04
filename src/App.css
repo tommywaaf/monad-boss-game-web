@@ -7,6 +7,12 @@
   overflow-x: hidden;
 }
 
+.app-content-wrapper {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .app::before {
   content: '';
   position: fixed;
@@ -69,6 +75,79 @@
   /* Let Dynamic's widget styles through but ensure it fits */
 }
 
+/* Sidebar Navigation */
+.page-sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: rgba(255, 255, 255, 0.02);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: calc(100vh - 80px);
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.sidebar-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-header h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #a1a1aa;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.sidebar-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #a1a1aa;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e4e4e7;
+}
+
+.sidebar-link.active {
+  background: rgba(102, 126, 234, 0.15);
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  color: #667eea;
+}
+
+.sidebar-icon {
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+}
+
+.sidebar-text {
+  flex: 1;
+}
+
 .app-main {
   width: 100%;
   max-width: 100%;
@@ -80,6 +159,7 @@
   position: relative;
   z-index: 1;
   flex: 1;
+  overflow-x: hidden;
 }
 
 .game-section {
@@ -119,6 +199,12 @@
   .navbar-content {
     padding: 1rem 1.5rem;
   }
+
+  .page-sidebar {
+    width: 180px;
+    min-width: 180px;
+    padding: 1.5rem 0.75rem;
+  }
 }
 
 /* Mobile */
@@ -131,6 +217,31 @@
   
   .navbar-title {
     font-size: 1.2rem;
+  }
+
+  .app-content-wrapper {
+    flex-direction: column;
+  }
+
+  .page-sidebar {
+    width: 100%;
+    min-width: 100%;
+    height: auto;
+    position: relative;
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+  }
+
+  .sidebar-links {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 0.5rem;
+  }
+
+  .sidebar-link {
+    white-space: nowrap;
+    min-width: fit-content;
   }
   
   .app-main {

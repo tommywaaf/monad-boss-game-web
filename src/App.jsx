@@ -1,5 +1,6 @@
 import { useDynamicContext, getNetwork, DynamicWidget, DynamicUserProfile } from '@dynamic-labs/sdk-react-core'
 import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import BossFight from './components/BossFight'
 import Inventory from './components/Inventory'
 import AccountPanel from './components/AccountPanel'
@@ -122,6 +123,8 @@ function App() {
   }, [isConnected, primaryWallet?.address]) // Only depend on address, not entire wallet or chainId
 
   const isContractDeployed = GAME_CONTRACT_ADDRESS !== '0x0000000000000000000000000000000000000000'
+  const location = useLocation()
+  const isHomePage = location.pathname === '/' || location.pathname === ''
 
   return (
     <GameContractProvider>
@@ -137,6 +140,36 @@ function App() {
           </div>
         </div>
       </nav>
+
+      <div className="app-content-wrapper">
+        <nav className="page-sidebar">
+          <div className="sidebar-header">
+            <h3>Navigation</h3>
+          </div>
+          <div className="sidebar-links">
+            <Link 
+              to="/" 
+              className={`sidebar-link ${isHomePage ? 'active' : ''}`}
+            >
+              <span className="sidebar-icon">🎮</span>
+              <span className="sidebar-text">Game</span>
+            </Link>
+            <Link 
+              to="/broadcaster" 
+              className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}
+            >
+              <span className="sidebar-icon">🚀</span>
+              <span className="sidebar-text">Broadcaster</span>
+            </Link>
+            <Link 
+              to="/simulator" 
+              className={`sidebar-link ${location.pathname === '/simulator' ? 'active' : ''}`}
+            >
+              <span className="sidebar-icon">⚡</span>
+              <span className="sidebar-text">Simulator</span>
+            </Link>
+          </div>
+        </nav>
 
       <main className="app-main">
 
@@ -230,6 +263,7 @@ function App() {
           </>
         )}
       </main>
+      </div>
 
       <footer className="app-footer">
         <p>Powered by Monad Network ⚡</p>
