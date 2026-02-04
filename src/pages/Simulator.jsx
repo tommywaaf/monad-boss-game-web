@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { createPublicClient, http, recoverTransactionAddress, parseTransaction, formatEther, formatGwei, isAddress, decodeErrorResult } from 'viem'
 import './Simulator.css'
 
@@ -1196,8 +1197,31 @@ function Simulator() {
     return hex
   }
 
+  const location = useLocation()
+
   return (
     <div className="simulator-page">
+      <nav className="page-sidebar">
+        <div className="sidebar-header">
+          <h3>Navigation</h3>
+        </div>
+        <div className="sidebar-links">
+          <Link 
+            to="/broadcaster" 
+            className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">🚀</span>
+            <span className="sidebar-text">Broadcaster</span>
+          </Link>
+          <Link 
+            to="/simulator" 
+            className={`sidebar-link ${location.pathname === '/simulator' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">⚡</span>
+            <span className="sidebar-text">Simulator</span>
+          </Link>
+        </div>
+      </nav>
       <div className="simulator-container">
         <header className="simulator-header">
           <h1>⚡ Transaction Simulator</h1>

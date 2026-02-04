@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import './Broadcaster.css'
 
 const NETWORKS = [
@@ -1079,8 +1080,31 @@ function Broadcaster() {
     return 'EVM'
   }
 
+  const location = useLocation()
+
   return (
     <div className="broadcaster-page">
+      <nav className="page-sidebar">
+        <div className="sidebar-header">
+          <h3>Navigation</h3>
+        </div>
+        <div className="sidebar-links">
+          <Link 
+            to="/broadcaster" 
+            className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">🚀</span>
+            <span className="sidebar-text">Broadcaster</span>
+          </Link>
+          <Link 
+            to="/simulator" 
+            className={`sidebar-link ${location.pathname === '/simulator' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">⚡</span>
+            <span className="sidebar-text">Simulator</span>
+          </Link>
+        </div>
+      </nav>
       <div className="broadcaster-container">
         <header className="broadcaster-header">
           <h1>⚡ {getNetworkTypeLabel()} Broadcaster</h1>
