@@ -881,12 +881,23 @@ function Simulator() {
 
             {simulationResult.success ? (
               <div className="decoded-fields">
-                <div className="field-row">
-                  <div className="field-label">From:</div>
-                  <div className="field-value">
-                    <code>{simulationResult.from}</code>
+                {simulationResult.from && (
+                  <div className="field-row">
+                    <div className="field-label">From:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.from}</code>
+                    </div>
                   </div>
-                </div>
+                )}
+                
+                {!simulationResult.from && (
+                  <div className="field-row">
+                    <div className="field-label">From:</div>
+                    <div className="field-value">
+                      <code style={{ color: '#71717a' }}>Unknown (could not recover from signature)</code>
+                    </div>
+                  </div>
+                )}
 
                 <div className="field-row">
                   <div className="field-label">To:</div>
