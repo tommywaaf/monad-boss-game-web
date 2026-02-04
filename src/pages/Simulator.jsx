@@ -285,7 +285,8 @@ function Simulator() {
 
   const bytesToHex = (bytes) => {
     if (bytes.length === 0) return '0x0'
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+    return '0x' + hex
   }
 
   // Decode EIP-1559 transaction
@@ -335,12 +336,12 @@ function Simulator() {
       maxPriorityFeePerGas: bytesToHex(maxPriorityFee.data),
       maxFeePerGas: bytesToHex(maxFeePerGas.data),
       gasLimit: bytesToNumber(gasLimit.data),
-      to: to.data.length > 0 ? '0x' + bytesToHex(to.data) : null,
+      to: to.data.length > 0 ? bytesToHex(to.data) : null,
       value: bytesToHex(value.data),
-      data: data.data.length > 0 ? '0x' + bytesToHex(data.data) : '0x',
+      data: data.data.length > 0 ? bytesToHex(data.data) : '0x',
       v: bytesToNumber(v.data),
-      r: '0x' + bytesToHex(r.data),
-      s: '0x' + bytesToHex(s.data),
+      r: bytesToHex(r.data),
+      s: bytesToHex(s.data),
     }
   }
 
@@ -387,12 +388,12 @@ function Simulator() {
       nonce: bytesToNumber(nonce.data),
       gasPrice: bytesToHex(gasPrice.data),
       gasLimit: bytesToNumber(gasLimit.data),
-      to: to.data.length > 0 ? '0x' + bytesToHex(to.data) : null,
+      to: to.data.length > 0 ? bytesToHex(to.data) : null,
       value: bytesToHex(value.data),
-      data: data.data.length > 0 ? '0x' + bytesToHex(data.data) : '0x',
+      data: data.data.length > 0 ? bytesToHex(data.data) : '0x',
       v: bytesToNumber(v.data),
-      r: '0x' + bytesToHex(r.data),
-      s: '0x' + bytesToHex(s.data),
+      r: bytesToHex(r.data),
+      s: bytesToHex(s.data),
     }
   }
 
@@ -442,12 +443,12 @@ function Simulator() {
       nonce: bytesToNumber(nonce.data),
       gasPrice: bytesToHex(gasPrice.data),
       gasLimit: bytesToNumber(gasLimit.data),
-      to: to.data.length > 0 ? '0x' + bytesToHex(to.data) : null,
+      to: to.data.length > 0 ? bytesToHex(to.data) : null,
       value: bytesToHex(value.data),
-      data: data.data.length > 0 ? '0x' + bytesToHex(data.data) : '0x',
+      data: data.data.length > 0 ? bytesToHex(data.data) : '0x',
       v: vNum,
-      r: '0x' + bytesToHex(r.data),
-      s: '0x' + bytesToHex(s.data),
+      r: bytesToHex(r.data),
+      s: bytesToHex(s.data),
     }
   }
 
