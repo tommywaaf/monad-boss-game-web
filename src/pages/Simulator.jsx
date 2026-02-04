@@ -953,37 +953,76 @@ function Simulator() {
       // Get current block number for simulation
       const blockNumber = await client.getBlockNumber().catch(() => 'latest')
 
-      // Prepare transaction for simulation
-      // Note: We omit `gas` from eth_call to avoid out-of-gas reverts masking real errors
-      const tx = {
-        ...(from ? { account: from } : {}),  // ✅ Viem v2 uses `account`, not `from`
+      // ✅ FIXED: Build base transaction WITHOUT fee fields from signed tx
+      // from must be known for contract calls (use override or recover from signature)
+      const account = from
+
+      const baseTx = {
+        account,
         to: decoded.to,
-        value: decoded.value !== '0x0' && decoded.value !== '0x' ? BigInt(decoded.value) : undefined,
         data: decoded.data !== '0x' ? decoded.data : undefined,
-        // gas is omitted - let the node use its default/block gas limit
+        value:
+          decoded.value && decoded.value !== '0x0' && decoded.value !== '0x'
+            ? BigInt(decoded.value)
+            : undefined,
       }
 
-      // Add gas price fields based on transaction type
-      if (decoded.gasPrice) {
-        tx.gasPrice = BigInt(decoded.gasPrice)
-      } else if (decoded.maxFeePerGas) {
-        tx.maxFeePerGas = BigInt(decoded.maxFeePerGas)
-        if (decoded.maxPriorityFeePerGas) {
-          tx.maxPriorityFeePerGas = BigInt(decoded.maxPriorityFeePerGas)
+      // ✅ FIXED: Use network fees, NOT the signed tx fee fields
+      let fees = null
+      try {
+        fees = await client.estimateFeesPerGas()
+      } catch (e) {
+        console.warn('Failed to estimate fees:', e)
+        // Fallback: try to get from block
+        try {
+          const block = await client.getBlock({ blockNumber })
+          if (block.baseFeePerGas) {
+            fees = {
+              maxFeePerGas: block.baseFeePerGas * 2n,
+              maxPriorityFeePerGas: block.baseFeePerGas / 10n,
+            }
+          }
+        } catch (e2) {
+          console.warn('Failed to get block fees:', e2)
         }
       }
 
-      // Perform eth_call simulation
+      // ✅ FIXED: Get fresh gas estimate with network fees
+      let gasEstimate = null
+      try {
+        if (fees) {
+          gasEstimate = await client.estimateGas({
+            ...baseTx,
+            maxFeePerGas: fees.maxFeePerGas,
+            maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+          })
+        } else {
+          // Fallback without fees
+          gasEstimate = await client.estimateGas(baseTx)
+        }
+      } catch (e) {
+        console.warn('Gas estimation failed:', e)
+      }
+
+      // ✅ FIXED: Perform eth_call simulation with fresh gas estimate + buffer
       let result
       let revertReason = null
       let revertData = null
 
       try {
-        result = await client.call({
-          ...tx,
-          ...(from ? { account: from } : {}),  // ✅ Viem v2 uses `account`
+        const callTx = {
+          ...baseTx,
+          ...(fees
+            ? {
+                maxFeePerGas: fees.maxFeePerGas,
+                maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+              }
+            : {}),
+          ...(gasEstimate ? { gas: gasEstimate + 10_000n } : {}), // Add small buffer
           blockNumber,
-        })
+        }
+
+        result = await client.call(callTx)
       } catch (callError) {
         // Extract revert data from error
         revertData = callError?.data || callError?.cause?.data || null
@@ -1003,17 +1042,6 @@ function Simulator() {
         })
         setIsSimulating(false)
         return
-      }
-
-      // Get additional info
-      let gasEstimate = null
-      try {
-        gasEstimate = await client.estimateGas({
-          ...tx,
-          ...(from ? { account: from } : {}),  // ✅ Viem v2 uses `account`
-        })
-      } catch (e) {
-        console.warn('Gas estimation failed:', e)
       }
 
       // Get code at address (to check if it's a contract)
@@ -1046,16 +1074,28 @@ function Simulator() {
         }
       }
 
+      // Calculate max cost (gas * maxFeePerGas)
+      let maxCostWei = null
+      let maxCostFormatted = null
+      if (gasEstimate && fees && fees.maxFeePerGas) {
+        maxCostWei = gasEstimate * fees.maxFeePerGas
+        maxCostFormatted = formatEther(maxCostWei)
+      }
+
       // Attempt to get execution trace (if RPC supports it)
       let trace = null
       let parsedTrace = null
       if (decoded.to && decoded.data && decoded.data !== '0x') {
         try {
           // Convert account back to from for JSON-RPC calls
-          const traceTx = { ...tx }
+          const traceTx = { ...baseTx }
           if (traceTx.account) {
             traceTx.from = traceTx.account
             delete traceTx.account
+          }
+          if (fees) {
+            traceTx.maxFeePerGas = fees.maxFeePerGas
+            traceTx.maxPriorityFeePerGas = fees.maxPriorityFeePerGas
           }
           trace = await getExecutionTrace(rpcUrl, traceTx, blockNumber)
           if (trace) {
@@ -1071,6 +1111,10 @@ function Simulator() {
         returnData: result.data || '0x',
         gasUsed: result.gasUsed || null,
         gasEstimate: gasEstimate || null,
+        maxFeePerGas: fees?.maxFeePerGas ? fees.maxFeePerGas.toString() : null,
+        maxPriorityFeePerGas: fees?.maxPriorityFeePerGas ? fees.maxPriorityFeePerGas.toString() : null,
+        maxCostWei: maxCostWei ? maxCostWei.toString() : null,
+        maxCostFormatted: maxCostFormatted,
         from,
         to: decoded.to,
         isContract: code && code !== '0x',
@@ -1481,6 +1525,42 @@ function Simulator() {
                     <div className="field-label">Gas Estimate:</div>
                     <div className="field-value">
                       <code>{simulationResult.gasEstimate.toString()}</code>
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.maxFeePerGas !== null && (
+                  <div className="field-row">
+                    <div className="field-label">Max Fee Per Gas:</div>
+                    <div className="field-value">
+                      <code>
+                        {formatGwei(BigInt(simulationResult.maxFeePerGas))} gwei ({simulationResult.maxFeePerGas.toString()} wei)
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.maxPriorityFeePerGas !== null && (
+                  <div className="field-row">
+                    <div className="field-label">Max Priority Fee Per Gas:</div>
+                    <div className="field-value">
+                      <code>
+                        {formatGwei(BigInt(simulationResult.maxPriorityFeePerGas))} gwei ({simulationResult.maxPriorityFeePerGas.toString()} wei)
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.maxCostWei !== null && (
+                  <div className="field-row">
+                    <div className="field-label">Max Cost (Est.):</div>
+                    <div className="field-value">
+                      <code>
+                        {simulationResult.maxCostFormatted 
+                          ? `${simulationResult.maxCostFormatted} ETH (${simulationResult.maxCostWei} wei)`
+                          : `${simulationResult.maxCostWei} wei`
+                        }
+                      </code>
                     </div>
                   </div>
                 )}
