@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createPublicClient, http, recoverAddress, keccak256 } from 'viem'
+import { createPublicClient, http, recoverTransactionAddress, parseTransaction, formatEther } from 'viem'
 import './Simulator.css'
 
 // EVM Networks (same as Broadcaster)
@@ -487,60 +487,15 @@ function Simulator() {
     }
   }
 
-  // Recover sender address from transaction
+  // Recover sender address from transaction using viem
   const recoverSenderAddress = async (decoded) => {
     try {
       const rawTx = decoded.raw.startsWith('0x') ? decoded.raw : `0x${decoded.raw}`
-      const txBytes = new Uint8Array(rawTx.slice(2).match(/.{1,2}/g).map(byte => parseInt(byte, 16)))
-      
-      // Determine transaction type
-      const txType = txBytes[0]
-      
-      let hash
-      if (txType <= 0x03 && txType > 0) {
-        // Typed transaction (EIP-2718): hash = keccak256(0x01 || 0x02 || 0x03 || rlp(tx))
-        // The raw transaction already includes the type byte, so we hash it directly
-        hash = keccak256(rawTx)
-      } else {
-        // Legacy transaction: hash = keccak256(rlp(tx))
-        hash = keccak256(rawTx)
-      }
-      
-      // Recover address from hash and signature
-      // For typed transactions, v needs adjustment
-      let v = BigInt(decoded.v)
-      if (txType <= 0x03 && txType > 0) {
-        // Typed transactions: v is 0 or 1, need to add 27 for recovery
-        if (v === 0n || v === 1n) {
-          v = v + 27n
-        }
-      }
-      
-      const address = await recoverAddress({
-        hash,
-        r: decoded.r,
-        s: decoded.s,
-        v: v,
-      })
-      
+      const address = await recoverTransactionAddress({ serializedTransaction: rawTx })
       return address
     } catch (e) {
       console.error('Failed to recover address:', e)
-      // Try alternative: use the raw transaction hash directly
-      try {
-        const rawTx = decoded.raw.startsWith('0x') ? decoded.raw : `0x${decoded.raw}`
-        const hash = keccak256(rawTx)
-        const address = await recoverAddress({
-          hash,
-          r: decoded.r,
-          s: decoded.s,
-          v: BigInt(decoded.v),
-        })
-        return address
-      } catch (e2) {
-        console.error('Alternative recovery also failed:', e2)
-        return null
-      }
+      return null
     }
   }
 
@@ -608,9 +563,8 @@ function Simulator() {
       // Try to recover sender address (optional - simulation can work without it)
       let from = await recoverSenderAddress(decoded)
       if (!from) {
-        console.warn('Could not recover sender address, simulation may still work')
-        // For eth_call, we can try without 'from' or use a zero address
-        from = '0x0000000000000000000000000000000000000000'
+        console.warn('Could not recover sender address; omitting `from` in eth_call')
+        from = null
       }
 
       // Create public client
@@ -623,7 +577,7 @@ function Simulator() {
 
       // Prepare transaction for simulation
       const tx = {
-        from: from,
+        ...(from ? { from } : {}),  // only include if known
         to: decoded.to,
         value: decoded.value !== '0x0' && decoded.value !== '0x' ? BigInt(decoded.value) : undefined,
         data: decoded.data !== '0x' ? decoded.data : undefined,
@@ -666,12 +620,18 @@ function Simulator() {
         }
       }
 
-      // Get balance of sender
+      // Get balance of sender (only if we have the address)
       let balance = null
-      try {
-        balance = await client.getBalance({ address: from })
-      } catch (e) {
-        console.warn('Failed to get balance:', e)
+      let balanceFormatted = null
+      if (from) {
+        try {
+          balance = await client.getBalance({ address: from })
+          if (balance) {
+            balanceFormatted = formatEther(balance)
+          }
+        } catch (e) {
+          console.warn('Failed to get balance:', e)
+        }
       }
 
       setSimulationResult({
@@ -684,6 +644,7 @@ function Simulator() {
         isContract: code && code !== '0x',
         codeLength: code && code !== '0x' ? (code.length - 2) / 2 : 0,
         balance: balance ? balance.toString() : null,
+        balanceFormatted: balanceFormatted,
         blockNumber: blockNumber.toString(),
         chainId: chainInfo.chainId,
         chainName: chainInfo.chainName,
@@ -755,8 +716,9 @@ function Simulator() {
       try {
         const bigInt = BigInt(value)
         if (bigInt === 0n) return '0'
-        const eth = Number(bigInt) / 1e18
-        if (eth > 0.0001) return `${eth.toFixed(6)} ETH (${value})`
+        const eth = formatEther(bigInt)
+        const ethNum = parseFloat(eth)
+        if (ethNum > 0.0001) return `${eth} ETH (${value})`
         return value
       } catch {
         return value
@@ -974,7 +936,12 @@ function Simulator() {
                   <div className="field-row">
                     <div className="field-label">Sender Balance:</div>
                     <div className="field-value">
-                      <code>{formatValue(`0x${BigInt(simulationResult.balance).toString(16)}`)}</code>
+                      <code>
+                        {simulationResult.balanceFormatted 
+                          ? `${simulationResult.balanceFormatted} ETH (${simulationResult.balance} wei)`
+                          : formatValue(`0x${BigInt(simulationResult.balance).toString(16)}`)
+                        }
+                      </code>
                     </div>
                   </div>
                 )}
