@@ -1,6 +1,72 @@
 import { useState, useEffect } from 'react'
-import { createPublicClient, http, recoverTransactionAddress, parseTransaction, formatEther } from 'viem'
+import { createPublicClient, http, recoverTransactionAddress, parseTransaction, formatEther, formatGwei, isAddress, decodeErrorResult } from 'viem'
 import './Simulator.css'
+
+// Standard Solidity error ABIs
+const ERROR_ABI = {
+  name: 'Error',
+  type: 'error',
+  inputs: [{ name: 'message', type: 'string' }],
+}
+
+const PANIC_ABI = {
+  name: 'Panic',
+  type: 'error',
+  inputs: [{ name: 'code', type: 'uint256' }],
+}
+
+// Panic codes from Solidity
+const PANIC_CODES = {
+  0x00: 'Generic compiler inserted panic',
+  0x01: 'Assertion failed',
+  0x11: 'Arithmetic underflow or overflow',
+  0x12: 'Division or modulo by zero',
+  0x21: 'Conversion to enum out of bounds',
+  0x22: 'Incorrectly encoded storage byte array',
+  0x31: 'Pop on empty array',
+  0x32: 'Array index out of bounds',
+  0x41: 'Too much memory allocated',
+  0x51: 'Zero initialized variable',
+}
+
+// Common function selectors (ERC20, ERC721, etc.)
+const COMMON_SELECTORS = {
+  // ERC20
+  '0xa9059cbb': { name: 'transfer', signature: 'transfer(address,uint256)', standard: 'ERC20' },
+  '0x095ea7b3': { name: 'approve', signature: 'approve(address,uint256)', standard: 'ERC20' },
+  '0x23b872dd': { name: 'transferFrom', signature: 'transferFrom(address,address,uint256)', standard: 'ERC20' },
+  '0x70a08231': { name: 'balanceOf', signature: 'balanceOf(address)', standard: 'ERC20' },
+  '0xdd62ed3e': { name: 'allowance', signature: 'allowance(address,address)', standard: 'ERC20' },
+  '0x18160ddd': { name: 'totalSupply', signature: 'totalSupply()', standard: 'ERC20' },
+  '0x06fdde03': { name: 'name', signature: 'name()', standard: 'ERC20' },
+  '0x95d89b41': { name: 'symbol', signature: 'symbol()', standard: 'ERC20' },
+  '0x313ce567': { name: 'decimals', signature: 'decimals()', standard: 'ERC20' },
+  // ERC721
+  '0x42842e0e': { name: 'safeTransferFrom', signature: 'safeTransferFrom(address,address,uint256)', standard: 'ERC721' },
+  '0xb88d4fde': { name: 'safeTransferFrom', signature: 'safeTransferFrom(address,address,uint256,bytes)', standard: 'ERC721' },
+  '0x23b872dd': { name: 'transferFrom', signature: 'transferFrom(address,address,uint256)', standard: 'ERC721' },
+  '0x081812fc': { name: 'ownerOf', signature: 'ownerOf(uint256)', standard: 'ERC721' },
+  '0x6352211e': { name: 'tokenURI', signature: 'tokenURI(uint256)', standard: 'ERC721' },
+  '0x70a08231': { name: 'balanceOf', signature: 'balanceOf(address)', standard: 'ERC721' },
+  '0x06fdde03': { name: 'name', signature: 'name()', standard: 'ERC721' },
+  '0x95d89b41': { name: 'symbol', signature: 'symbol()', standard: 'ERC721' },
+  '0x18160ddd': { name: 'totalSupply', signature: 'totalSupply()', standard: 'ERC721' },
+  // ERC1155
+  '0xf242432a': { name: 'safeTransferFrom', signature: 'safeTransferFrom(address,address,uint256,uint256,bytes)', standard: 'ERC1155' },
+  '0x2eb2c2d6': { name: 'safeBatchTransferFrom', signature: 'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)', standard: 'ERC1155' },
+  '0x00fdd58e': { name: 'balanceOf', signature: 'balanceOf(address,uint256)', standard: 'ERC1155' },
+  '0x4e1273f4': { name: 'balanceOfBatch', signature: 'balanceOfBatch(address[],uint256[])', standard: 'ERC1155' },
+  '0xe985e9c5': { name: 'isApprovedForAll', signature: 'isApprovedForAll(address,address)', standard: 'ERC1155' },
+  '0xa22cb465': { name: 'setApprovalForAll', signature: 'setApprovalForAll(address,bool)', standard: 'ERC1155' },
+  '0x0e89341c': { name: 'uri', signature: 'uri(uint256)', standard: 'ERC1155' },
+  // Common
+  '0x8da5cb5b': { name: 'owner', signature: 'owner()', standard: 'Ownable' },
+  '0x715018a6': { name: 'renounceOwnership', signature: 'renounceOwnership()', standard: 'Ownable' },
+  '0xf2fde38b': { name: 'transferOwnership', signature: 'transferOwnership(address)', standard: 'Ownable' },
+  '0x8456cb59': { name: 'pause', signature: 'pause()', standard: 'Pausable' },
+  '0x3f4ba83a': { name: 'unpause', signature: 'unpause()', standard: 'Pausable' },
+  '0x5c975abb': { name: 'paused', signature: 'paused()', standard: 'Pausable' },
+}
 
 // EVM Networks (same as Broadcaster)
 const EVM_NETWORKS = [
@@ -499,6 +565,255 @@ function Simulator() {
     }
   }
 
+  // Attempt to get execution trace
+  const getExecutionTrace = async (rpcUrl, tx, blockNumber) => {
+    try {
+      // Try debug_traceCall (Geth/Erigon/Nethermind style)
+      try {
+        const response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'debug_traceCall',
+            params: [
+              tx,
+              blockNumber === 'latest' ? 'latest' : `0x${Number(blockNumber).toString(16)}`,
+              {
+                tracer: 'callTracer',
+                tracerConfig: {
+                  withLog: true,
+                },
+              },
+            ],
+          }),
+        })
+
+        const data = await response.json()
+        if (data.result && !data.error) {
+          return { type: 'debug_traceCall', trace: data.result }
+        }
+      } catch (e) {
+        console.warn('debug_traceCall failed:', e)
+      }
+
+      // Try trace_call (OpenEthereum/Erigon style)
+      try {
+        const response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'trace_call',
+            params: [
+              tx,
+              ['trace', 'vmTrace', 'stateDiff'],
+              blockNumber === 'latest' ? 'latest' : `0x${Number(blockNumber).toString(16)}`,
+            ],
+          }),
+        })
+
+        const data = await response.json()
+        if (data.result && !data.error) {
+          return { type: 'trace_call', trace: data.result }
+        }
+      } catch (e) {
+        console.warn('trace_call failed:', e)
+      }
+
+      return null
+    } catch (e) {
+      console.warn('Tracing not available:', e)
+      return null
+    }
+  }
+
+  // Parse trace to extract call stack and info
+  const parseTrace = (traceData) => {
+    if (!traceData) return null
+
+    const calls = []
+    let totalGas = 0
+    let revertedCall = null
+
+    const extractCalls = (node, depth = 0, parent = null) => {
+      if (!node) return
+
+      // Handle different trace formats
+      const from = node.from || (typeof node.action === 'object' ? node.action.from : null) || parent?.to || null
+      const to = node.to || (typeof node.action === 'object' ? node.action.to : null) || null
+      const value = node.value || (typeof node.action === 'object' ? node.action.value : null) || '0'
+      const input = node.input || (typeof node.action === 'object' ? node.action.input : null) || node.data || '0x'
+      const output = node.output || (typeof node.result === 'object' ? node.result.output : null) || '0x'
+      const gas = node.gas || (typeof node.action === 'object' ? node.action.gas : null) || null
+      const gasUsed = node.gasUsed || (typeof node.result === 'object' ? node.result.gasUsed : null) || null
+      const error = node.error || (typeof node.result === 'object' ? node.result.error : null) || null
+      const type = node.type || (typeof node.action === 'object' ? node.action.callType : null) || 'call'
+
+      // Parse value - handle hex strings and numbers
+      let valueStr = '0'
+      if (value) {
+        try {
+          if (typeof value === 'string') {
+            valueStr = BigInt(value.startsWith('0x') ? value : `0x${value}`).toString()
+          } else {
+            valueStr = BigInt(value).toString()
+          }
+        } catch (e) {
+          valueStr = '0'
+        }
+      }
+
+      // Parse gas values
+      let gasStr = null
+      if (gas) {
+        try {
+          if (typeof gas === 'string') {
+            gasStr = BigInt(gas.startsWith('0x') ? gas : `0x${gas}`).toString()
+          } else {
+            gasStr = BigInt(gas).toString()
+          }
+        } catch (e) {
+          gasStr = null
+        }
+      }
+
+      let gasUsedStr = null
+      if (gasUsed) {
+        try {
+          if (typeof gasUsed === 'string') {
+            gasUsedStr = BigInt(gasUsed.startsWith('0x') ? gasUsed : `0x${gasUsed}`).toString()
+          } else {
+            gasUsedStr = BigInt(gasUsed).toString()
+          }
+        } catch (e) {
+          gasUsedStr = null
+        }
+      }
+
+      const call = {
+        depth,
+        from,
+        to,
+        value: valueStr,
+        input: input || '0x',
+        output: output || '0x',
+        gas: gasStr,
+        gasUsed: gasUsedStr,
+        error: error || null,
+        type: type || 'call',
+      }
+
+      // Decode function call if possible
+      if (call.input && call.input !== '0x' && call.input.length >= 10) {
+        call.functionCall = decodeFunctionCall(call.input)
+      }
+
+      if (call.gasUsed) {
+        totalGas += Number(call.gasUsed)
+      }
+
+      if (call.error) {
+        revertedCall = call
+      }
+
+      calls.push(call)
+
+      // Recursively process nested calls
+      if (node.calls && Array.isArray(node.calls)) {
+        node.calls.forEach((child) => {
+          extractCalls(child, depth + 1, call)
+        })
+      } else if (node.trace && Array.isArray(node.trace)) {
+        // Alternative format
+        node.trace.forEach((child) => {
+          extractCalls(child, depth + 1, call)
+        })
+      }
+
+      return call
+    }
+
+    if (traceData.type === 'debug_traceCall') {
+      extractCalls(traceData.trace, 0)
+    } else if (traceData.type === 'trace_call') {
+      // trace_call format - can have different structures
+      if (traceData.trace?.trace && Array.isArray(traceData.trace.trace)) {
+        traceData.trace.trace.forEach((traceItem) => {
+          extractCalls(traceItem, 0)
+        })
+      } else if (traceData.trace) {
+        extractCalls(traceData.trace, 0)
+      }
+    }
+
+    return {
+      calls,
+      totalGas: totalGas > 0 ? totalGas.toString() : null,
+      revertedCall,
+      hasLogs: traceData.trace?.logs && traceData.trace.logs.length > 0,
+      logs: traceData.trace?.logs || [],
+    }
+  }
+
+  // Decode method selector and function info from calldata
+  const decodeFunctionCall = (calldata) => {
+    if (!calldata || calldata === '0x' || calldata.length < 10) {
+      return null
+    }
+
+    // Extract selector (first 4 bytes = 8 hex chars + '0x')
+    const selector = calldata.slice(0, 10).toLowerCase()
+    const calldataLength = (calldata.length - 2) / 2 // Remove '0x' and divide by 2 for bytes
+
+    const functionInfo = COMMON_SELECTORS[selector]
+
+    return {
+      selector,
+      calldataLength,
+      functionName: functionInfo?.name || null,
+      signature: functionInfo?.signature || null,
+      standard: functionInfo?.standard || null,
+    }
+  }
+
+  // Decode revert reason from error data
+  const decodeRevertReason = (errorData) => {
+    if (!errorData || errorData === '0x') {
+      return null
+    }
+
+    try {
+      // Try Error(string) - selector: 0x08c379a0
+      if (errorData.startsWith('0x08c379a0')) {
+        const decoded = decodeErrorResult({
+          abi: [ERROR_ABI],
+          data: errorData,
+        })
+        return { type: 'Error', message: decoded.message }
+      }
+
+      // Try Panic(uint256) - selector: 0x4e487b71
+      if (errorData.startsWith('0x4e487b71')) {
+        const decoded = decodeErrorResult({
+          abi: [PANIC_ABI],
+          data: errorData,
+        })
+        const code = Number(decoded.code)
+        const panicMessage = PANIC_CODES[code] || `Unknown panic code: 0x${code.toString(16)}`
+        return { type: 'Panic', code, message: panicMessage }
+      }
+
+      // Return raw data for custom errors or unknown formats
+      return { type: 'Custom/Unknown', data: errorData }
+    } catch (e) {
+      // If decoding fails, return raw data
+      return { type: 'Unknown', data: errorData }
+    }
+  }
+
   // Get RPC URL based on selected network or detected chain
   const getRpcUrl = () => {
     if (selectedNetwork.id === 'custom-evm') {
@@ -576,12 +891,13 @@ function Simulator() {
       const blockNumber = await client.getBlockNumber().catch(() => 'latest')
 
       // Prepare transaction for simulation
+      // Note: We omit `gas` from eth_call to avoid out-of-gas reverts masking real errors
       const tx = {
         ...(from ? { from } : {}),  // only include if known
         to: decoded.to,
         value: decoded.value !== '0x0' && decoded.value !== '0x' ? BigInt(decoded.value) : undefined,
         data: decoded.data !== '0x' ? decoded.data : undefined,
-        gas: BigInt(decoded.gasLimit || 0),
+        // gas is omitted - let the node use its default/block gas limit
       }
 
       // Add gas price fields based on transaction type
@@ -595,10 +911,35 @@ function Simulator() {
       }
 
       // Perform eth_call simulation
-      const result = await client.call({
-        ...tx,
-        blockNumber,
-      })
+      let result
+      let revertReason = null
+      let revertData = null
+      
+      try {
+        result = await client.call({
+          ...tx,
+          blockNumber,
+        })
+      } catch (callError) {
+        // Extract revert data from error
+        revertData = callError?.data || callError?.cause?.data || null
+        
+        if (revertData) {
+          revertReason = decodeRevertReason(revertData)
+        }
+        
+        // Set error result
+        setSimulationResult({
+          success: false,
+          error: revertReason 
+            ? `Reverted: ${revertReason.type === 'Error' ? revertReason.message : revertReason.type === 'Panic' ? revertReason.message : 'Custom error'}`
+            : callError?.message || 'Transaction reverted',
+          revertData,
+          revertReason,
+        })
+        setIsSimulating(false)
+        return
+      }
 
       // Get additional info
       let gasEstimate = null
@@ -620,6 +961,12 @@ function Simulator() {
         }
       }
 
+      // Decode function call if it's a contract call with data
+      let functionCall = null
+      if (decoded.to && decoded.data && decoded.data !== '0x') {
+        functionCall = decodeFunctionCall(decoded.data)
+      }
+
       // Get balance of sender (only if we have the address)
       let balance = null
       let balanceFormatted = null
@@ -634,6 +981,20 @@ function Simulator() {
         }
       }
 
+      // Attempt to get execution trace (if RPC supports it)
+      let trace = null
+      let parsedTrace = null
+      if (decoded.to && decoded.data && decoded.data !== '0x') {
+        try {
+          trace = await getExecutionTrace(rpcUrl, tx, blockNumber)
+          if (trace) {
+            parsedTrace = parseTrace(trace)
+          }
+        } catch (e) {
+          console.warn('Failed to get trace:', e)
+        }
+      }
+
       setSimulationResult({
         success: true,
         returnData: result.data || '0x',
@@ -643,6 +1004,8 @@ function Simulator() {
         to: decoded.to,
         isContract: code && code !== '0x',
         codeLength: code && code !== '0x' ? (code.length - 2) / 2 : 0,
+        functionCall,
+        trace: parsedTrace,
         balance: balance ? balance.toString() : null,
         balanceFormatted: balanceFormatted,
         blockNumber: blockNumber.toString(),
@@ -709,22 +1072,47 @@ function Simulator() {
     }
   }
 
-  const formatValue = (value) => {
+  const formatValue = (key, value) => {
+    if (value == null) return ''
+
+    // Numbers / bigint
     if (typeof value === 'number') return value.toLocaleString()
     if (typeof value === 'bigint') return value.toString()
-    if (typeof value === 'string' && value.startsWith('0x')) {
-      try {
-        const bigInt = BigInt(value)
-        if (bigInt === 0n) return '0'
-        const eth = formatEther(bigInt)
-        const ethNum = parseFloat(eth)
-        if (ethNum > 0.0001) return `${eth} ETH (${value})`
-        return value
-      } catch {
+
+    // Strings
+    if (typeof value === 'string') {
+      // Address: never treat as ETH
+      if (value.startsWith('0x') && value.length === 42 && isAddress(value)) {
         return value
       }
+
+      // Gas price fields: show gwei (and raw wei hex)
+      const gasKeys = ['gasPrice', 'maxFeePerGas', 'maxPriorityFeePerGas']
+      if (gasKeys.includes(key) && value.startsWith('0x')) {
+        try {
+          const wei = BigInt(value)
+          return `${formatGwei(wei)} gwei (${wei.toString()} wei)`
+        } catch {
+          return value
+        }
+      }
+
+      // Value fields: show ETH (and raw wei hex)
+      const ethValueKeys = ['value']
+      if (ethValueKeys.includes(key) && value.startsWith('0x')) {
+        try {
+          const wei = BigInt(value)
+          return `${formatEther(wei)} ETH (${wei.toString()} wei)`
+        } catch {
+          return value
+        }
+      }
+
+      // Fallback: just show hex or string
+      return value
     }
-    return value
+
+    return String(value)
   }
 
   const formatHex = (hex) => {
@@ -862,7 +1250,7 @@ function Simulator() {
                   <div key={key} className="field-row">
                     <div className="field-label">{key}:</div>
                     <div className="field-value">
-                      <code title={String(value)}>{formatValue(value)}</code>
+                      <code title={String(value)}>{formatValue(key, value)}</code>
                     </div>
                   </div>
                 )
@@ -880,6 +1268,7 @@ function Simulator() {
             </div>
 
             {simulationResult.success ? (
+              <>
               <div className="decoded-fields">
                 {simulationResult.from && (
                   <div className="field-row">
@@ -918,6 +1307,42 @@ function Simulator() {
                   </div>
                 )}
 
+                {simulationResult.functionCall && (
+                  <div className="field-row function-call-row">
+                    <div className="field-label">Function Call:</div>
+                    <div className="field-value">
+                      <div className="function-call-info">
+                        {simulationResult.functionCall.functionName ? (
+                          <>
+                            <div className="function-name">
+                              <code className="function-name-code">{simulationResult.functionCall.functionName}</code>
+                              {simulationResult.functionCall.standard && (
+                                <span className="function-standard"> ({simulationResult.functionCall.standard})</span>
+                              )}
+                            </div>
+                            {simulationResult.functionCall.signature && (
+                              <div className="function-signature">
+                                <code className="signature-code">{simulationResult.functionCall.signature}</code>
+                              </div>
+                            )}
+                            <div className="function-selector">
+                              Selector: <code>{simulationResult.functionCall.selector}</code>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="function-selector">
+                            Selector: <code>{simulationResult.functionCall.selector}</code>
+                            <span className="info-text"> (Unknown function)</span>
+                          </div>
+                        )}
+                        <div className="calldata-info">
+                          Calldata: <code>{simulationResult.functionCall.calldataLength}</code> bytes
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="field-row">
                   <div className="field-label">Return Data:</div>
                   <div className="field-value">
@@ -950,7 +1375,7 @@ function Simulator() {
                       <code>
                         {simulationResult.balanceFormatted 
                           ? `${simulationResult.balanceFormatted} ETH (${simulationResult.balance} wei)`
-                          : formatValue(`0x${BigInt(simulationResult.balance).toString(16)}`)
+                          : formatValue('balance', `0x${BigInt(simulationResult.balance).toString(16)}`)
                         }
                       </code>
                     </div>
@@ -991,9 +1416,131 @@ function Simulator() {
                   </div>
                 )}
               </div>
+
+              {/* Execution Trace */}
+              {simulationResult.trace && simulationResult.trace.calls && simulationResult.trace.calls.length > 0 && (
+                <div className="trace-section">
+                  <h3>🔍 Execution Trace</h3>
+                  <div className="trace-summary">
+                    <span className="trace-stat">
+                      <strong>{simulationResult.trace.calls.length}</strong> call{simulationResult.trace.calls.length !== 1 ? 's' : ''}
+                    </span>
+                    {simulationResult.trace.totalGas && (
+                      <span className="trace-stat">
+                        Total Gas: <strong>{Number(simulationResult.trace.totalGas).toLocaleString()}</strong>
+                      </span>
+                    )}
+                    {simulationResult.trace.revertedCall && (
+                      <span className="trace-stat error">
+                        ⚠️ Reverted at depth {simulationResult.trace.revertedCall.depth}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="trace-calls">
+                    {simulationResult.trace.calls.map((call, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`trace-call ${call.error ? 'trace-call-reverted' : ''}`}
+                        style={{ marginLeft: `${call.depth * 20}px` }}
+                      >
+                        <div className="trace-call-header">
+                          <span className="trace-call-type">{call.type.toUpperCase()}</span>
+                          {call.depth > 0 && <span className="trace-call-depth">Depth {call.depth}</span>}
+                          {call.error && <span className="trace-call-error">❌ REVERTED</span>}
+                        </div>
+                        
+                        <div className="trace-call-details">
+                          {call.from && (
+                            <div className="trace-detail">
+                              <span className="trace-label">From:</span>
+                              <code>{call.from}</code>
+                            </div>
+                          )}
+                          {call.to && (
+                            <div className="trace-detail">
+                              <span className="trace-label">To:</span>
+                              <code>{call.to}</code>
+                            </div>
+                          )}
+                          {call.value && BigInt(call.value) > 0n && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Value:</span>
+                              <code>{formatEther(BigInt(call.value))} ETH</code>
+                            </div>
+                          )}
+                          {call.functionCall && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Function:</span>
+                              <code className="trace-function">
+                                {call.functionCall.functionName || 'Unknown'}
+                                {call.functionCall.standard && ` (${call.functionCall.standard})`}
+                              </code>
+                            </div>
+                          )}
+                          {call.gasUsed && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Gas Used:</span>
+                              <code>{Number(call.gasUsed).toLocaleString()}</code>
+                            </div>
+                          )}
+                          {call.error && (
+                            <div className="trace-detail error">
+                              <span className="trace-label">Error:</span>
+                              <code>{call.error}</code>
+                            </div>
+                          )}
+                          {call.output && call.output !== '0x' && call.output.length > 2 && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Output:</span>
+                              <code className="trace-output">{formatHex(call.output)}</code>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {simulationResult.trace === null && simulationResult.to && simulationResult.isContract && (
+                <div className="trace-unavailable">
+                  <p>ℹ️ Execution trace not available. Your RPC may not support <code>debug_traceCall</code> or <code>trace_call</code>.</p>
+                </div>
+              )}
+              </>
             ) : (
               <div className="error-details">
                 <p><strong>Error:</strong> {simulationResult.error}</p>
+                
+                {simulationResult.revertReason && (
+                  <div className="revert-reason">
+                    <div className="revert-type">
+                      <strong>Revert Type:</strong> {simulationResult.revertReason.type}
+                    </div>
+                    {simulationResult.revertReason.message && (
+                      <div className="revert-message">
+                        <strong>Message:</strong> {simulationResult.revertReason.message}
+                      </div>
+                    )}
+                    {simulationResult.revertReason.code !== undefined && (
+                      <div className="revert-code">
+                        <strong>Panic Code:</strong> 0x{simulationResult.revertReason.code.toString(16)}
+                      </div>
+                    )}
+                    {simulationResult.revertReason.data && (
+                      <div className="revert-data">
+                        <strong>Raw Data:</strong> <code>{formatHex(simulationResult.revertReason.data)}</code>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {simulationResult.revertData && !simulationResult.revertReason && (
+                  <div className="revert-data">
+                    <strong>Revert Data:</strong> <code>{formatHex(simulationResult.revertData)}</code>
+                  </div>
+                )}
               </div>
             )}
           </section>
