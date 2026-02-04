@@ -278,7 +278,6 @@ function Simulator() {
   const [selectedNetwork, setSelectedNetwork] = useState(EVM_NETWORKS[0])
   const [customRpc, setCustomRpc] = useState('')
   const [detectedChainInfo, setDetectedChainInfo] = useState(null)
-  const [fromOverride, setFromOverride] = useState('')
 
   // Set page title
   useEffect(() => {
@@ -929,19 +928,14 @@ function Simulator() {
       // Check if this is a contract call
       const isContractCall = decoded.data && decoded.data !== '0x'
 
-      // ✅ FIXED: Try to recover sender address - override wins; otherwise recover robustly
-      let from = null
-      if (fromOverride && isAddress(fromOverride)) {
-        from = fromOverride
-      } else {
-        from = await recoverSenderAddressFromRaw(raw)
-      }
+      // ✅ FIXED: Try to recover sender address from signature
+      const from = await recoverSenderAddressFromRaw(raw)
 
       // ✅ FIXED: For contract calls, NEVER omit from (nodes often behave like msg.sender=0x0)
       if (isContractCall && !from) {
         throw new Error(
           'Could not recover FROM from signature. For contract calls, eth_call without FROM often becomes msg.sender=0x0 and will revert. ' +
-          'Paste a valid signed tx OR provide a FROM override.'
+          'Please paste a valid signed transaction.'
         )
       }
 
@@ -1346,25 +1340,6 @@ function Simulator() {
             rows={10}
           />
 
-          <div className="from-override-section">
-            <label className="section-label">From Address Override (Optional)</label>
-            <p className="input-hint">
-              If signature recovery fails for contract calls, provide the sender address here to avoid "zero address" reverts.
-            </p>
-            <input
-              type="text"
-              value={fromOverride}
-              onChange={(e) => setFromOverride(e.target.value.trim())}
-              placeholder="0x..."
-              className="from-override-input"
-            />
-            {fromOverride && !isAddress(fromOverride) && (
-              <div className="error-box" style={{ marginTop: '0.5rem' }}>
-                ⚠️ Invalid address format
-              </div>
-            )}
-          </div>
-
           <div className="action-buttons">
             <button 
               onClick={handleSimulate} 
@@ -1379,7 +1354,6 @@ function Simulator() {
                 setDecodedData(null)
                 setSimulationResult(null)
                 setError(null)
-                setFromOverride('')
               }} 
               className="clear-btn" 
               disabled={!inputText || isSimulating}
