@@ -205,6 +205,35 @@
   color: #3f3f46;
 }
 
+.from-override-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.from-override-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.02);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #e4e4e7;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.from-override-input:focus {
+  outline: none;
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.03);
+}
+
+.from-override-input::placeholder {
+  color: #3f3f46;
+}
+
 .action-buttons {
   display: flex;
   gap: 1rem;

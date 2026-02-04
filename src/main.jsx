@@ -10,7 +10,6 @@ import { wagmiConfig } from './config/wagmi'
 import './index.css'
 import App from './App.jsx'
 import Broadcaster from './pages/Broadcaster.jsx'
-import Decoder from './pages/Decoder.jsx'
 import Simulator from './pages/Simulator.jsx'
 
 // Get Dynamic Environment ID from environment variable
@@ -110,7 +109,6 @@ createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <Routes>
         <Route path="/broadcaster" element={<Broadcaster />} />
-        <Route path="/decoder" element={<Decoder />} />
         <Route path="/simulator" element={<Simulator />} />
         <Route path="/*" element={<MainApp />} />
       </Routes>

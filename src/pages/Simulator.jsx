@@ -277,6 +277,7 @@ function Simulator() {
   const [selectedNetwork, setSelectedNetwork] = useState(EVM_NETWORKS[0])
   const [customRpc, setCustomRpc] = useState('')
   const [detectedChainInfo, setDetectedChainInfo] = useState(null)
+  const [fromOverride, setFromOverride] = useState('')
 
   // Set page title
   useEffect(() => {
@@ -553,12 +554,11 @@ function Simulator() {
     }
   }
 
-  // Recover sender address from transaction using viem
-  const recoverSenderAddress = async (decoded) => {
+  // Recover sender address from raw transaction using viem
+  const recoverSenderAddressFromRaw = async (raw) => {
     try {
-      const rawTx = decoded.raw.startsWith('0x') ? decoded.raw : `0x${decoded.raw}`
-      const address = await recoverTransactionAddress({ serializedTransaction: rawTx })
-      return address
+      const serializedTransaction = raw.startsWith('0x') ? raw : `0x${raw}`
+      return await recoverTransactionAddress({ serializedTransaction })
     } catch (e) {
       console.error('Failed to recover address:', e)
       return null
@@ -861,25 +861,38 @@ function Simulator() {
   }
 
   // Simulate transaction using eth_call
-  const simulateTransaction = async (decoded) => {
+  const simulateTransaction = async (decoded, raw) => {
     setIsSimulating(true)
     setSimulationResult(null)
     setError(null)
 
     try {
       // Get chain info (for auto mode, this decodes the tx)
-      const chainInfo = getChainInfo(decoded.raw)
+      const chainInfo = getChainInfo(raw)
       const rpcUrl = chainInfo.rpc || getRpcUrl()
       
       if (!rpcUrl) {
         throw new Error('No RPC URL available. Please select a network or ensure the transaction contains a valid chain ID.')
       }
 
-      // Try to recover sender address (optional - simulation can work without it)
-      let from = await recoverSenderAddress(decoded)
+      // Try to recover sender address - use override if provided, otherwise try recovery
+      let from = null
+      if (fromOverride && isAddress(fromOverride)) {
+        from = fromOverride
+      } else {
+        from = await recoverSenderAddressFromRaw(raw)
+      }
+
+      // Check if this is a contract call
+      const isContractCall = decoded.data && decoded.data !== '0x'
+      
+      // For contract calls, we need a from address to avoid zero address issues
+      if (isContractCall && !from) {
+        throw new Error('Contract call simulation requires a FROM address. Signature recovery failed—please provide a FROM override.')
+      }
+
       if (!from) {
         console.warn('Could not recover sender address; omitting `from` in eth_call')
-        from = null
       }
 
       // Create public client
@@ -1051,12 +1064,15 @@ function Simulator() {
     }
     
     try {
-      const decoded = decodeEvmTransaction(inputText)
+      // Normalize raw input
+      const raw = inputText.trim().startsWith('0x') ? inputText.trim() : `0x${inputText.trim()}`
+      
+      const decoded = decodeEvmTransaction(raw)
       setDecodedData(decoded)
       
       // Auto-detect chain if in auto mode
       if (selectedNetwork.isAuto) {
-        const chainInfo = getChainInfo(inputText.trim())
+        const chainInfo = getChainInfo(raw)
         setDetectedChainInfo(chainInfo)
         
         if (!chainInfo.rpc) {
@@ -1066,7 +1082,7 @@ function Simulator() {
       }
       
       // Automatically simulate after decoding
-      await simulateTransaction(decoded)
+      await simulateTransaction(decoded, raw)
     } catch (e) {
       setError(e.message)
     }
@@ -1205,6 +1221,25 @@ function Simulator() {
             rows={10}
           />
 
+          <div className="from-override-section">
+            <label className="section-label">From Address Override (Optional)</label>
+            <p className="input-hint">
+              If signature recovery fails for contract calls, provide the sender address here to avoid "zero address" reverts.
+            </p>
+            <input
+              type="text"
+              value={fromOverride}
+              onChange={(e) => setFromOverride(e.target.value.trim())}
+              placeholder="0x..."
+              className="from-override-input"
+            />
+            {fromOverride && !isAddress(fromOverride) && (
+              <div className="error-box" style={{ marginTop: '0.5rem' }}>
+                ⚠️ Invalid address format
+              </div>
+            )}
+          </div>
+
           <div className="action-buttons">
             <button 
               onClick={handleSimulate} 
@@ -1219,6 +1254,7 @@ function Simulator() {
                 setDecodedData(null)
                 setSimulationResult(null)
                 setError(null)
+                setFromOverride('')
               }} 
               className="clear-btn" 
               disabled={!inputText || isSimulating}
