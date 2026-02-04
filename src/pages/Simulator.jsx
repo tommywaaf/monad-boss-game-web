@@ -1191,7 +1191,445 @@ function Simulator() {
   return (
     <div className="simulator-page">
       <div className="simulator-container">
-        {/* ... your existing JSX remains unchanged ... */}
+        <header className="simulator-header">
+          <h1>⚡ Transaction Simulator</h1>
+          <p>Simulate signed EVM transactions using eth_call</p>
+        </header>
+
+        <section className="network-section">
+          <label className="section-label">Select Network</label>
+          <div className="network-selector">
+            <select
+              value={selectedNetwork.id}
+              onChange={(e) => {
+                const network = EVM_NETWORKS.find(n => n.id === e.target.value)
+                setSelectedNetwork(network)
+                setDetectedChainInfo(null)
+              }}
+              className="network-dropdown"
+            >
+              {EVM_NETWORKS.map(network => (
+                <option key={network.id} value={network.id}>
+                  {network.name}
+                </option>
+              ))}
+            </select>
+            
+            {selectedNetwork.id === 'custom-evm' ? (
+              <input
+                type="text"
+                value={customRpc}
+                onChange={(e) => setCustomRpc(e.target.value)}
+                placeholder="Enter custom EVM RPC URL..."
+                className="custom-rpc-input"
+              />
+            ) : selectedNetwork.isAuto ? (
+              <div className="rpc-display auto-mode">
+                <span className="rpc-label">Mode:</span>
+                <code>Auto-detect chain from transaction</code>
+              </div>
+            ) : (
+              <div className="rpc-display">
+                <span className="rpc-label">RPC:</span>
+                <code>{selectedNetwork.rpc}</code>
+              </div>
+            )}
+          </div>
+          
+          {selectedNetwork.isAuto && (
+            <div className="network-type-badge auto">
+              🔄 Auto Mode - {Object.keys(CHAIN_ID_MAP).length} chains supported
+            </div>
+          )}
+          
+          {detectedChainInfo && (
+            <div className="detected-chain-info">
+              <span className="detected-label">Detected Chain:</span>
+              <span className="detected-chain-name">{detectedChainInfo.chainName}</span>
+              {detectedChainInfo.chainId && (
+                <span className="detected-chain-id">(Chain ID: {detectedChainInfo.chainId})</span>
+              )}
+            </div>
+          )}
+        </section>
+
+        <section className="input-section">
+          <label className="section-label">Paste Signed RLP Transaction</label>
+          <p className="input-hint">
+            Paste a signed EVM transaction in RLP format (hex). The simulator will decode it and run eth_call to simulate execution.
+          </p>
+          
+          <textarea
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+            placeholder={selectedNetwork.isAuto 
+              ? "Paste your signed RLP transaction here...\n\nThe chain will be auto-detected from the transaction.\n\nExample: 0x02f86d01832e559d..."
+              : "Paste your signed RLP transaction here...\n\nExample: 0x02f86d01832e559d..."
+            }
+            className="tx-input"
+            rows={10}
+          />
+
+          <div className="from-override-section">
+            <label className="section-label">From Address Override (Optional)</label>
+            <p className="input-hint">
+              If signature recovery fails for contract calls, provide the sender address here to avoid "zero address" reverts.
+            </p>
+            <input
+              type="text"
+              value={fromOverride}
+              onChange={(e) => setFromOverride(e.target.value.trim())}
+              placeholder="0x..."
+              className="from-override-input"
+            />
+            {fromOverride && !isAddress(fromOverride) && (
+              <div className="error-box" style={{ marginTop: '0.5rem' }}>
+                ⚠️ Invalid address format
+              </div>
+            )}
+          </div>
+
+          <div className="action-buttons">
+            <button 
+              onClick={handleSimulate} 
+              className="simulate-btn" 
+              disabled={!inputText.trim() || isSimulating}
+            >
+              {isSimulating ? '⏳ Simulating...' : '⚡ Simulate Transaction'}
+            </button>
+            <button 
+              onClick={() => { 
+                setInputText('')
+                setDecodedData(null)
+                setSimulationResult(null)
+                setError(null)
+                setFromOverride('')
+              }} 
+              className="clear-btn" 
+              disabled={!inputText || isSimulating}
+            >
+              🗑️ Clear
+            </button>
+          </div>
+        </section>
+
+        {error && (
+          <div className="error-box">
+            ❌ {error}
+          </div>
+        )}
+
+        {decodedData && (
+          <section className="results-section">
+            <h2>📊 Decoded Transaction</h2>
+            
+            <div className="type-badge">
+              Type: <strong>{decodedData.type}</strong>
+            </div>
+            
+            <div className="decoded-fields">
+              {Object.entries(decodedData).map(([key, value]) => {
+                if (key === 'type' || key === 'raw') return null
+                
+                return (
+                  <div key={key} className="field-row">
+                    <div className="field-label">{key}:</div>
+                    <div className="field-value">
+                      <code title={String(value)}>{formatValue(key, value)}</code>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {simulationResult && (
+          <section className="results-section">
+            <h2>🎯 Simulation Results</h2>
+            
+            <div className={`status-badge ${simulationResult.success ? 'success' : 'error'}`}>
+              {simulationResult.success ? '✅ Simulation Successful' : '❌ Simulation Failed'}
+            </div>
+
+            {simulationResult.success ? (
+              <>
+              <div className="decoded-fields">
+                {simulationResult.from && (
+                  <div className="field-row">
+                    <div className="field-label">From:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.from}</code>
+                    </div>
+                  </div>
+                )}
+                
+                {!simulationResult.from && (
+                  <div className="field-row">
+                    <div className="field-label">From:</div>
+                    <div className="field-value">
+                      <code style={{ color: '#71717a' }}>Unknown (could not recover from signature)</code>
+                    </div>
+                  </div>
+                )}
+
+                <div className="field-row">
+                  <div className="field-label">To:</div>
+                  <div className="field-value">
+                    <code>{simulationResult.to || 'Contract Creation'}</code>
+                  </div>
+                </div>
+
+                {simulationResult.to && (
+                  <div className="field-row">
+                    <div className="field-label">Is Contract:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.isContract ? 'Yes' : 'No'}</code>
+                      {simulationResult.isContract && (
+                        <span className="info-text"> ({simulationResult.codeLength} bytes)</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.functionCall && (
+                  <div className="field-row function-call-row">
+                    <div className="field-label">Function Call:</div>
+                    <div className="field-value">
+                      <div className="function-call-info">
+                        {simulationResult.functionCall.functionName ? (
+                          <>
+                            <div className="function-name">
+                              <code className="function-name-code">{simulationResult.functionCall.functionName}</code>
+                              {simulationResult.functionCall.standard && (
+                                <span className="function-standard"> ({simulationResult.functionCall.standard})</span>
+                              )}
+                            </div>
+                            {simulationResult.functionCall.signature && (
+                              <div className="function-signature">
+                                <code className="signature-code">{simulationResult.functionCall.signature}</code>
+                              </div>
+                            )}
+                            <div className="function-selector">
+                              Selector: <code>{simulationResult.functionCall.selector}</code>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="function-selector">
+                            Selector: <code>{simulationResult.functionCall.selector}</code>
+                            <span className="info-text"> (Unknown function)</span>
+                          </div>
+                        )}
+                        <div className="calldata-info">
+                          Calldata: <code>{simulationResult.functionCall.calldataLength}</code> bytes
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="field-row">
+                  <div className="field-label">Return Data:</div>
+                  <div className="field-value">
+                    <code>{formatHex(simulationResult.returnData)}</code>
+                  </div>
+                </div>
+
+                {simulationResult.gasUsed !== null && (
+                  <div className="field-row">
+                    <div className="field-label">Gas Used:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.gasUsed.toString()}</code>
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.gasEstimate !== null && (
+                  <div className="field-row">
+                    <div className="field-label">Gas Estimate:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.gasEstimate.toString()}</code>
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.balance !== null && (
+                  <div className="field-row">
+                    <div className="field-label">Sender Balance:</div>
+                    <div className="field-value">
+                      <code>
+                        {simulationResult.balanceFormatted 
+                          ? `${simulationResult.balanceFormatted} ETH (${simulationResult.balance} wei)`
+                          : formatValue('balance', `0x${BigInt(simulationResult.balance).toString(16)}`)
+                        }
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                <div className="field-row">
+                  <div className="field-label">Block Number:</div>
+                  <div className="field-value">
+                    <code>{simulationResult.blockNumber}</code>
+                  </div>
+                </div>
+
+                {simulationResult.chainId && (
+                  <div className="field-row">
+                    <div className="field-label">Chain ID:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.chainId}</code>
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.chainName && (
+                  <div className="field-row">
+                    <div className="field-label">Chain:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.chainName}</code>
+                    </div>
+                  </div>
+                )}
+
+                {simulationResult.rpcUsed && (
+                  <div className="field-row">
+                    <div className="field-label">RPC Used:</div>
+                    <div className="field-value">
+                      <code>{simulationResult.rpcUsed}</code>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Execution Trace */}
+              {simulationResult.trace && simulationResult.trace.calls && simulationResult.trace.calls.length > 0 && (
+                <div className="trace-section">
+                  <h3>🔍 Execution Trace</h3>
+                  <div className="trace-summary">
+                    <span className="trace-stat">
+                      <strong>{simulationResult.trace.calls.length}</strong> call{simulationResult.trace.calls.length !== 1 ? 's' : ''}
+                    </span>
+                    {simulationResult.trace.totalGas && (
+                      <span className="trace-stat">
+                        Total Gas: <strong>{Number(simulationResult.trace.totalGas).toLocaleString()}</strong>
+                      </span>
+                    )}
+                    {simulationResult.trace.revertedCall && (
+                      <span className="trace-stat error">
+                        ⚠️ Reverted at depth {simulationResult.trace.revertedCall.depth}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="trace-calls">
+                    {simulationResult.trace.calls.map((call, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`trace-call ${call.error ? 'trace-call-reverted' : ''}`}
+                        style={{ marginLeft: `${call.depth * 20}px` }}
+                      >
+                        <div className="trace-call-header">
+                          <span className="trace-call-type">{call.type.toUpperCase()}</span>
+                          {call.depth > 0 && <span className="trace-call-depth">Depth {call.depth}</span>}
+                          {call.error && <span className="trace-call-error">❌ REVERTED</span>}
+                        </div>
+                        
+                        <div className="trace-call-details">
+                          {call.from && (
+                            <div className="trace-detail">
+                              <span className="trace-label">From:</span>
+                              <code>{call.from}</code>
+                            </div>
+                          )}
+                          {call.to && (
+                            <div className="trace-detail">
+                              <span className="trace-label">To:</span>
+                              <code>{call.to}</code>
+                            </div>
+                          )}
+                          {call.value && BigInt(call.value) > 0n && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Value:</span>
+                              <code>{formatEther(BigInt(call.value))} ETH</code>
+                            </div>
+                          )}
+                          {call.functionCall && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Function:</span>
+                              <code className="trace-function">
+                                {call.functionCall.functionName || 'Unknown'}
+                                {call.functionCall.standard && ` (${call.functionCall.standard})`}
+                              </code>
+                            </div>
+                          )}
+                          {call.gasUsed && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Gas Used:</span>
+                              <code>{Number(call.gasUsed).toLocaleString()}</code>
+                            </div>
+                          )}
+                          {call.error && (
+                            <div className="trace-detail error">
+                              <span className="trace-label">Error:</span>
+                              <code>{call.error}</code>
+                            </div>
+                          )}
+                          {call.output && call.output !== '0x' && call.output.length > 2 && (
+                            <div className="trace-detail">
+                              <span className="trace-label">Output:</span>
+                              <code className="trace-output">{formatHex(call.output)}</code>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {simulationResult.trace === null && simulationResult.to && simulationResult.isContract && (
+                <div className="trace-unavailable">
+                  <p>ℹ️ Execution trace not available. Your RPC may not support <code>debug_traceCall</code> or <code>trace_call</code>.</p>
+                </div>
+              )}
+              </>
+            ) : (
+              <div className="error-details">
+                <p><strong>Error:</strong> {simulationResult.error}</p>
+                
+                {simulationResult.revertReason && (
+                  <div className="revert-reason">
+                    <div className="revert-type">
+                      <strong>Revert Type:</strong> {simulationResult.revertReason.type}
+                    </div>
+                    {simulationResult.revertReason.message && (
+                      <div className="revert-message">
+                        <strong>Message:</strong> {simulationResult.revertReason.message}
+                      </div>
+                    )}
+                    {simulationResult.revertReason.code !== undefined && (
+                      <div className="revert-code">
+                        <strong>Panic Code:</strong> 0x{simulationResult.revertReason.code.toString(16)}
+                      </div>
+                    )}
+                    {simulationResult.revertReason.data && (
+                      <div className="revert-data">
+                        <strong>Raw Data:</strong> <code>{formatHex(simulationResult.revertReason.data)}</code>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {simulationResult.revertData && !simulationResult.revertReason && (
+                  <div className="revert-data">
+                    <strong>Revert Data:</strong> <code>{formatHex(simulationResult.revertData)}</code>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   )
