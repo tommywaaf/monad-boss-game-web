@@ -398,25 +398,32 @@ function Broadcaster() {
   
   // Get chain info for a transaction (for auto mode)
   const getChainInfo = (txPayload) => {
+    // Always decode chain ID from transaction for consistent formatting
+    const chainId = decodeRlpChainId(txPayload)
+    
+    // If we have a chain ID in the map, use that format for display
+    if (chainId && CHAIN_ID_MAP[chainId]) {
+      // Use CHAIN_ID_MAP format for name and explorer (consistent formatting)
+      // But preserve manually selected RPC (keep logic unchanged)
+      return {
+        chainId,
+        chainName: CHAIN_ID_MAP[chainId].name,
+        rpc: isAutoMode ? CHAIN_ID_MAP[chainId].rpc : getRpcUrl(), // Use selected RPC when not auto mode
+        explorer: CHAIN_ID_MAP[chainId].explorer
+      }
+    }
+    
+    // If not in auto mode and chain ID not in map, fall back to selected network
     if (!isAutoMode) {
       return { 
-        chainId: selectedNetwork.chainId || null, 
+        chainId: selectedNetwork.chainId || chainId || null, 
         chainName: selectedNetwork.name, 
         rpc: getRpcUrl(),
         explorer: selectedNetwork.explorer || null
       }
     }
     
-    const chainId = decodeRlpChainId(txPayload)
-    if (chainId && CHAIN_ID_MAP[chainId]) {
-      return {
-        chainId,
-        chainName: CHAIN_ID_MAP[chainId].name,
-        rpc: CHAIN_ID_MAP[chainId].rpc,
-        explorer: CHAIN_ID_MAP[chainId].explorer
-      }
-    }
-    
+    // Auto mode but chain ID not in map
     return {
       chainId,
       chainName: chainId ? `Unknown (${chainId})` : 'Unknown',
