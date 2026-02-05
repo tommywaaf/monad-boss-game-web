@@ -1552,8 +1552,13 @@ function Broadcaster() {
                             {copiedId === `hash-${result.index}` && <span className="copied-badge">Copied!</span>}
                           </code>
                         ) : (
-                          <span className="error-msg" title={result.error}>
+                          <span 
+                            className="error-msg clickable" 
+                            title={result.error ? `Full error: ${result.error}\n\nClick to copy` : 'Click to copy'}
+                            onClick={() => copyToClipboard(result.error || '', `error-${result.index}`)}
+                          >
                             {result.error?.slice(0, 40)}{result.error?.length > 40 ? '...' : ''}
+                            {copiedId === `error-${result.index}` && <span className="copied-badge">Copied!</span>}
                           </span>
                         )}
                       </td>

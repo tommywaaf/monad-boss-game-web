@@ -1309,6 +1309,30 @@ section {
   font-size: 0.8rem;
   color: #ef4444;
   cursor: help;
+  word-break: break-word;
+  display: inline-block;
+  position: relative;
+}
+
+.error-msg.clickable {
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  max-width: 100%;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.error-msg.clickable:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.error-msg.clickable:active {
+  background: rgba(239, 68, 68, 0.25);
+  transform: scale(0.98);
 }
 
 .explorer-cell {
