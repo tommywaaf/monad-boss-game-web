@@ -1009,7 +1009,7 @@ section {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.85rem;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 .results-table th {
@@ -1040,6 +1040,18 @@ section {
   padding: 0.875rem 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   vertical-align: middle;
+  line-height: 1.5;
+}
+
+/* Status column - ensure all content aligns properly */
+.results-table td {
+  vertical-align: middle;
+}
+
+.results-table td .status-badge,
+.results-table td .retryable-badge {
+  vertical-align: middle;
+  margin: 0;
 }
 
 .results-table td:first-child {
@@ -1065,6 +1077,48 @@ section {
   padding-right: 0.75rem;
 }
 
+/* Chain column (when auto mode is on) - column 2 */
+.results-table th:nth-child(2),
+.results-table td:nth-child(2) {
+  width: 150px;
+  min-width: 120px;
+  max-width: 180px;
+}
+
+/* TX column - column 3 when auto mode, column 2 when not */
+.results-table th:nth-child(3),
+.results-table td:nth-child(3) {
+  width: 200px;
+  min-width: 150px;
+  max-width: 250px;
+}
+
+/* Status column - column 4 when auto mode, column 3 when not */
+.results-table th:nth-child(4),
+.results-table td:nth-child(4) {
+  width: 130px;
+  min-width: 100px;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Tries column - column 5 when auto mode, column 4 when not */
+.results-table th:nth-child(5),
+.results-table td:nth-child(5) {
+  width: 80px;
+  min-width: 60px;
+  max-width: 100px;
+}
+
+/* Explorer column - last column */
+.results-table th:last-child,
+.results-table td:last-child {
+  width: 100px;
+  min-width: 80px;
+  max-width: 120px;
+}
+
 .row-success {
   background: rgba(34, 197, 94, 0.03);
 }
@@ -1078,14 +1132,21 @@ section {
 }
 
 .rlp-cell {
+  width: 200px;
   max-width: 200px;
   min-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rlp-cell code {
   font-size: 0.8rem;
   color: #71717a;
   position: relative;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rlp-cell code.clickable {
@@ -1095,6 +1156,8 @@ section {
   border-radius: 4px;
   transition: all 0.15s ease;
   display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .rlp-cell code.clickable:hover {
@@ -1103,12 +1166,16 @@ section {
 }
 
 .status-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   padding: 0.25rem 0.625rem;
   border-radius: 4px;
   font-size: 0.75rem;
   font-weight: 600;
   white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.4;
+  margin: 0;
 }
 
 .status-badge.success {
@@ -1122,10 +1189,12 @@ section {
 }
 
 .result-cell {
-  max-width: 450px;
+  width: 400px;
   min-width: 250px;
+  max-width: 500px;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  overflow: hidden;
 }
 
 .tx-hash {
@@ -1251,6 +1320,8 @@ section {
   margin-left: 0.375rem;
   font-size: 0.7rem;
   opacity: 0.7;
+  vertical-align: middle;
+  line-height: 1.4;
 }
 
 .chain-cell {
