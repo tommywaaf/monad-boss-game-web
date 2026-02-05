@@ -1497,7 +1497,7 @@ function Broadcaster() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    {isAutoMode && <th>Chain</th>}
+                    <th>Chain</th>
                     <th>TX (truncated)</th>
                     <th>Status</th>
                     <th>Tries</th>
@@ -1509,14 +1509,12 @@ function Broadcaster() {
                   {paginatedResults.map((result, idx) => (
                     <tr key={result.index} className={`${result.success ? 'row-success' : 'row-error'} ${result.attempts > 1 ? 'row-retried' : ''}`}>
                       <td>{result.index}</td>
-                      {isAutoMode && (
-                        <td className="chain-cell" title={result.rpcUsed || 'Unknown RPC'}>
-                          <span className="chain-badge">
-                            {result.chainName || 'Unknown'}
-                            {result.chainId && <span className="chain-id">({result.chainId})</span>}
-                          </span>
-                        </td>
-                      )}
+                      <td className="chain-cell" title={result.rpcUsed || 'Unknown RPC'}>
+                        <span className="chain-badge">
+                          {result.chainName || 'Unknown'}
+                          {result.chainId && <span className="chain-id">({result.chainId})</span>}
+                        </span>
+                      </td>
                       <td className="rlp-cell">
                         <code 
                           className="clickable"
