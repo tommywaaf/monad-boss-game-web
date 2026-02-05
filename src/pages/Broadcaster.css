@@ -1111,12 +1111,36 @@ section {
   max-width: 100px;
 }
 
+/* Result column - column 6 when auto mode, column 5 when not */
+.results-table th:nth-child(6),
+.results-table td:nth-child(6) {
+  width: 500px;
+  min-width: 350px;
+  max-width: 600px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
+}
+
+/* Result column when auto mode is off (column 5) */
+.results-table:not(:has(th:nth-child(2))) th:nth-child(5),
+.results-table:not(:has(th:nth-child(2))) td:nth-child(5) {
+  width: 500px;
+  min-width: 350px;
+  max-width: 600px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
+}
+
 /* Explorer column - last column */
 .results-table th:last-child,
 .results-table td:last-child {
-  width: 100px;
-  min-width: 80px;
-  max-width: 120px;
+  width: 120px;
+  min-width: 100px;
+  max-width: 150px;
 }
 
 .row-success {
@@ -1189,11 +1213,13 @@ section {
 }
 
 .result-cell {
-  width: 400px;
-  min-width: 250px;
-  max-width: 500px;
+  width: 500px;
+  min-width: 350px;
+  max-width: 600px;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
   overflow: hidden;
 }
 
@@ -1287,7 +1313,8 @@ section {
 
 .explorer-cell {
   text-align: center;
-  min-width: 80px;
+  min-width: 100px;
+  width: 120px;
   white-space: nowrap;
 }
 
@@ -1430,8 +1457,14 @@ section {
   }
 
   .result-cell {
-    max-width: 150px;
-    min-width: 120px;
+    max-width: 250px;
+    min-width: 200px;
+    width: auto;
+  }
+  
+  .explorer-cell {
+    min-width: 80px;
+    width: auto;
   }
 
   .chain-cell {
