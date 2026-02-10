@@ -1258,6 +1258,13 @@ function Simulator() {
             <span className="sidebar-icon">⚡</span>
             <span className="sidebar-text">Simulator</span>
           </Link>
+          <Link 
+            to="/ton-details" 
+            className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">🔍</span>
+            <span className="sidebar-text">Ton Details</span>
+          </Link>
         </div>
       </nav>
       <div className="simulator-container">

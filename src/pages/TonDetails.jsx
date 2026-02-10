@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import './TonDetails.css'
 
@@ -278,6 +278,39 @@ function TonDetails() {
   const [input, setInput] = useState('')
   const [results, setResults] = useState([])
   const [processing, setProcessing] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const progressIntervalRef = useRef(null)
+
+  // Fake progress animation over 6 seconds
+  useEffect(() => {
+    if (processing) {
+      setProgress(0)
+      const startTime = Date.now()
+      const duration = 6000 // 6 seconds
+      
+      progressIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const newProgress = Math.min((elapsed / duration) * 100, 100)
+        setProgress(newProgress)
+        
+        if (newProgress >= 100) {
+          clearInterval(progressIntervalRef.current)
+        }
+      }, 50) // Update every 50ms for smooth animation
+    } else {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+        progressIntervalRef.current = null
+      }
+      setProgress(0)
+    }
+
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+      }
+    }
+  }, [processing])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -286,6 +319,7 @@ function TonDetails() {
     const items = input.trim().split(/\s+/).filter(x => x.trim())
     setProcessing(true)
     setResults([])
+    setProgress(0)
 
     const newResults = []
 
@@ -306,6 +340,12 @@ function TonDetails() {
       }
     }
 
+    // Jump to 100% if results arrive before 6 seconds
+    setProgress(100)
+    
+    // Small delay to show 100% before hiding, then show results
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
     setResults(newResults)
     setProcessing(false)
   }
@@ -378,6 +418,24 @@ function TonDetails() {
             {processing ? 'Processing...' : 'Process'}
           </button>
         </form>
+
+        {processing && (
+          <div className="loading-container">
+            <div className="loading-header">
+              <h3>Processing transaction details...</h3>
+              <div className="progress-text">{Math.round(progress)}%</div>
+            </div>
+            <div className="progress-bar-container">
+              <div 
+                className="progress-bar" 
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="loading-hint">
+              Fetching data from TON Center API...
+            </div>
+          </div>
+        )}
 
         {results.length > 0 && (
           <div className="results-container">
