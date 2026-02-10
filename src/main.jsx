@@ -11,6 +11,7 @@ import './index.css'
 import App from './App.jsx'
 import Broadcaster from './pages/Broadcaster.jsx'
 import Simulator from './pages/Simulator.jsx'
+import TonDetails from './pages/TonDetails.jsx'
 
 // Get Dynamic Environment ID from environment variable
 const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
@@ -110,6 +111,7 @@ createRoot(document.getElementById('root')).render(
       <Routes>
         <Route path="/broadcaster" element={<Broadcaster />} />
         <Route path="/simulator" element={<Simulator />} />
+        <Route path="/ton-details" element={<TonDetails />} />
         <Route path="/*" element={<MainApp />} />
       </Routes>
     </BrowserRouter>
