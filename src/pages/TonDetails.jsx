@@ -281,12 +281,12 @@ function TonDetails() {
   const [progress, setProgress] = useState(0)
   const progressIntervalRef = useRef(null)
 
-  // Fake progress animation over 6 seconds
+  // Fake progress animation over 8 seconds
   useEffect(() => {
     if (processing) {
       setProgress(0)
       const startTime = Date.now()
-      const duration = 6000 // 6 seconds
+      const duration = 8000 // 8 seconds
       
       progressIntervalRef.current = setInterval(() => {
         const elapsed = Date.now() - startTime
