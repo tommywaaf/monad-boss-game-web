@@ -358,13 +358,6 @@ function TonDetails() {
         </div>
         <div className="sidebar-links">
           <Link 
-            to="/" 
-            className={`sidebar-link ${location.pathname === '/' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">🎮</span>
-            <span className="sidebar-text">Game</span>
-          </Link>
-          <Link 
             to="/broadcaster" 
             className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}
           >
