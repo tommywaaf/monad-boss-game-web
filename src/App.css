@@ -71,9 +71,7 @@
 }
 
 /* Dynamic Widget Styling */
-.navbar-right [class*="dynamic-widget"] {
-  /* Let Dynamic's widget styles through but ensure it fits */
-}
+/* Let Dynamic's widget styles through - no custom overrides needed */
 
 /* Sidebar Navigation */
 .page-sidebar {
