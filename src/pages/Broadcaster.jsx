@@ -1121,8 +1121,8 @@ function Broadcaster() {
       </nav>
       <div className="broadcaster-container">
         <header className="broadcaster-header">
-          <h1>⚡ {getNetworkTypeLabel()} Broadcaster</h1>
-          <p>Broadcast raw transactions to any {isSolana ? 'Solana cluster' : isXrp ? 'XRP Ledger node' : isStellar ? 'Stellar Horizon server' : isBitcoin ? 'Bitcoin-style blockchain' : 'EVM chain'}</p>
+          <h1>⚡ Transaction Broadcaster</h1>
+          <p>Broadcast raw transactions to EVM, Solana, Bitcoin-style chains, XRP, and Stellar.</p>
         </header>
 
         <section className="network-section">
