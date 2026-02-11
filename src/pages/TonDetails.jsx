@@ -456,11 +456,17 @@ function TonDetails() {
                     </div>
                     <div className="result-field">
                       <span className="field-label">FB Hash To rescan:</span>
-                      <span className="field-value code">{result.data.fb_hash_to_rescan}</span>
+                      <div className="field-value-wrapper">
+                        <span className="field-value code">{result.data.fb_hash_to_rescan}</span>
+                        <span className="field-hint">(use block to rescan)</span>
+                      </div>
                     </div>
                     <div className="result-field">
                       <span className="field-label">Blocks to Rescan:</span>
-                      <span className="field-value">{result.data.blocks_start} - {result.data.blocks_end}</span>
+                      <div className="field-value-wrapper">
+                        <span className="field-value">{result.data.blocks_start} - {result.data.blocks_end}</span>
+                        <span className="field-hint">use this!</span>
+                      </div>
                     </div>
                     <div className="result-field">
                       <span className="field-label">FB Hash after rescan:</span>

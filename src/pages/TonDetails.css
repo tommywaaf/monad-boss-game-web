@@ -330,6 +330,13 @@
   gap: 0.5rem;
 }
 
+.result-field .field-value-wrapper {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .field-label {
   font-size: 0.85rem;
   color: #71717a;
@@ -350,6 +357,13 @@
   padding: 0.5rem 0.75rem;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.field-hint {
+  font-size: 0.9rem;
+  color: #2dd4bf;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .error-message {
