@@ -148,6 +148,7 @@ const CHAIN_ID_MAP = {
   59144: { name: 'Linea', rpc: 'https://rpc.linea.build', explorer: 'https://lineascan.build/tx/' },
   88888: { name: 'Chiliz', rpc: 'https://rpc.ankr.com/chiliz', explorer: 'https://chiliscan.com/tx/' },
   1313161554: { name: 'Aurora', rpc: 'https://mainnet.aurora.dev', explorer: 'https://explorer.aurora.dev/tx/' },
+  6342: { name: 'MegaETH', rpc: 'https://carrot.megaeth.com/rpc', explorer: 'https://mega.etherscan.io/tx/' },
 }
 
 // Decode RLP to extract chain ID from EVM transaction
