@@ -107,6 +107,7 @@ const EVM_NETWORKS = [
   { id: 'worldchain', name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', type: 'evm', chainId: 480, explorer: 'https://worldscan.org/tx/' },
   { id: 'xdc', name: 'XDC Network', rpc: 'https://rpc.xinfin.network', type: 'evm', chainId: 50, explorer: 'https://xdcscan.io/tx/' },
   { id: 'zkevm', name: 'Polygon zkEVM', rpc: 'https://zkevm-rpc.com', type: 'evm', chainId: 1101, explorer: 'https://zkevm.polygonscan.com/tx/' },
+  { id: 'megaeth', name: 'MegaETH', rpc: 'https://carrot.megaeth.com/rpc', type: 'evm', chainId: 6342, explorer: 'https://mega.etherscan.io/tx/' },
   { id: 'custom-evm', name: 'Custom EVM RPC...', rpc: '', type: 'evm' },
 ]
 
