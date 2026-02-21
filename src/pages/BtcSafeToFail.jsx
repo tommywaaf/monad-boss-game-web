@@ -3,8 +3,9 @@ import { Link, useLocation } from 'react-router-dom'
 import './BtcSafeToFail.css'
 
 // ─── API endpoints ────────────────────────────────────────────────────────────
-const BLOCKCYPHER   = 'https://api.blockcypher.com/v1/btc/main'
+const BLOCKCYPHER    = 'https://api.blockcypher.com/v1/btc/main'
 const BLOCKCHAIN_COM = 'https://blockchain.info'
+const SOCHAIN        = 'https://sochain.com/api/v2/get_tx/BTC'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const TXID_RE = /^[0-9a-fA-F]{64}$/
@@ -97,22 +98,72 @@ async function fetchAddressBalance(addr) {
   return { addr, finalBalance: null, error: true, source: null }
 }
 
+// ─── Helper: parse SoChain input value (BTC string) → satoshis ────────────────
+function scSats(btcStr) {
+  if (btcStr == null) return null
+  const n = parseFloat(btcStr)
+  return isNaN(n) ? null : Math.round(n * 1e8)
+}
+
+// ─── Helper: build a replacingTx object from BlockCypher or mempool.space data ─
+function buildReplacingTx(cyData, msData) {
+  if (cyData) {
+    return {
+      txid:          cyData.hash,
+      confirmations: cyData.confirmations ?? 0,
+      blockHeight:   cyData.block_height > 0 ? cyData.block_height : null,
+      feeSats:       cyData.fees,
+      inputs:  (cyData.inputs  || []).map(inp => ({
+        prevTxid: inp.prev_hash, outputIndex: inp.output_index,
+        address:  inp.addresses?.[0] || null, valueSats: inp.output_value ?? null, isCoinbase: false,
+      })),
+      outputs: (cyData.outputs || []).map((out, i) => ({
+        index: i, address: out.addresses?.[0] || null,
+        valueSats: out.value ?? null, spent: !!out.spent_by,
+      })),
+    }
+  }
+  if (msData) {
+    return {
+      txid:          msData.txid,
+      confirmations: msData.status?.confirmed ? 1 : 0,
+      blockHeight:   msData.status?.block_height || null,
+      feeSats:       msData.fee,
+      inputs:  (msData.vin  || []).map(inp => ({
+        prevTxid: inp.txid, outputIndex: inp.vout,
+        address:  inp.prevout?.scriptpubkey_address || null, valueSats: inp.prevout?.value ?? null,
+        isCoinbase: inp.is_coinbase || false,
+      })),
+      outputs: (msData.vout || []).map((out, i) => ({
+        index: i, address: out.scriptpubkey_address || null,
+        valueSats: out.value ?? null, spent: false,
+      })),
+    }
+  }
+  return null
+}
+
 // ─── Core analysis ────────────────────────────────────────────────────────────
 async function analyzeTx(txid) {
-  // Parallel-fetch all three providers
-  // mempool.space is the key addition: it gives prevTxid for every input AND
-  // exposes the /outspend endpoint we use to detect UTXO-level replacements.
-  const [cyRes, bcRes, msRes] = await Promise.all([
+  // ── Step 1: Parallel-fetch four providers ─────────────────────────────────
+  // SoChain v2 is the key addition over the original three:
+  //   • Returns inputs[].from_output.txid — actual prevTxid hashes that
+  //     blockchain.com withholds (it only exposes internal integer tx_index IDs)
+  //   • Caches dropped/replaced transactions much longer than mempool.space
+  const [cyRes, bcRes, msRes, scRes] = await Promise.all([
     safeFetch(`${BLOCKCYPHER}/txs/${txid}?limit=50&includeHex=false`),
     safeFetch(`${BLOCKCHAIN_COM}/rawtx/${txid}?cors=true`),
     safeFetch(`https://mempool.space/api/tx/${txid}`),
+    safeFetch(`${SOCHAIN}/${txid}`, 10000),
   ])
 
   const cyData = cyRes.ok ? cyRes.data : null
   const bcData = bcRes.ok ? bcRes.data : null
   const msData = msRes.ok ? msRes.data : null
+  // SoChain wraps the payload inside a "data" key
+  const scData = (scRes.ok && scRes.data?.status === 'success') ? scRes.data.data : null
 
-  if (!cyData && !bcData && !msData) {
+  if (!cyData && !bcData && !msData && !scData) {
     return {
       status: 'NOT_FOUND',
       txid,
@@ -120,70 +171,83 @@ async function analyzeTx(txid) {
         blockcypher:   cyRes.notFound ? 'not found' : `error (${cyRes.error || cyRes.httpStatus})`,
         blockchainCom: bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`,
         mempoolSpace:  msRes.notFound ? 'not found' : `error (${msRes.error || msRes.httpStatus})`,
+        sochain:       scRes.notFound ? 'not found' : `error (${scRes.error || scRes.httpStatus})`,
       },
     }
   }
 
-  // ── Confirmation / block info ──
+  // ── Step 2: Confirmation / block info ─────────────────────────────────────
   const msConfirmed   = msData?.status?.confirmed === true
   const msHeight      = msData?.status?.block_height  || null
   const msTime        = msData?.status?.block_time    || null
+  const scConfirmed   = scData?.confirmations > 0
+  const scHeight      = scData?.blockno > 0 ? scData.blockno : null
   const cyConfirms    = cyData?.confirmations ?? 0
   const cyHeight      = (cyData?.block_height > 0) ? cyData.block_height : null
   const bcHeight      = (bcData?.block_height > 0) ? bcData.block_height : null
-  const blockHeight   = cyHeight ?? msHeight ?? bcHeight
+  const blockHeight   = cyHeight ?? msHeight ?? scHeight ?? bcHeight
   const confirmations = cyConfirms || (blockHeight ? 1 : 0)
 
-  // ── Confirmed by ANY provider? This is the absolute highest-priority signal.
-  // A confirmation on-chain beats everything — BlockCypher double_spend flags,
-  // UTXO outspend checks, everything. Once confirmed, always green.
   const confirmedByAnyProvider =
-    cyConfirms > 0 || !!cyHeight || !!bcHeight || msConfirmed
+    cyConfirms > 0 || !!cyHeight || !!bcHeight || msConfirmed || scConfirmed
 
-  // ── Double-spend detection (BlockCypher) ──
+  // ── Step 3: Double-spend / replacement detection (BlockCypher) ────────────
   const doubleSpend = cyData?.double_spend === true
   let   replacedBy  = cyData?.double_spend_tx || null
 
-  // ── Status — confirmation wins over double-spend flags ──
   let status = 'UNCONFIRMED'
   if (confirmedByAnyProvider) {
     status = 'CONFIRMED'
   } else if (doubleSpend) {
-    // Only apply BlockCypher's double_spend flag when not confirmed by any provider
     status = replacedBy ? 'REPLACED' : 'DOUBLE_SPENT'
   }
 
-  // ── Inputs ──
-  // Priority for prevTxid: BlockCypher → mempool.space → (blockchain.com has none)
-  // Priority for address/value: BlockCypher → mempool.space prevout → blockchain.com
+  // ── Step 4: Build inputs ──────────────────────────────────────────────────
+  // prevTxid priority: BlockCypher → mempool.space → SoChain → (bc.com has none)
+  // SoChain provides from_output.txid — the crucial field bc.com doesn't expose.
   let inputs = []
   const maxLen = Math.max(
-    cyData?.inputs?.length ?? 0,
-    msData?.vin?.length    ?? 0,
-    bcData?.inputs?.length ?? 0,
+    cyData?.inputs?.length  ?? 0,
+    msData?.vin?.length     ?? 0,
+    bcData?.inputs?.length  ?? 0,
+    scData?.inputs?.length  ?? 0,
   )
   for (let i = 0; i < maxLen; i++) {
-    const cy  = cyData?.inputs?.[i]
-    const ms  = msData?.vin?.[i]
-    const bc  = bcData?.inputs?.[i]
+    const cy = cyData?.inputs?.[i]
+    const ms = msData?.vin?.[i]
+    const bc = bcData?.inputs?.[i]
+    const sc = scData?.inputs?.[i]   // SoChain: { from_output: { txid, output_no }, address, value }
     const isCoinbase =
       cy?.prev_hash === '0000000000000000000000000000000000000000000000000000000000000000' ||
-      ms?.is_coinbase === true
+      ms?.is_coinbase === true ||
+      sc?.from_output == null && sc != null  // SoChain coinbase has no from_output
     inputs.push({
-      prevTxid:    cy?.prev_hash         || (isCoinbase ? null : ms?.txid)      || null,
-      outputIndex: cy?.output_index      ?? (isCoinbase ? null : ms?.vout)      ?? bc?.prev_out?.n    ?? null,
-      address:     cy?.addresses?.[0]    || ms?.prevout?.scriptpubkey_address   || bc?.prev_out?.addr || null,
-      valueSats:   cy?.output_value      ?? ms?.prevout?.value                  ?? bc?.prev_out?.value ?? null,
-      sequence:    cy?.sequence          ?? ms?.sequence                        ?? bc?.sequence       ?? null,
-      // blockchain.com internal index — used as fallback to look up the prev tx
-      // when no prevTxid hash is available from the other providers
+      prevTxid:    cy?.prev_hash
+                || (isCoinbase ? null : ms?.txid)
+                || (isCoinbase ? null : sc?.from_output?.txid?.toLowerCase())
+                || null,
+      outputIndex: cy?.output_index
+                ?? (isCoinbase ? null : ms?.vout)
+                ?? sc?.from_output?.output_no
+                ?? bc?.prev_out?.n
+                ?? null,
+      address:     cy?.addresses?.[0]
+                || ms?.prevout?.scriptpubkey_address
+                || sc?.address
+                || bc?.prev_out?.addr
+                || null,
+      valueSats:   cy?.output_value
+                ?? ms?.prevout?.value
+                ?? scSats(sc?.value)
+                ?? bc?.prev_out?.value
+                ?? null,
+      sequence:    cy?.sequence ?? ms?.sequence ?? bc?.sequence ?? null,
       bcTxIndex:   isCoinbase ? null : (bc?.prev_out?.tx_index ?? null),
       isCoinbase,
     })
   }
 
-  // ── Outputs ──
-  // BlockCypher has spent_by txid; mempool.space gives address/value; blockchain.com has boolean spent
+  // ── Step 5: Build outputs ─────────────────────────────────────────────────
   let outputs = []
   const outLen = Math.max(
     cyData?.outputs?.length ?? 0,
@@ -191,9 +255,9 @@ async function analyzeTx(txid) {
     bcData?.out?.length     ?? 0,
   )
   for (let i = 0; i < outLen; i++) {
-    const cy  = cyData?.outputs?.[i]
-    const ms  = msData?.vout?.[i]
-    const bc  = bcData?.out?.[i]
+    const cy = cyData?.outputs?.[i]
+    const ms = msData?.vout?.[i]
+    const bc = bcData?.out?.[i]
     outputs.push({
       index:       i,
       address:     cy?.addresses?.[0]           || ms?.scriptpubkey_address || bc?.addr  || null,
@@ -204,24 +268,64 @@ async function analyzeTx(txid) {
     })
   }
 
-  const feeSats  = cyData?.fees ?? msData?.fee ?? bcData?.fee ?? null
+  const feeSats  = cyData?.fees ?? msData?.fee ?? scSats(scData?.fee) ?? bcData?.fee ?? null
   const totalIn  = inputs.reduce( (s, inp) => s + (inp.valueSats ?? 0), 0)
   const totalOut = outputs.reduce((s, out) => s + (out.valueSats ?? 0), 0)
   const rbf      = isRbfSignaled(inputs) || !!bcData?.rbf
 
-  // ── UTXO-level outspend check ──
-  // Tries three methods in priority order per input:
-  //   1. mempool.space /outspend  (needs prevTxid hash, returns spending txid)
-  //   2. blockchain.com prev-tx by tx_index (fallback when prevTxid unknown or mempool.space
-  //      doesn't have the tx; fetches the prev tx, checks out[n].spent and
-  //      resolves spending txid via spending_outpoints)
+  // ── Step 6: Early replacing-TX fetch + input enrichment ───────────────────
+  // KEY INSIGHT: An RBF replacement MUST reuse the exact same input UTXOs.
+  // So if BlockCypher already tells us the replacing TX hash, we can fetch it
+  // NOW (before UTXO checks) and cross-reference its inputs — which DO have
+  // prevTxid hashes from BlockCypher/mempool — to fill gaps in our inputs.
+  // This makes the UTXO outspend checks actually work for bc.com-only TXs.
+  let replacingTx = null
+  if (replacedBy) {
+    const [repCyRes, repMsRes] = await Promise.all([
+      safeFetch(`${BLOCKCYPHER}/txs/${replacedBy}?limit=50&includeHex=false`),
+      safeFetch(`https://mempool.space/api/tx/${replacedBy}`),
+    ])
+    replacingTx = buildReplacingTx(
+      repCyRes.ok ? repCyRes.data : null,
+      repMsRes.ok ? repMsRes.data : null,
+    )
+
+    // Enrich inputs that are missing prevTxid by matching against replacing TX inputs.
+    // Match priority: same address, then same outputIndex as fallback.
+    if (replacingTx?.inputs?.length > 0) {
+      inputs = inputs.map(inp => {
+        if (inp.prevTxid != null || inp.isCoinbase) return inp
+        const match = replacingTx.inputs.find(ri =>
+          ri.prevTxid != null && (
+            (inp.address != null && ri.address === inp.address) ||
+            (inp.outputIndex != null && ri.outputIndex === inp.outputIndex)
+          )
+        )
+        if (!match) return inp
+        return {
+          ...inp,
+          prevTxid:    match.prevTxid,
+          outputIndex: inp.outputIndex ?? match.outputIndex,
+          // fill address/value from replacing TX if still missing
+          address:     inp.address    ?? match.address,
+          valueSats:   inp.valueSats  ?? match.valueSats,
+          enrichedFromReplacingTx: true,
+        }
+      })
+    }
+  }
+
+  // ── Step 7: UTXO-level outspend checks ────────────────────────────────────
+  // Inputs are now enriched with prevTxids from SoChain (Step 4) or the
+  // replacing TX (Step 6), so Method 1 (mempool.space /outspend) should
+  // succeed in cases that previously fell through to "status unavailable".
   const checkableInputs = inputs.filter(
     i => !i.isCoinbase && (i.prevTxid || i.bcTxIndex != null) && i.outputIndex != null
   )
   const utxoSpendChecks = checkableInputs.length > 0
     ? await Promise.all(checkableInputs.map(async inp => {
 
-        // ── Method 1: mempool.space outspend ──
+        // ── Method 1: mempool.space /outspend ──
         if (inp.prevTxid) {
           const msRes = await safeFetch(
             `https://mempool.space/api/tx/${inp.prevTxid}/outspend/${inp.outputIndex}`
@@ -245,17 +349,14 @@ async function analyzeTx(txid) {
         }
 
         // ── Method 2: blockchain.com prev-tx by tx_index ──
-        // Blockchain.com stores each tx by an internal integer tx_index.
-        // The rawtx response includes out[n].spent (boolean) and
-        // out[n].spending_outpoints[{tx_index}] which lets us resolve the spending txid.
         if (inp.bcTxIndex != null) {
           const bcPrevRes = await safeFetch(
             `${BLOCKCHAIN_COM}/rawtx/${inp.bcTxIndex}?cors=true`
           )
           if (bcPrevRes.ok) {
-            const prevTx      = bcPrevRes.data
+            const prevTx       = bcPrevRes.data
             const prevTxidHash = prevTx.hash || inp.prevTxid || null
-            const outEntry    = prevTx.out?.[inp.outputIndex]
+            const outEntry     = prevTx.out?.[inp.outputIndex]
 
             if (outEntry !== undefined) {
               const spent = outEntry.spent === true
@@ -263,7 +364,6 @@ async function analyzeTx(txid) {
               let spentConfirmed   = false
               let spentBlockHeight = null
 
-              // Try to resolve the spending txid from spending_outpoints
               if (spent && outEntry.spending_outpoints?.length > 0) {
                 const spendIdx = outEntry.spending_outpoints[0].tx_index
                 const spendRes = await safeFetch(
@@ -283,7 +383,7 @@ async function analyzeTx(txid) {
                 checked:          true,
                 spent,
                 spentByTxid,
-                spentByThisTx:    spentByTxid === txid,  // both lowercased now
+                spentByThisTx:    spentByTxid === txid,
                 spentConfirmed,
                 spentBlockHeight,
                 method:           'blockchain.com',
@@ -296,81 +396,42 @@ async function analyzeTx(txid) {
       }))
     : []
 
-  // ── Status + replacedBy override from UTXO ground truth ──
-  // Only applies when NOT confirmed by any provider.
-  // For confirmed TXs the inputs WILL be spent — that's expected, not a replacement signal.
+  // ── Step 8: Status + replacedBy override from UTXO ground truth ──────────
   const spentElsewhere = utxoSpendChecks.find(c =>
     c.checked && c.spent && !c.spentByThisTx && (
-      c.spentByTxid !== null ||
-      c.method === 'blockchain.com'
+      c.spentByTxid !== null || c.method === 'blockchain.com'
     )
   )
   if (spentElsewhere && !confirmedByAnyProvider) {
-    // UTXO check found inputs spent by a different TX, and no provider confirms this TX →
-    // it was replaced. Also prefer the UTXO check's spending txid over BlockCypher's
-    // double_spend_tx, which can point to an intermediate dropped transaction.
     status = 'REPLACED'
     if (spentElsewhere.spentByTxid) {
-      replacedBy = spentElsewhere.spentByTxid
+      // If UTXO checks found a different replacedBy than the early fetch used,
+      // we need to re-fetch the replacingTx with the authoritative txid.
+      if (spentElsewhere.spentByTxid !== replacedBy) {
+        replacedBy = spentElsewhere.spentByTxid
+        const [repCyRes2, repMsRes2] = await Promise.all([
+          safeFetch(`${BLOCKCYPHER}/txs/${replacedBy}?limit=50&includeHex=false`),
+          safeFetch(`https://mempool.space/api/tx/${replacedBy}`),
+        ])
+        replacingTx = buildReplacingTx(
+          repCyRes2.ok ? repCyRes2.data : null,
+          repMsRes2.ok ? repMsRes2.data : null,
+        )
+      }
     } else if (!replacedBy) {
       replacedBy = null
     }
   }
 
-  // Belt-and-suspenders: if any provider confirms this TX, always end up green.
   if (confirmedByAnyProvider) status = 'CONFIRMED'
 
-  // ── Source address balances ──
+  // ── Step 9: Source address balances ───────────────────────────────────────
   const uniqueInputAddrs = [
     ...new Set(inputs.filter(i => !i.isCoinbase && i.address).map(i => i.address))
   ].slice(0, 5)
   const sourceBalances = uniqueInputAddrs.length > 0
     ? await Promise.all(uniqueInputAddrs.map(fetchAddressBalance))
     : []
-
-  // ── Replacing TX details ──
-  let replacingTx = null
-  if (replacedBy) {
-    // Try BlockCypher first, fall back to mempool.space
-    const repCy = await safeFetch(`${BLOCKCYPHER}/txs/${replacedBy}?limit=50&includeHex=false`)
-    if (repCy.ok) {
-      const r = repCy.data
-      replacingTx = {
-        txid:          r.hash,
-        confirmations: r.confirmations ?? 0,
-        blockHeight:   r.block_height > 0 ? r.block_height : null,
-        feeSats:       r.fees,
-        inputs:  (r.inputs  || []).map(inp => ({
-          prevTxid: inp.prev_hash, outputIndex: inp.output_index,
-          address:  inp.addresses?.[0] || null, valueSats: inp.output_value ?? null, isCoinbase: false,
-        })),
-        outputs: (r.outputs || []).map((out, i) => ({
-          index: i, address: out.addresses?.[0] || null,
-          valueSats: out.value ?? null, spent: !!out.spent_by,
-        })),
-      }
-    } else {
-      const repMs = await safeFetch(`https://mempool.space/api/tx/${replacedBy}`)
-      if (repMs.ok) {
-        const r = repMs.data
-        replacingTx = {
-          txid:          r.txid,
-          confirmations: r.status?.confirmed ? 1 : 0,
-          blockHeight:   r.status?.block_height || null,
-          feeSats:       r.fee,
-          inputs:  (r.vin  || []).map(inp => ({
-            prevTxid: inp.txid, outputIndex: inp.vout,
-            address:  inp.prevout?.scriptpubkey_address || null, valueSats: inp.prevout?.value ?? null,
-            isCoinbase: inp.is_coinbase || false,
-          })),
-          outputs: (r.vout || []).map((out, i) => ({
-            index: i, address: out.scriptpubkey_address || null,
-            valueSats: out.value ?? null, spent: false,
-          })),
-        }
-      }
-    }
-  }
 
   return {
     status,
@@ -389,13 +450,14 @@ async function analyzeTx(txid) {
     utxoSpendChecks,
     sourceBalances,
     timestamp: bcData?.time || msTime || null,
-    size:      bcData?.size  || cyData?.size  || msData?.size   || null,
+    size:      bcData?.size  || cyData?.size  || msData?.size  || scData?.size  || null,
     vsize:     cyData?.vsize || (msData?.weight ? Math.ceil(msData.weight / 4) : null),
     weight:    msData?.weight || null,
     providers: {
-      blockcypher:   cyData ? 'ok' : (cyRes.notFound ? 'not found' : `error (${cyRes.error || cyRes.httpStatus})`),
-      blockchainCom: bcData ? 'ok' : (bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`),
-      mempoolSpace:  msData ? 'ok' : (msRes.notFound ? 'not found' : `error (${msRes.error || msRes.httpStatus})`),
+      blockcypher:   cyData  ? 'ok' : (cyRes.notFound  ? 'not found' : `error (${cyRes.error  || cyRes.httpStatus})`),
+      blockchainCom: bcData  ? 'ok' : (bcRes.notFound  ? 'not found' : `error (${bcRes.error  || bcRes.httpStatus})`),
+      mempoolSpace:  msData  ? 'ok' : (msRes.notFound  ? 'not found' : `error (${msRes.error  || msRes.httpStatus})`),
+      sochain:       scData  ? 'ok' : (scRes.notFound  ? 'not found' : `error (${scRes.error  || scRes.httpStatus})`),
     },
   }
 }
