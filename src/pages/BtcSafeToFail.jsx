@@ -613,8 +613,25 @@ function TxResultCard({ result }) {
                   </div>
                 )}
 
-                {/* ── check unavailable ── */}
-                {!check && (
+                {/* ── check unavailable — but we know the replacing TX at the TX level ── */}
+                {!check && isReplaced && d.replacedBy && (
+                  <div className="inp-trace-claimed">
+                    <div className="itc-claimed-title">
+                      🔄 This TX was replaced (UTXO-level trace unavailable from providers)
+                    </div>
+                    <div className="itc-claimed-detail">
+                      <span className="inp-trace-label">Replacing TX:</span>
+                      <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(d.replacedBy, 12)}</a>
+                      <button className="copy-btn" onClick={() => copyToClipboard(d.replacedBy)}>⧉</button>
+                      {d.replacingTx?.blockHeight && (
+                        <span className="replacement-confirmed-badge">✓ block {d.replacingTx.blockHeight.toLocaleString()}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── check unavailable and no replacement context ── */}
+                {!check && !isReplaced && (
                   <div className="inp-trace-status itc-status-unknown">
                     ❓ UTXO spend status unavailable
                   </div>
@@ -622,47 +639,6 @@ function TxResultCard({ result }) {
               </div>
             )
           })}
-        </div>
-
-        {/* ── Outputs column: compact list ── */}
-        <div className="txflow-col">
-          <div className="txflow-col-header">
-            <span>↗ Outputs</span>
-            <span className="txflow-count">{d.outputs.length}</span>
-            {d.totalOut > 0 && (
-              <span className="txflow-total">{(d.totalOut / 1e8).toFixed(8)} <span className="btc-sym">BTC</span></span>
-            )}
-          </div>
-
-          {d.outputs.map((out, i) => (
-            <div key={i} className={`out-item ${out.isOpReturn ? 'oi-opreturn' : out.spent ? 'oi-spent' : 'oi-unspent'}`}>
-              <span className="out-item-idx">#{out.index}</span>
-              <span className="out-item-addr">
-                {out.isOpReturn
-                  ? <span className="tag-opreturn">OP_RETURN</span>
-                  : out.address
-                  ? <a href={`https://mempool.space/address/${out.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(out.address, 9)}</a>
-                  : <span className="muted">—</span>}
-              </span>
-              <span className="out-item-amount">
-                {out.valueSats != null
-                  ? <><b>{(out.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span></>
-                  : <span className="muted">—</span>}
-              </span>
-              <span className="out-item-status">
-                {out.isOpReturn ? (
-                  <span className="muted">data</span>
-                ) : out.spent ? (
-                  <span className="oi-spent-label">
-                    ✓ spent
-                    {out.spentByTxid && <> · <a href={`https://mempool.space/tx/${out.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(out.spentByTxid, 7)}</a></>}
-                  </span>
-                ) : (
-                  <span className="sir-unspent-label">⏳ unspent</span>
-                )}
-              </span>
-            </div>
-          ))}
         </div>
       </div>
 

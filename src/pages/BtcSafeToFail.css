@@ -1101,11 +1101,9 @@
   margin-bottom: 0.6rem;
 }
 
-/* ─── Transaction Flow two-column layout ─────────────────────────────────────── */
+/* ─── Transaction Flow single-column layout ──────────────────────────────────── */
 .txflow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.85rem;
+  display: block;
   margin-bottom: 0.85rem;
 }
 
@@ -1393,8 +1391,6 @@
 
   .utxo-table th,
   .utxo-table td { padding: 0.5rem 0.6rem; }
-
-  .txflow { grid-template-columns: 1fr; }
 
   .out-item {
     grid-template-columns: 1.8rem minmax(40px, 1fr) minmax(80px, max-content) auto;
