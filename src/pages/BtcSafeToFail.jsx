@@ -528,34 +528,6 @@ function TxResultCard({ result }) {
         <button className="copy-btn inline" onClick={() => copyToClipboard(d.txid)}>⧉ txid</button>
       </div>
 
-      {/* ── Spending TX (replaced only) ── */}
-      {isReplaced && (
-        <div className="simple-spending-tx">
-          {d.replacedBy ? (
-            <>
-              <div className="simple-spending-row">
-                <span className="simple-label">Spent by:</span>
-                <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer"
-                   className="hash-link mono">{shortHash(d.replacedBy, 14)}</a>
-                <button className="copy-btn" onClick={() => copyToClipboard(d.replacedBy)}>⧉</button>
-                {(() => {
-                  const c = checks.find(c => c.spentByTxid === d.replacedBy && c.spentConfirmed)
-                  return c?.spentBlockHeight
-                    ? <span className="replacement-confirmed-badge">✓ block {c.spentBlockHeight.toLocaleString()}</span>
-                    : null
-                })()}
-              </div>
-              <div className="simple-spending-links">
-                <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
-                <a href={`https://www.blockchain.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
-                <a href={`https://live.blockcypher.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
-              </div>
-            </>
-          ) : (
-            <span className="muted">Spending TX confirmed but txid not resolved — see UTXO check below.</span>
-          )}
-        </div>
-      )}
 
       {/* ── Transaction Flow ── */}
       <div className="txflow">
@@ -632,7 +604,7 @@ function TxResultCard({ result }) {
                 {spentElsewhere && (
                   <div className="inp-trace-claimed">
                     <div className="itc-claimed-title">
-                      🔄 This UTXO was claimed by a different transaction
+                      This UTXO was claimed by the below transaction
                     </div>
                     <div className="itc-claimed-detail">
                       <span className="inp-trace-label">Spent in:</span>
@@ -652,6 +624,13 @@ function TxResultCard({ result }) {
                         <span className="replacement-confirmed-badge">✓ block {check.spentBlockHeight?.toLocaleString()}</span>
                       )}
                     </div>
+                    {check.spentByTxid && (
+                      <div className="itc-explorer-links">
+                        {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
+                        {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/btc/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+                        {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -673,7 +652,7 @@ function TxResultCard({ result }) {
                 {!check && isReplaced && d.replacedBy && (
                   <div className="inp-trace-claimed">
                     <div className="itc-claimed-title">
-                      🔄 This TX was replaced (UTXO-level trace unavailable from providers)
+                      This TX was replaced (UTXO-level trace unavailable from providers)
                     </div>
                     <div className="itc-claimed-detail">
                       <span className="inp-trace-label">Replacing TX:</span>
@@ -682,6 +661,11 @@ function TxResultCard({ result }) {
                       {d.replacingTx?.blockHeight && (
                         <span className="replacement-confirmed-badge">✓ block {d.replacingTx.blockHeight.toLocaleString()}</span>
                       )}
+                    </div>
+                    <div className="itc-explorer-links">
+                      {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
+                      {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+                      {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
                     </div>
                   </div>
                 )}
@@ -722,19 +706,21 @@ function TxResultCard({ result }) {
         </div>
       )}
 
-      {/* ── TX explorer links ── */}
+      {/* ── TX explorer links (only for providers that returned data) ── */}
       <div className="simple-tx-links">
         <span className="explorer-label">TX:</span>
-        <a href={`https://mempool.space/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
-        <a href={`https://www.blockchain.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
-        <a href={`https://live.blockcypher.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
+        {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
+        {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+        {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
       </div>
 
-      {/* ── Provider status ── */}
+      {/* ── Provider status (sochain excluded from display) ── */}
       <div className="provider-row">
-        {Object.entries(d.providers).map(([k, v]) => (
-          <span key={k}>{k}: <b className={v === 'ok' ? 'ok' : 'fail'}>{v}</b></span>
-        ))}
+        {Object.entries(d.providers)
+          .filter(([k]) => k !== 'sochain')
+          .map(([k, v]) => (
+            <span key={k}>{k}: <b className={v === 'ok' ? 'ok' : 'fail'}>{v}</b></span>
+          ))}
       </div>
     </div>
   )
