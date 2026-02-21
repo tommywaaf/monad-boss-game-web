@@ -16,7 +16,7 @@ function extractTxid(raw) {
   try {
     const url = new URL(raw)
     const path = url.pathname.replace(/^\/+|\/+$/g, '')
-    // mempool.space/tx/{txid}  |  blockchain.com/btc/tx/{txid}
+    // mempool.space/tx/{txid}  |  blockchain.com/explorer/transactions/btc/{txid}
     // blockcypher.com/btc/main/txs/{txid}  |  blockstream.info/tx/{txid}
     const m = path.match(/(?:btc\/)?txs?\/([0-9a-fA-F]{64})$/)
     if (m) return m[1].toLowerCase()
@@ -618,7 +618,7 @@ function TxResultCard({ result }) {
                       </div>
                       <div className="itc-source-links">
                         {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
-                        {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+                        {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/explorer/transactions/btc/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
                         {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
                       </div>
                     </div>
@@ -649,7 +649,7 @@ function TxResultCard({ result }) {
                       {claimTxid && (
                         <div className="itc-explorer-links">
                           <a href={`https://mempool.space/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
-                          <a href={`https://www.blockchain.com/btc/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
+                          <a href={`https://www.blockchain.com/explorer/transactions/btc/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
                           <a href={`https://live.blockcypher.com/btc/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
                         </div>
                       )}
@@ -735,7 +735,7 @@ function TxResultCard({ result }) {
         <div className="simple-tx-links">
           <span className="explorer-label">TX:</span>
           {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
-          {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+          {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/explorer/transactions/btc/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
           {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
         </div>
       )}
