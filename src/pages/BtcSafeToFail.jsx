@@ -462,6 +462,38 @@ async function analyzeTx(txid) {
   }
 }
 
+// ─── Quick status check (batch mode) ─────────────────────────────────────────
+// Fetches only what's needed for a status row: confirmed/replaced/unconfirmed.
+// Skips UTXO checks, source balances, and replacing-TX details — much faster.
+async function quickCheckTx(txid) {
+  const [cyRes, bcRes, msRes] = await Promise.all([
+    safeFetch(`${BLOCKCYPHER}/txs/${txid}?limit=1&includeHex=false`, 10000),
+    safeFetch(`${BLOCKCHAIN_COM}/rawtx/${txid}?cors=true`, 10000),
+    safeFetch(`https://mempool.space/api/tx/${txid}`, 10000),
+  ])
+  const cyData = cyRes.ok ? cyRes.data : null
+  const bcData = bcRes.ok ? bcRes.data : null
+  const msData = msRes.ok ? msRes.data : null
+
+  if (!cyData && !bcData && !msData) return { status: 'NOT_FOUND', txid, blockHeight: null, replacedBy: null }
+
+  const msConfirmed   = msData?.status?.confirmed === true
+  const cyConfirms    = cyData?.confirmations ?? 0
+  const cyHeight      = (cyData?.block_height > 0) ? cyData.block_height : null
+  const bcHeight      = (bcData?.block_height > 0) ? bcData.block_height : null
+  const msHeight      = msData?.status?.block_height || null
+  const blockHeight   = cyHeight ?? msHeight ?? bcHeight
+  const confirmedByAny = cyConfirms > 0 || !!cyHeight || !!bcHeight || msConfirmed
+  const doubleSpend   = cyData?.double_spend === true
+  const replacedBy    = cyData?.double_spend_tx || null
+
+  let status = 'UNCONFIRMED'
+  if (confirmedByAny)  status = 'CONFIRMED'
+  else if (doubleSpend) status = replacedBy ? 'REPLACED' : 'DOUBLE_SPENT'
+
+  return { status, txid, blockHeight, replacedBy }
+}
+
 // ─── Result card ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
   const MAP = {
@@ -627,9 +659,6 @@ function TxResultCard({ result }) {
 
                     {/* ── Claim: the replacing transaction ── */}
                     <div className="inp-trace-claimed">
-                      <div className="itc-claimed-title">
-                        This UTXO was claimed by the below transaction
-                      </div>
                       <div className="itc-claimed-detail">
                         <span className="inp-trace-label">Spent in:</span>
                         {claimTxid ? (
@@ -757,6 +786,8 @@ function TxResultCard({ result }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 function BtcSafeToFail() {
   const location    = useLocation()
+
+  // ── Detail mode state ──
   const [input,      setInput]      = useState('')
   const [results,    setResults]    = useState([])
   const [processing, setProcessing] = useState(false)
@@ -764,8 +795,20 @@ function BtcSafeToFail() {
   const [statusMsg,  setStatusMsg]  = useState('')
   const progressRef  = useRef(null)
 
+  // ── Batch mode state ──
+  const [viewMode,          setViewMode]          = useState('detail')
+  const [batchRows,         setBatchRows]         = useState([])
+  const [batchConcurrency,  setBatchConcurrency]  = useState(2)
+  const [batchDelay,        setBatchDelay]        = useState(1000)
+  const [batchProgress,     setBatchProgress]     = useState({ current: 0, total: 0 })
+  const [batchPage,         setBatchPage]         = useState(1)
+  const [batchPerPage,      setBatchPerPage]      = useState(100)
+  const [batchSearch,       setBatchSearch]       = useState('')
+  const [batchStatusFilter, setBatchStatusFilter] = useState('all')
+  const abortRef = useRef(false)
+
   useEffect(() => {
-    if (processing) {
+    if (processing && viewMode === 'detail') {
       setProgress(0)
       const start    = Date.now()
       const duration = 12000
@@ -778,8 +821,9 @@ function BtcSafeToFail() {
       progressRef.current = null
     }
     return () => clearInterval(progressRef.current)
-  }, [processing])
+  }, [processing, viewMode])
 
+  // ── Detail mode submit ──
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!input.trim()) return
@@ -807,6 +851,96 @@ function BtcSafeToFail() {
     setResults(newResults)
     setProcessing(false)
     setStatusMsg('')
+  }
+
+  // ── Batch mode: run with concurrency + rate limiting ──
+  const handleBatchRun = async () => {
+    if (!input.trim()) return
+    const items = input.trim().split(/[\s,\n]+/).filter(x => x.trim())
+
+    abortRef.current = false
+    setProcessing(true)
+    setBatchRows([])
+    setBatchProgress({ current: 0, total: items.length })
+    setBatchPage(1)
+
+    const rowsRef = []
+    let completed = 0
+
+    for (let i = 0; i < items.length; i += batchConcurrency) {
+      if (abortRef.current) break
+      const batch = items.slice(i, i + batchConcurrency)
+
+      await Promise.all(batch.map(async (item, bIdx) => {
+        if (abortRef.current) return
+        // stagger starts within each concurrent batch by 300 ms
+        if (bIdx > 0) await new Promise(r => setTimeout(r, bIdx * 300))
+        if (abortRef.current) return
+
+        const rowIndex = i + bIdx + 1
+        try {
+          const txid = extractTxid(item)
+          const d    = await quickCheckTx(txid)
+          rowsRef.push({ index: rowIndex, input: item, txid, status: d.status, replacedBy: d.replacedBy || null, blockHeight: d.blockHeight || null, error: null })
+        } catch (err) {
+          rowsRef.push({ index: rowIndex, input: item, txid: null, status: 'ERROR', replacedBy: null, blockHeight: null, error: err.message })
+        }
+        completed++
+        setBatchProgress({ current: completed, total: items.length })
+        setBatchRows([...rowsRef].sort((a, b) => a.index - b.index))
+      }))
+
+      // delay between batches (not after the last one)
+      if (!abortRef.current && i + batchConcurrency < items.length) {
+        await new Promise(r => setTimeout(r, batchDelay))
+      }
+    }
+    setProcessing(false)
+  }
+
+  const handleStop = () => { abortRef.current = true }
+
+  // ── CSV download ──
+  const downloadCSV = () => {
+    if (batchRows.length === 0) return
+    const header = ['#', 'Checked TX', 'Status', 'Spending TX', 'Block']
+    const rows = batchRows.map(r => [
+      r.index,
+      `"${r.txid || r.input}"`,
+      r.status,
+      r.replacedBy  || '',
+      r.blockHeight || '',
+    ])
+    const csv = [header.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `btc-status-${Date.now()}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // ── Batch table: filter + paginate ──
+  const filteredBatch = batchRows.filter(r => {
+    const matchStatus = batchStatusFilter === 'all' || r.status === batchStatusFilter
+    const q = batchSearch.toLowerCase()
+    const matchSearch = !q || (r.txid || r.input || '').toLowerCase().includes(q) ||
+                        (r.replacedBy || '').toLowerCase().includes(q)
+    return matchStatus && matchSearch
+  })
+  const batchTotalPages   = Math.max(1, Math.ceil(filteredBatch.length / batchPerPage))
+  const paginatedBatch    = filteredBatch.slice((batchPage - 1) * batchPerPage, batchPage * batchPerPage)
+
+  const BATCH_STATUS_COLORS = {
+    CONFIRMED:   'bsr-confirmed',
+    REPLACED:    'bsr-replaced',
+    DOUBLE_SPENT:'bsr-replaced',
+    UNCONFIRMED: 'bsr-unconfirmed',
+    NOT_FOUND:   'bsr-notfound',
+    ERROR:       'bsr-error',
   }
 
   return (
@@ -853,7 +987,13 @@ function BtcSafeToFail() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="btc-form">
+        <form onSubmit={viewMode === 'detail' ? handleSubmit : e => { e.preventDefault(); handleBatchRun() }} className="btc-form">
+          {/* ── Mode toggle ── */}
+          <div className="btc-mode-toggle">
+            <button type="button" className={`mode-btn ${viewMode === 'detail' ? 'active' : ''}`} onClick={() => setViewMode('detail')}>🔍 Detail</button>
+            <button type="button" className={`mode-btn ${viewMode === 'batch'  ? 'active' : ''}`} onClick={() => setViewMode('batch')}>📊 Batch / CSV</button>
+          </div>
+
           <div className="form-group">
             <label htmlFor="txid-input">BTC Transaction ID(s) or explorer URL(s)</label>
             <textarea
@@ -865,21 +1005,59 @@ function BtcSafeToFail() {
                 'or  https://mempool.space/tx/<txid>\n' +
                 'Paste multiple txids on separate lines.'
               }
-              rows={4}
+              rows={viewMode === 'batch' ? 6 : 4}
               disabled={processing}
             />
             <div className="form-hint">
-              Supports raw 64-hex txids and URLs from mempool.space, blockchain.com, blockcypher.com, or blockstream.info.
-              Multiple entries separated by newlines are processed sequentially.
+              {viewMode === 'batch'
+                ? 'Batch mode — paste 1 000s of txids, one per line. Uses quick status check (no deep UTXO analysis). Results stream in live.'
+                : 'Supports raw 64-hex txids and URLs from mempool.space, blockchain.com, blockcypher.com, or blockstream.info.'}
             </div>
           </div>
-          <button type="submit" className="submit-btn" disabled={processing || !input.trim()}>
-            {processing ? '⏳ Analyzing…' : '🔍 Analyze Transaction(s)'}
-          </button>
+
+          {/* ── Batch settings ── */}
+          {viewMode === 'batch' && (
+            <div className="batch-settings">
+              <label className="batch-setting-item">
+                <span>Concurrency</span>
+                <select value={batchConcurrency} onChange={e => setBatchConcurrency(Number(e.target.value))} disabled={processing}>
+                  <option value={1}>1 at a time</option>
+                  <option value={2}>2 at a time</option>
+                  <option value={3}>3 at a time</option>
+                  <option value={5}>5 at a time</option>
+                </select>
+              </label>
+              <label className="batch-setting-item">
+                <span>Delay between batches</span>
+                <select value={batchDelay} onChange={e => setBatchDelay(Number(e.target.value))} disabled={processing}>
+                  <option value={500}>0.5 s</option>
+                  <option value={1000}>1 s</option>
+                  <option value={2000}>2 s</option>
+                  <option value={3000}>3 s</option>
+                </select>
+              </label>
+            </div>
+          )}
+
+          <div className="btc-form-actions">
+            <button type="submit" className="submit-btn"
+              disabled={processing || !input.trim()}>
+              {processing
+                ? viewMode === 'batch'
+                  ? `⏳ ${batchProgress.current} / ${batchProgress.total}`
+                  : '⏳ Analyzing…'
+                : viewMode === 'batch'
+                  ? `📊 Run Batch`
+                  : '🔍 Analyze Transaction(s)'}
+            </button>
+            {processing && viewMode === 'batch' && (
+              <button type="button" className="stop-btn" onClick={handleStop}>⏹ Stop</button>
+            )}
+          </div>
         </form>
 
-        {/* ── Progress ── */}
-        {processing && (
+        {/* ── Detail mode progress ── */}
+        {processing && viewMode === 'detail' && (
           <div className="loading-container">
             <div className="loading-header">
               <h3>Querying providers…</h3>
@@ -892,10 +1070,130 @@ function BtcSafeToFail() {
           </div>
         )}
 
-        {/* ── Results ── */}
-        {results.length > 0 && (
+        {/* ── Batch mode progress bar ── */}
+        {processing && viewMode === 'batch' && batchProgress.total > 0 && (
+          <div className="loading-container">
+            <div className="loading-header">
+              <h3>Running batch…</h3>
+              <span className="progress-text">{batchProgress.current} / {batchProgress.total}</span>
+            </div>
+            <div className="progress-bar-container">
+              <div className="progress-bar" style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }} />
+            </div>
+          </div>
+        )}
+
+        {/* ── Detail mode results ── */}
+        {viewMode === 'detail' && results.length > 0 && (
           <div className="btc-results">
             {results.map((r, i) => <TxResultCard key={i} result={r} />)}
+          </div>
+        )}
+
+        {/* ── Batch mode results table ── */}
+        {viewMode === 'batch' && batchRows.length > 0 && (
+          <div className="batch-section">
+            {/* Header */}
+            <div className="batch-header">
+              <div className="batch-summary">
+                <span className="bs-total">{batchRows.length} checked</span>
+                <span className="bs-confirmed">{batchRows.filter(r => r.status === 'CONFIRMED').length} confirmed</span>
+                <span className="bs-replaced">{batchRows.filter(r => r.status === 'REPLACED' || r.status === 'DOUBLE_SPENT').length} replaced</span>
+                <span className="bs-unconfirmed">{batchRows.filter(r => r.status === 'UNCONFIRMED').length} unconfirmed</span>
+              </div>
+              <button className="download-btn" onClick={downloadCSV}>⬇ CSV</button>
+            </div>
+
+            {/* Controls */}
+            <div className="batch-controls">
+              <div className="batch-search-wrap">
+                <input
+                  type="text"
+                  className="batch-search"
+                  placeholder="Search by hash…"
+                  value={batchSearch}
+                  onChange={e => { setBatchSearch(e.target.value); setBatchPage(1) }}
+                />
+                {batchSearch && <button className="batch-search-clear" onClick={() => setBatchSearch('')}>×</button>}
+              </div>
+              <select className="batch-filter" value={batchStatusFilter}
+                onChange={e => { setBatchStatusFilter(e.target.value); setBatchPage(1) }}>
+                <option value="all">All ({batchRows.length})</option>
+                <option value="CONFIRMED">Confirmed ({batchRows.filter(r => r.status === 'CONFIRMED').length})</option>
+                <option value="REPLACED">Replaced ({batchRows.filter(r => r.status === 'REPLACED' || r.status === 'DOUBLE_SPENT').length})</option>
+                <option value="UNCONFIRMED">Unconfirmed ({batchRows.filter(r => r.status === 'UNCONFIRMED').length})</option>
+                <option value="NOT_FOUND">Not Found ({batchRows.filter(r => r.status === 'NOT_FOUND').length})</option>
+                <option value="ERROR">Error ({batchRows.filter(r => r.status === 'ERROR').length})</option>
+              </select>
+              <select className="batch-per-page" value={batchPerPage}
+                onChange={e => { setBatchPerPage(Number(e.target.value)); setBatchPage(1) }}>
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+                <option value={250}>250 / page</option>
+              </select>
+            </div>
+
+            <div className="batch-info-bar">
+              Showing {paginatedBatch.length} of {filteredBatch.length}
+              {batchTotalPages > 1 && <span> · Page {batchPage} / {batchTotalPages}</span>}
+            </div>
+
+            {/* Table */}
+            <div className="batch-table-wrap">
+              <table className="batch-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Checked TX</th>
+                    <th>Status</th>
+                    <th>Spending TX</th>
+                    <th>Block</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedBatch.map(r => (
+                    <tr key={r.index} className={BATCH_STATUS_COLORS[r.status] || ''}>
+                      <td className="bt-idx">{r.index}</td>
+                      <td className="bt-hash">
+                        {r.txid
+                          ? <a href={`https://mempool.space/tx/${r.txid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.txid, 10)}</a>
+                          : <span className="muted">{(r.input || '').slice(0, 20)}</span>}
+                        <button className="copy-btn" title="Copy full hash" onClick={() => copyToClipboard(r.txid || r.input)}>⧉</button>
+                      </td>
+                      <td className="bt-status">
+                        <span className={`batch-status-badge bsb-${(r.status || 'ERROR').toLowerCase()}`}>
+                          {r.status === 'CONFIRMED'    ? '✓ Confirmed'
+                         : r.status === 'REPLACED'    ? '↩ Replaced'
+                         : r.status === 'DOUBLE_SPENT'? '⚠ Double-spent'
+                         : r.status === 'UNCONFIRMED' ? '⏳ Unconfirmed'
+                         : r.status === 'NOT_FOUND'   ? '✗ Not Found'
+                         :                              '✗ Error'}
+                        </span>
+                      </td>
+                      <td className="bt-spending">
+                        {r.replacedBy
+                          ? <a href={`https://mempool.space/tx/${r.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.replacedBy, 10)}</a>
+                          : <span className="muted">—</span>}
+                      </td>
+                      <td className="bt-block">
+                        {r.blockHeight ? r.blockHeight.toLocaleString() : <span className="muted">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {batchTotalPages > 1 && (
+              <div className="batch-pagination">
+                <button className="pagination-btn" disabled={batchPage === 1} onClick={() => setBatchPage(1)}>⏮</button>
+                <button className="pagination-btn" disabled={batchPage === 1} onClick={() => setBatchPage(p => p - 1)}>◀</button>
+                <span className="batch-page-info">{batchPage} / {batchTotalPages}</span>
+                <button className="pagination-btn" disabled={batchPage === batchTotalPages} onClick={() => setBatchPage(p => p + 1)}>▶</button>
+                <button className="pagination-btn" disabled={batchPage === batchTotalPages} onClick={() => setBatchPage(batchTotalPages)}>⏭</button>
+              </div>
+            )}
           </div>
         )}
       </div>
