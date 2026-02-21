@@ -709,6 +709,169 @@
 /* ─── Generic helpers ─────────────────────────────────────────────────────────── */
 .muted { color: #52525b; }
 
+/* ─── Source Address Confidence Panel ────────────────────────────────────────── */
+.confidence-panel {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.not-found-confidence {
+  margin-top: 0.75rem;
+}
+
+.confidence-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.85rem;
+}
+
+/* ── Verdict banner ── */
+.confidence-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  font-size: 0.87rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.verdict-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.verdict-high {
+  background: rgba(34, 197, 94, 0.09);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+
+.verdict-medium {
+  background: rgba(245, 158, 11, 0.09);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fde68a;
+}
+
+.verdict-low {
+  background: rgba(113, 113, 122, 0.12);
+  border: 1px solid rgba(113, 113, 122, 0.25);
+  color: #a1a1aa;
+}
+
+.verdict-unavailable {
+  background: rgba(113, 113, 122, 0.1);
+  border: 1px solid rgba(113, 113, 122, 0.2);
+  color: #a1a1aa;
+}
+
+.verdict-unavailable a { color: #f7931a; }
+
+/* ── Per-address rows ── */
+.confidence-addrs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.confidence-addr-row {
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid transparent;
+}
+
+.confidence-addr-row.conf-zero {
+  background: rgba(34, 197, 94, 0.06);
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.confidence-addr-row.conf-nonzero {
+  background: rgba(245, 158, 11, 0.06);
+  border-color: rgba(245, 158, 11, 0.18);
+}
+
+.confidence-addr-row.conf-err {
+  background: rgba(113, 113, 122, 0.07);
+  border-color: rgba(113, 113, 122, 0.2);
+}
+
+.conf-addr-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+/* ── Pill badges ── */
+.conf-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.conf-pill-zero {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+}
+
+.conf-pill-nonzero {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+.conf-pill-err {
+  background: rgba(113, 113, 122, 0.2);
+  border: 1px solid rgba(113, 113, 122, 0.3);
+  color: #71717a;
+}
+
+.conf-source {
+  font-size: 0.72rem;
+  color: #52525b;
+  margin-left: auto;
+}
+
+/* ── Detail / notes ── */
+.conf-addr-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.conf-note-zero    { color: #86efac; }
+.conf-note-nonzero { color: #fde68a; }
+
+.conf-stats {
+  color: #52525b;
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.conf-error-footer {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: #71717a;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 0.6rem;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .btc-page { flex-direction: column; }
