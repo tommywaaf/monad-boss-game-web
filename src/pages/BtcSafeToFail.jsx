@@ -47,27 +47,6 @@ function isRbfSignaled(inputs = []) {
   })
 }
 
-function satsToBtc(sats) {
-  if (sats == null) return null
-  return (sats / 1e8).toFixed(8)
-}
-
-function fmtBtc(sats) {
-  if (sats == null) return '?'
-  return `${satsToBtc(sats)} BTC`
-}
-
-function fmtSats(sats) {
-  if (sats == null) return ''
-  return `(${sats.toLocaleString()} sats)`
-}
-
-function fmtTime(unixTs) {
-  if (!unixTs) return null
-  const d = new Date(unixTs * 1000)
-  return d.toUTCString()
-}
-
 function shortHash(hash, chars = 10) {
   if (!hash) return '?'
   return `${hash.slice(0, chars)}…${hash.slice(-chars)}`
@@ -155,14 +134,24 @@ async function analyzeTx(txid) {
   const blockHeight   = cyHeight ?? msHeight ?? bcHeight
   const confirmations = cyConfirms || (blockHeight ? 1 : 0)
 
+  // ── Confirmed by ANY provider? This is the absolute highest-priority signal.
+  // A confirmation on-chain beats everything — BlockCypher double_spend flags,
+  // UTXO outspend checks, everything. Once confirmed, always green.
+  const confirmedByAnyProvider =
+    cyConfirms > 0 || !!cyHeight || !!bcHeight || msConfirmed
+
   // ── Double-spend detection (BlockCypher) ──
   const doubleSpend = cyData?.double_spend === true
   let   replacedBy  = cyData?.double_spend_tx || null
 
-  // ── Status ──
+  // ── Status — confirmation wins over double-spend flags ──
   let status = 'UNCONFIRMED'
-  if (confirmations > 0 || blockHeight || msConfirmed) status = 'CONFIRMED'
-  if (doubleSpend) status = replacedBy ? 'REPLACED' : 'DOUBLE_SPENT'
+  if (confirmedByAnyProvider) {
+    status = 'CONFIRMED'
+  } else if (doubleSpend) {
+    // Only apply BlockCypher's double_spend flag when not confirmed by any provider
+    status = replacedBy ? 'REPLACED' : 'DOUBLE_SPENT'
+  }
 
   // ── Inputs ──
   // Priority for prevTxid: BlockCypher → mempool.space → (blockchain.com has none)
@@ -239,14 +228,15 @@ async function analyzeTx(txid) {
           )
           if (msRes.ok) {
             const d = msRes.data
+            const msTxid = d.txid?.toLowerCase() || null
             return {
               prevTxid:         inp.prevTxid,
               outputIndex:      inp.outputIndex,
               address:          inp.address,
               checked:          true,
               spent:            d.spent === true,
-              spentByTxid:      d.txid  || null,
-              spentByThisTx:    d.txid === txid,
+              spentByTxid:      msTxid,
+              spentByThisTx:    msTxid === txid,
               spentConfirmed:   d.status?.confirmed    || false,
               spentBlockHeight: d.status?.block_height || null,
               method:           'mempool.space',
@@ -280,7 +270,7 @@ async function analyzeTx(txid) {
                   `${BLOCKCHAIN_COM}/rawtx/${spendIdx}?cors=true`
                 )
                 if (spendRes.ok) {
-                  spentByTxid      = spendRes.data.hash        || null
+                  spentByTxid      = spendRes.data.hash?.toLowerCase() || null
                   spentConfirmed   = (spendRes.data.block_height > 0) || false
                   spentBlockHeight = spendRes.data.block_height  || null
                 }
@@ -293,7 +283,7 @@ async function analyzeTx(txid) {
                 checked:          true,
                 spent,
                 spentByTxid,
-                spentByThisTx:    spentByTxid === txid,
+                spentByThisTx:    spentByTxid === txid,  // both lowercased now
                 spentConfirmed,
                 spentBlockHeight,
                 method:           'blockchain.com',
@@ -307,29 +297,28 @@ async function analyzeTx(txid) {
     : []
 
   // ── Status + replacedBy override from UTXO ground truth ──
-  // BlockCypher's double_spend_tx can point to an intermediate dropped transaction
-  // (a replacement that itself got replaced). The UTXO outspend check resolves the
-  // actual confirmed spending txid — always prefer it over BlockCypher's value.
+  // Only applies when NOT confirmed by any provider.
+  // For confirmed TXs the inputs WILL be spent — that's expected, not a replacement signal.
   const spentElsewhere = utxoSpendChecks.find(c =>
     c.checked && c.spent && !c.spentByThisTx && (
-      c.spentByTxid !== null ||   // explicit spending txid resolved
-      c.method === 'blockchain.com' // bc confirmed spent=true (our tx still unconfirmed)
+      c.spentByTxid !== null ||
+      c.method === 'blockchain.com'
     )
   )
-  if (spentElsewhere) {
-    // Upgrade status regardless of what BlockCypher said
-    if (status !== 'CONFIRMED') status = 'REPLACED'
-
-    // UTXO check is ground truth — overwrite BlockCypher's replacedBy if we found
-    // a real spending txid (it may be different from BlockCypher's dropped intermediate tx)
+  if (spentElsewhere && !confirmedByAnyProvider) {
+    // UTXO check found inputs spent by a different TX, and no provider confirms this TX →
+    // it was replaced. Also prefer the UTXO check's spending txid over BlockCypher's
+    // double_spend_tx, which can point to an intermediate dropped transaction.
+    status = 'REPLACED'
     if (spentElsewhere.spentByTxid) {
       replacedBy = spentElsewhere.spentByTxid
     } else if (!replacedBy) {
-      replacedBy = null  // confirmed spent but spending txid fetch failed; mark as replaced anyway
+      replacedBy = null
     }
-    // If spentElsewhere.spentByTxid is null but replacedBy was already set by BlockCypher,
-    // keep BlockCypher's value rather than clearing it to null
   }
+
+  // Belt-and-suspenders: if any provider confirms this TX, always end up green.
+  if (confirmedByAnyProvider) status = 'CONFIRMED'
 
   // ── Source address balances ──
   const uniqueInputAddrs = [
@@ -411,373 +400,26 @@ async function analyzeTx(txid) {
   }
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Result card ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
-  const config = {
-    CONFIRMED:    { label: '✓ Confirmed',     cls: 'status-confirmed' },
-    UNCONFIRMED:  { label: '⏳ Unconfirmed',   cls: 'status-unconfirmed' },
-    REPLACED:     { label: '🔄 Replaced (RBF/Double-spend)', cls: 'status-replaced' },
-    DOUBLE_SPENT: { label: '⚠ Double-spent',  cls: 'status-replaced' },
-    NOT_FOUND:    { label: '✗ Not Found',     cls: 'status-notfound' },
+  const MAP = {
+    CONFIRMED:    { label: '✓ Confirmed',    cls: 'status-confirmed' },
+    UNCONFIRMED:  { label: '⏳ Unconfirmed',  cls: 'status-unconfirmed' },
+    REPLACED:     { label: '🔄 Replaced',    cls: 'status-replaced' },
+    DOUBLE_SPENT: { label: '⚠ Double-spent', cls: 'status-replaced' },
+    NOT_FOUND:    { label: '✗ Not Found',    cls: 'status-notfound' },
   }
-  const { label, cls } = config[status] || { label: status, cls: '' }
+  const { label, cls } = MAP[status] || { label: status, cls: '' }
   return <span className={`status-badge ${cls}`}>{label}</span>
 }
 
-function HashCell({ hash, explorerBase }) {
-  if (!hash) return <span className="muted">—</span>
-  return (
-    <span className="hash-cell">
-      <a href={`${explorerBase}${hash}`} target="_blank" rel="noopener noreferrer"
-         title={hash} className="hash-link">
-        {shortHash(hash, 8)}
-      </a>
-      <button className="copy-btn" onClick={() => copyToClipboard(hash)} title="Copy full hash">⧉</button>
-    </span>
-  )
-}
-
-function InputsTable({ inputs }) {
-  if (!inputs.length) return <p className="muted">No input data available.</p>
-  return (
-    <div className="utxo-table-wrap">
-      <table className="utxo-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Prev TX (output index)</th>
-            <th>Address</th>
-            <th>Value</th>
-            <th>Sequence</th>
-            <th>RBF?</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inputs.map((inp, i) => {
-            const seqRbf = typeof inp.sequence === 'number' && inp.sequence < 0xFFFFFFFE
-            return (
-              <tr key={i} className={inp.isCoinbase ? 'coinbase-row' : ''}>
-                <td className="idx-cell">{i}</td>
-                <td className="hash-td">
-                  {inp.isCoinbase ? (
-                    <span className="tag-coinbase">COINBASE</span>
-                  ) : inp.prevTxid ? (
-                    <HashCell hash={inp.prevTxid} explorerBase="https://mempool.space/tx/" />
-                  ) : (
-                    <span className="muted">unknown</span>
-                  )}
-                  {inp.outputIndex != null && !inp.isCoinbase && (
-                    <span className="output-index">:{inp.outputIndex}</span>
-                  )}
-                </td>
-                <td className="addr-td">
-                  {inp.address ? (
-                    <a href={`https://mempool.space/address/${inp.address}`}
-                       target="_blank" rel="noopener noreferrer"
-                       className="addr-link" title={inp.address}>
-                      {shortHash(inp.address, 7)}
-                    </a>
-                  ) : <span className="muted">—</span>}
-                </td>
-                <td className="val-td">
-                  {inp.valueSats != null ? (
-                    <>
-                      <span className="btc-val">{satsToBtc(inp.valueSats)}</span>
-                      <span className="sats-hint">{inp.valueSats.toLocaleString()} sats</span>
-                    </>
-                  ) : <span className="muted">?</span>}
-                </td>
-                <td className="seq-td">
-                  {inp.sequence != null
-                    ? `0x${inp.sequence.toString(16).toUpperCase()}`
-                    : <span className="muted">—</span>}
-                </td>
-                <td>
-                  {seqRbf
-                    ? <span className="tag-rbf">RBF</span>
-                    : <span className="tag-final">—</span>}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function OutputsTable({ outputs }) {
-  if (!outputs.length) return <p className="muted">No output data available.</p>
-  return (
-    <div className="utxo-table-wrap">
-      <table className="utxo-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Address</th>
-            <th>Value</th>
-            <th>Status</th>
-            <th>Spent by TX</th>
-          </tr>
-        </thead>
-        <tbody>
-          {outputs.map((out) => (
-            <tr key={out.index}>
-              <td className="idx-cell">{out.index}</td>
-              <td className="addr-td">
-                {out.isOpReturn ? (
-                  <span className="tag-opreturn">OP_RETURN</span>
-                ) : out.address ? (
-                  <a href={`https://mempool.space/address/${out.address}`}
-                     target="_blank" rel="noopener noreferrer"
-                     className="addr-link" title={out.address}>
-                    {shortHash(out.address, 7)}
-                  </a>
-                ) : <span className="muted">—</span>}
-              </td>
-              <td className="val-td">
-                {out.valueSats != null ? (
-                  <>
-                    <span className="btc-val">{satsToBtc(out.valueSats)}</span>
-                    <span className="sats-hint">{out.valueSats.toLocaleString()} sats</span>
-                  </>
-                ) : <span className="muted">?</span>}
-              </td>
-              <td>
-                {out.spent
-                  ? <span className="tag-spent">Spent</span>
-                  : <span className="tag-unspent">Unspent (UTXO)</span>}
-              </td>
-              <td className="hash-td">
-                {out.spentByTxid
-                  ? <HashCell hash={out.spentByTxid} explorerBase="https://mempool.space/tx/" />
-                  : <span className="muted">—</span>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ─── Source Confidence Panel ──────────────────────────────────────────────────
-function SourceConfidencePanel({ sourceBalances, utxoSpendChecks, status, rbf }) {
-  const hasUtxoChecks  = utxoSpendChecks?.length > 0
-  const hasBalances    = sourceBalances?.length  > 0
-  if (!hasUtxoChecks && !hasBalances) return null
-
-  // ── UTXO-level summary ──
-  const checkedUtxos      = (utxoSpendChecks || []).filter(c => c.checked)
-  const spentByThis       = checkedUtxos.filter(c => c.spent &&  c.spentByThisTx)
-  const spentElsewhere    = checkedUtxos.filter(c => c.spent && !c.spentByThisTx)
-  const unspentUtxos      = checkedUtxos.filter(c => !c.spent)
-  const uncheckedUtxos    = (utxoSpendChecks || []).filter(c => !c.checked)
-
-  // ── Address balance summary ──
-  const validBalances = (sourceBalances || []).filter(b => !b.error)
-  const allZero       = validBalances.length > 0 && validBalances.every(b => b.finalBalance === 0)
-  const someZero      = validBalances.some(b => b.finalBalance === 0)
-  const anyBalErr     = (sourceBalances || []).some(b => b.error)
-
-  // ── Overall verdict driven by UTXO checks first, then balance ──
-  let verdict = null
-  if (spentElsewhere.length > 0) {
-    verdict = {
-      cls: 'verdict-high', icon: '🔄',
-      text: `${spentElsewhere.length} input UTXO${spentElsewhere.length > 1 ? 's were' : ' was'} spent by a ` +
-            `DIFFERENT transaction — this TX was replaced / double-spent.`,
-    }
-  } else if (spentByThis.length > 0 && unspentUtxos.length === 0 && spentElsewhere.length === 0) {
-    verdict = {
-      cls: 'verdict-high', icon: '✅',
-      text: `All checked input UTXOs are confirmed spent by this transaction.`,
-    }
-  } else if (unspentUtxos.length > 0) {
-    verdict = {
-      cls: 'verdict-low', icon: '⏳',
-      text: `${unspentUtxos.length} input UTXO${unspentUtxos.length > 1 ? 's are' : ' is'} still unspent ` +
-            `— this TX has not yet been processed${rbf ? ' (RBF signalled; can be replaced)' : ''}.`,
-    }
-  } else if (!hasUtxoChecks && allZero) {
-    verdict = {
-      cls: 'verdict-high', icon: '✅',
-      text: `All source addresses have 0 BTC — every UTXO was spent ` +
-            (status === 'UNCONFIRMED'
-              ? `(by this TX or a replacement). ${rbf ? 'RBF signalled.' : 'No RBF signal — replacement unlikely.'}`
-              : status === 'REPLACED' ? 'by the replacing transaction.' : '(confirmed).'),
-    }
-  } else if (!hasUtxoChecks && someZero) {
-    verdict = {
-      cls: 'verdict-medium', icon: '⚠️',
-      text: 'Some source addresses are fully spent (balance = 0); others still hold funds (may have unrelated UTXOs).',
-    }
-  } else if (!hasUtxoChecks && validBalances.length > 0) {
-    verdict = {
-      cls: 'verdict-low', icon: '⚠️',
-      text: 'Source addresses still carry non-zero balances. Cannot confirm from balance alone — they may have other UTXOs.',
-    }
-  }
-
-  return (
-    <div className="confidence-panel">
-      <div className="confidence-title">🔍 Spend Confidence</div>
-
-      {verdict && (
-        <div className={`confidence-verdict ${verdict.cls}`}>
-          <span className="verdict-icon">{verdict.icon}</span>
-          <span>{verdict.text}</span>
-        </div>
-      )}
-
-      {/* ── UTXO-level outspend check rows ── */}
-      {hasUtxoChecks && (
-        <div className="utxo-check-section">
-          <div className="utxo-check-header">
-            Input UTXO Outspend Check
-            <span className="utxo-check-source">mempool.space → blockchain.com</span>
-          </div>
-          <div className="utxo-check-rows">
-            {utxoSpendChecks.map((c, i) => (
-              <div key={i} className={`utxo-check-row ${
-                !c.checked            ? 'uc-unknown'
-                : !c.spent            ? 'uc-unspent'
-                : c.spentByThisTx     ? 'uc-spent-this'
-                :                       'uc-spent-other'
-              }`}>
-                <span className="uc-label">
-                  {!c.checked ? '❓' : !c.spent ? '⏳' : c.spentByThisTx ? '✅' : '🔄'}
-                </span>
-                <span className="uc-utxo">
-                  {c.prevTxid ? (
-                    <a href={`https://mempool.space/tx/${c.prevTxid}`}
-                       target="_blank" rel="noopener noreferrer" className="hash-link">
-                      {shortHash(c.prevTxid, 7)}
-                    </a>
-                  ) : <span className="muted">?</span>}
-                  <span className="muted">:{c.outputIndex ?? '?'}</span>
-                </span>
-                {!c.checked ? (
-                  <span className="uc-status muted">Check failed — try again or verify manually</span>
-                ) : !c.spent ? (
-                  <span className="uc-status uc-unspent-text">Unspent — UTXO still available</span>
-                ) : c.spentByThisTx ? (
-                  <span className="uc-status uc-spent-this-text">
-                    Spent by this TX{c.spentConfirmed ? ` (confirmed @ block ${c.spentBlockHeight})` : ' (unconfirmed)'}
-                  </span>
-                ) : c.spentByTxid ? (
-                  // mempool.space or blockchain.com resolved the spending txid
-                  <span className="uc-status uc-spent-other-text">
-                    Spent by{' '}
-                    <a href={`https://mempool.space/tx/${c.spentByTxid}`}
-                       target="_blank" rel="noopener noreferrer" className="hash-link">
-                      {shortHash(c.spentByTxid, 8)}
-                    </a>
-                    <button className="copy-btn" onClick={() => copyToClipboard(c.spentByTxid)} title="Copy">⧉</button>
-                    {c.spentConfirmed
-                      ? ` (confirmed @ block ${c.spentBlockHeight})`
-                      : ' (unconfirmed)'}
-                  </span>
-                ) : (
-                  // blockchain.com confirmed spent=true but spending_outpoints fetch failed
-                  <span className="uc-status uc-spent-other-text">
-                    Confirmed spent by a different TX{c.spentConfirmed ? ` (@ block ${c.spentBlockHeight})` : ''}{' '}
-                    — spending txid unresolved.{' '}
-                    {c.prevTxid && (
-                      <a href={`https://www.blockchain.com/btc/tx/${c.prevTxid}`}
-                         target="_blank" rel="noopener noreferrer" className="hash-link">
-                        Verify on blockchain.com ↗
-                      </a>
-                    )}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-          {uncheckedUtxos.length > 0 && (
-            <div className="conf-error-footer">
-              {uncheckedUtxos.length} UTXO check{uncheckedUtxos.length > 1 ? 's' : ''} could not be resolved
-              (both mempool.space and blockchain.com failed — rate limit or tx too old).
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Source address balance rows ── */}
-      {hasBalances && (
-        <div className="confidence-addrs">
-          <div className="utxo-check-header" style={{ marginTop: hasUtxoChecks ? '1rem' : 0 }}>
-            Source Address Balance
-            <span className="utxo-check-source">secondary signal</span>
-          </div>
-          {sourceBalances.map((bal, i) => {
-            const isZero    = !bal.error && bal.finalBalance === 0
-            const isNonZero = !bal.error && bal.finalBalance  >  0
-            return (
-              <div key={i} className={`confidence-addr-row ${bal.error ? 'conf-err' : isZero ? 'conf-zero' : 'conf-nonzero'}`}>
-                <div className="conf-addr-top">
-                  <a href={`https://mempool.space/address/${bal.addr}`}
-                     target="_blank" rel="noopener noreferrer"
-                     className="addr-link" title={bal.addr}>
-                    {shortHash(bal.addr, 10)}
-                  </a>
-                  {bal.error ? (
-                    <span className="conf-pill conf-pill-err">❓ Fetch failed</span>
-                  ) : isZero ? (
-                    <span className="conf-pill conf-pill-zero">✅ 0.00000000 BTC</span>
-                  ) : (
-                    <span className="conf-pill conf-pill-nonzero">⚠ {fmtBtc(bal.finalBalance)}</span>
-                  )}
-                  {!bal.error && <span className="conf-source">via {bal.source}</span>}
-                </div>
-                {!bal.error && (
-                  <div className="conf-addr-detail">
-                    {isZero && (
-                      <span className="conf-note-zero">
-                        Balance is 0 → address fully spent. No UTXOs can remain here.
-                        {status === 'UNCONFIRMED' && !rbf && ' No RBF signal — strong indicator this TX was processed.'}
-                        {status === 'UNCONFIRMED' &&  rbf && ' RBF signalled — replacement TX may have spent these inputs.'}
-                        {status === 'REPLACED'         && ' Spent by the replacing transaction.'}
-                        {status === 'CONFIRMED'        && ' Consistent with the confirmed spend.'}
-                      </span>
-                    )}
-                    {isNonZero && (
-                      <span className="conf-note-nonzero">
-                        Balance is {fmtBtc(bal.finalBalance)}{bal.unconfirmedBalance > 0 ? ` (incl. ${fmtBtc(bal.unconfirmedBalance)} unconfirmed)` : ''} — address has other UTXOs. Cannot determine from balance alone.
-                      </span>
-                    )}
-                    {(bal.totalReceived != null || bal.nTx != null) && (
-                      <span className="conf-stats">
-                        {bal.totalReceived != null && `Received: ${fmtBtc(bal.totalReceived)}`}
-                        {bal.totalSent     != null && ` · Sent: ${fmtBtc(bal.totalSent)}`}
-                        {bal.nTx           != null && ` · TXs: ${bal.nTx.toLocaleString()}`}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-          {anyBalErr && (
-            <div className="conf-error-footer">
-              Some address lookups failed (rate limit or network error).
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function TxResultCard({ result }) {
-  const [tab, setTab] = useState('inputs')
-
   if (!result.success) {
     return (
       <div className="btc-result-card error">
         <div className="btc-result-header">
           <span className="status-badge status-error">✗ Error</span>
-          <span className="result-input-label" title={result.input}>{result.input.slice(0, 80)}</span>
+          <span className="result-input-label">{result.input.slice(0, 80)}</span>
         </div>
         <div className="error-msg">{result.error}</div>
       </div>
@@ -786,215 +428,172 @@ function TxResultCard({ result }) {
 
   const d = result.data
 
+  // ── NOT FOUND ──
   if (d.status === 'NOT_FOUND') {
     return (
       <div className="btc-result-card not-found">
         <div className="btc-result-header">
           <StatusBadge status="NOT_FOUND" />
-          <span className="result-input-label mono" title={d.txid}>{shortHash(d.txid, 14)}</span>
+          <span className="result-input-label mono">{shortHash(d.txid, 14)}</span>
+          <button className="copy-btn inline" onClick={() => copyToClipboard(d.txid)}>⧉</button>
         </div>
-        <p className="muted" style={{ margin: '0.5rem 0 0.75rem' }}>
-          Transaction not found on either provider.
-          It may not yet be broadcast, or it may have been evicted from the mempool.
+        <p className="simple-note">
+          Not found on any provider — may not be broadcast, evicted from mempool, or very old.
+          Input addresses are unknown (txid is a one-way hash; cannot be reversed to recover TX data).
         </p>
-        <div className="confidence-panel not-found-confidence">
-          <div className="confidence-title">🔍 Source Address Balance Confidence</div>
-          <div className="confidence-verdict verdict-unavailable">
-            <span className="verdict-icon">❓</span>
-            <span>
-              Cannot check source address balance — transaction data is unavailable.
-              A txid is a one-way hash: it cannot be reversed to recover the original inputs or addresses.
-              <br /><br />
-              <strong>If you have the raw signed TX hex</strong>, you could decode it yourself to extract
-              the input addresses and query their balances on{' '}
-              <a href="https://mempool.space" target="_blank" rel="noopener noreferrer" className="hash-link">mempool.space</a>{' '}
-              or{' '}
-              <a href="https://www.blockchain.com/explorer" target="_blank" rel="noopener noreferrer" className="hash-link">blockchain.com</a>.
-            </span>
-          </div>
-        </div>
         <div className="provider-row">
-          <span>BlockCypher: <b>{d.providers.blockcypher}</b></span>
-          <span>Blockchain.com: <b>{d.providers.blockchainCom}</b></span>
-          <span>mempool.space: <b>{d.providers.mempoolSpace}</b></span>
+          {Object.entries(d.providers).map(([k, v]) => (
+            <span key={k}>{k}: <b className={v === 'ok' ? 'ok' : 'fail'}>{v}</b></span>
+          ))}
         </div>
       </div>
     )
   }
 
-  const mempoolLink   = `https://mempool.space/tx/${d.txid}`
-  const bcLink        = `https://www.blockchain.com/btc/tx/${d.txid}`
-  const blockcyLink   = `https://live.blockcypher.com/btc/tx/${d.txid}`
+  const isReplaced = d.status === 'REPLACED' || d.status === 'DOUBLE_SPENT'
+  const checks     = d.utxoSpendChecks || []
+
+  // Inputs that couldn't be checked (no prevTxid and no bcTxIndex available)
+  const uncheckedInputs = d.inputs.filter(
+    inp => !inp.isCoinbase && !inp.prevTxid && inp.bcTxIndex == null
+  )
 
   return (
     <div className={`btc-result-card ${d.status.toLowerCase()}`}>
+
       {/* ── Header ── */}
       <div className="btc-result-header">
         <StatusBadge status={d.status} />
         {d.rbf && d.status !== 'CONFIRMED' && (
-          <span className="status-badge status-rbf">⚡ RBF Opted-in</span>
+          <span className="status-badge status-rbf">⚡ RBF</span>
         )}
-        <span className="result-input-label mono" title={d.txid}>
-          {shortHash(d.txid, 14)}
-        </span>
-        <button className="copy-btn inline" onClick={() => copyToClipboard(d.txid)} title="Copy txid">⧉ Copy txid</button>
+        <span className="result-input-label mono">{shortHash(d.txid, 12)}</span>
+        <button className="copy-btn inline" onClick={() => copyToClipboard(d.txid)}>⧉ txid</button>
       </div>
 
-      {/* ── Replacement warning ── */}
-      {(d.status === 'REPLACED' || d.status === 'DOUBLE_SPENT') && (
-        <div className="replacement-banner">
-          <div className="replacement-title">🔄 This transaction was replaced / double-spent</div>
-          {d.replacedBy ? (() => {
-            // Determine if this replacedBy came from the UTXO check (confirmed spend)
-            const utxoConfirm = d.utxoSpendChecks?.find(
-              c => c.checked && c.spentByTxid === d.replacedBy && c.spentConfirmed
-            )
-            return (
-              <>
-                <div className="replacement-by">
-                  <span>Spending TX:{' '}</span>
-                  <span className="hash-link mono" style={{ wordBreak: 'break-all' }}>{d.replacedBy}</span>
-                  <button className="copy-btn" onClick={() => copyToClipboard(d.replacedBy)} title="Copy">⧉</button>
-                  {utxoConfirm && utxoConfirm.spentBlockHeight && (
-                    <span className="replacement-confirmed-badge">
-                      ✓ confirmed @ block {utxoConfirm.spentBlockHeight.toLocaleString()}
-                    </span>
-                  )}
-                </div>
-                <div className="replacement-links">
-                  <a href={`https://mempool.space/tx/${d.replacedBy}`}
-                     target="_blank" rel="noopener noreferrer" className="explorer-btn replacement-explorer-btn">
-                    🔗 mempool.space
-                  </a>
-                  <a href={`https://www.blockchain.com/btc/tx/${d.replacedBy}`}
-                     target="_blank" rel="noopener noreferrer" className="explorer-btn replacement-explorer-btn">
-                    🔗 blockchain.com
-                  </a>
-                  <a href={`https://live.blockcypher.com/btc/tx/${d.replacedBy}`}
-                     target="_blank" rel="noopener noreferrer" className="explorer-btn replacement-explorer-btn">
-                    🔗 BlockCypher
-                  </a>
-                </div>
-              </>
-            )
-          })() : (
-            <p className="muted" style={{ margin: '0.25rem 0 0' }}>
-              Spending txid not resolved — check the UTXO outspend section below for details.
-            </p>
+      {/* ── Spending TX (replaced only) ── */}
+      {isReplaced && (
+        <div className="simple-spending-tx">
+          {d.replacedBy ? (
+            <>
+              <div className="simple-spending-row">
+                <span className="simple-label">Spent by:</span>
+                <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer"
+                   className="hash-link mono">{shortHash(d.replacedBy, 14)}</a>
+                <button className="copy-btn" onClick={() => copyToClipboard(d.replacedBy)}>⧉</button>
+                {(() => {
+                  const c = checks.find(c => c.spentByTxid === d.replacedBy && c.spentConfirmed)
+                  return c?.spentBlockHeight
+                    ? <span className="replacement-confirmed-badge">✓ block {c.spentBlockHeight.toLocaleString()}</span>
+                    : null
+                })()}
+              </div>
+              <div className="simple-spending-links">
+                <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
+                <a href={`https://www.blockchain.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
+                <a href={`https://live.blockcypher.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
+              </div>
+            </>
+          ) : (
+            <span className="muted">Spending TX confirmed but txid not resolved — see UTXO check below.</span>
           )}
         </div>
       )}
 
-      {/* ── Key stats grid ── */}
-      <div className="stats-grid">
-        <div className="stat-item">
-          <span className="stat-label">Confirmations</span>
-          <span className="stat-value">{d.confirmations.toLocaleString()}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">Block Height</span>
-          <span className="stat-value">{d.blockHeight?.toLocaleString() ?? '—'}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">Fee</span>
-          <span className="stat-value">{fmtBtc(d.feeSats)} <span className="muted small">{fmtSats(d.feeSats)}</span></span>
-        </div>
-        {d.vsize && (
-          <div className="stat-item">
-            <span className="stat-label">vSize / Size</span>
-            <span className="stat-value">{d.vsize} vB {d.size ? `/ ${d.size} B` : ''}</span>
+      {/* ── Input UTXO spend checks ── */}
+      {(checks.length > 0 || d.inputs.some(i => i.isCoinbase) || uncheckedInputs.length > 0) && (
+        <div className="simple-inputs">
+          <div className="simple-section-label">
+            Input UTXO{checks.length !== 1 ? 's' : ''}
+            <span className="simple-section-source">mempool.space → blockchain.com</span>
           </div>
-        )}
-        {!d.vsize && d.size && (
-          <div className="stat-item">
-            <span className="stat-label">Size</span>
-            <span className="stat-value">{d.size} bytes</span>
-          </div>
-        )}
-        <div className="stat-item">
-          <span className="stat-label">Timestamp</span>
-          <span className="stat-value small">{fmtTime(d.timestamp) ?? (d.status === 'UNCONFIRMED' ? 'Unconfirmed' : '—')}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">Total In</span>
-          <span className="stat-value">{fmtBtc(d.totalIn)}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">Total Out</span>
-          <span className="stat-value">{fmtBtc(d.totalOut)}</span>
-        </div>
-        <div className="stat-item">
-          <span className="stat-label">Inputs / Outputs</span>
-          <span className="stat-value">{d.inputs.length} / {d.outputs.length}</span>
-        </div>
-      </div>
 
-      {/* ── Spend confidence (UTXO outspend + address balance) ── */}
-      <SourceConfidencePanel
-        sourceBalances={d.sourceBalances}
-        utxoSpendChecks={d.utxoSpendChecks}
-        status={d.status}
-        rbf={d.rbf}
-      />
-
-      {/* ── UTXO tabs ── */}
-      <div className="utxo-section">
-        <div className="tab-bar">
-          <button className={`tab-btn ${tab === 'inputs' ? 'active' : ''}`}  onClick={() => setTab('inputs')}>
-            Spent UTXOs (Inputs) <span className="tab-count">{d.inputs.length}</span>
-          </button>
-          <button className={`tab-btn ${tab === 'outputs' ? 'active' : ''}`} onClick={() => setTab('outputs')}>
-            New UTXOs (Outputs) <span className="tab-count">{d.outputs.length}</span>
-          </button>
-          {d.replacingTx && (
-            <button className={`tab-btn tab-replacing ${tab === 'replacing' ? 'active' : ''}`} onClick={() => setTab('replacing')}>
-              Replacing TX Outputs <span className="tab-count">{d.replacingTx.outputs.length}</span>
-            </button>
-          )}
-        </div>
-        <div className="tab-content">
-          {tab === 'inputs'  && <InputsTable  inputs={d.inputs} />}
-          {tab === 'outputs' && <OutputsTable outputs={d.outputs} />}
-          {tab === 'replacing' && d.replacingTx && (
-            <div>
-              <div className="replacing-tx-info">
-                <span className="stat-label">Replacing txid:</span>{' '}
-                <a href={`https://mempool.space/tx/${d.replacingTx.txid}`} target="_blank" rel="noopener noreferrer"
-                   className="hash-link mono">{d.replacingTx.txid}</a>
-                <span className="muted" style={{ marginLeft: '1rem' }}>
-                  {d.replacingTx.confirmations > 0
-                    ? `${d.replacingTx.confirmations.toLocaleString()} confirmations @ block ${d.replacingTx.blockHeight}`
-                    : 'Unconfirmed'}
-                </span>
-              </div>
-              <h4 style={{ color: '#f97316', margin: '1rem 0 0.5rem' }}>Replacing TX Outputs</h4>
-              <OutputsTable outputs={d.replacingTx.outputs} />
-              <h4 style={{ color: '#f97316', margin: '1rem 0 0.5rem' }}>Replacing TX Inputs</h4>
-              <InputsTable inputs={d.replacingTx.inputs} />
+          {/* Checked inputs */}
+          {checks.map((c, i) => (
+            <div key={i} className={`simple-input-row ${
+              !c.checked        ? 'sir-unknown'
+              : !c.spent        ? 'sir-unspent'
+              : c.spentByThisTx ? 'sir-this'
+              :                   'sir-other'
+            }`}>
+              <span className="sir-ref">
+                {c.prevTxid ? (
+                  <>
+                    <a href={`https://mempool.space/tx/${c.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">
+                      {shortHash(c.prevTxid, 8)}
+                    </a>
+                    <span className="muted">:{c.outputIndex ?? '?'}</span>
+                  </>
+                ) : <span className="muted">input:{i}</span>}
+              </span>
+              {c.address && (
+                <a href={`https://mempool.space/address/${c.address}`} target="_blank" rel="noopener noreferrer"
+                   className="addr-link sir-addr">{shortHash(c.address, 8)}</a>
+              )}
+              <span className="sir-status">
+                {!c.checked ? (
+                  <span className="muted">❓ check failed</span>
+                ) : !c.spent ? (
+                  <span className="sir-unspent-label">⏳ unspent</span>
+                ) : c.spentByThisTx ? (
+                  <span className="sir-this-label">
+                    ✅ spent by this TX{c.spentConfirmed ? ` · block ${c.spentBlockHeight?.toLocaleString()}` : ''}
+                  </span>
+                ) : c.spentByTxid ? (
+                  <span className="sir-other-label">
+                    🔄 spent by{' '}
+                    <a href={`https://mempool.space/tx/${c.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">
+                      {shortHash(c.spentByTxid, 8)}
+                    </a>
+                    <button className="copy-btn" onClick={() => copyToClipboard(c.spentByTxid)}>⧉</button>
+                    {c.spentConfirmed ? ` · block ${c.spentBlockHeight?.toLocaleString()}` : ''}
+                  </span>
+                ) : (
+                  <span className="sir-other-label">
+                    🔄 confirmed spent (spending TX unresolved)
+                    {c.prevTxid && (
+                      <> · <a href={`https://www.blockchain.com/btc/tx/${c.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">bc.com ↗</a></>
+                    )}
+                  </span>
+                )}
+              </span>
             </div>
-          )}
-        </div>
-      </div>
+          ))}
 
-      {/* ── Explorer links ── */}
-      <div className="explorer-links">
-        <span className="explorer-label">View on:</span>
-        <a href={mempoolLink} target="_blank" rel="noopener noreferrer" className="explorer-btn">
-          🔗 mempool.space
-        </a>
-        <a href={bcLink} target="_blank" rel="noopener noreferrer" className="explorer-btn">
-          🔗 blockchain.com
-        </a>
-        <a href={blockcyLink} target="_blank" rel="noopener noreferrer" className="explorer-btn">
-          🔗 BlockCypher
-        </a>
+          {/* Coinbase inputs */}
+          {d.inputs.filter(i => i.isCoinbase).map((_, i) => (
+            <div key={`cb-${i}`} className="simple-input-row sir-coinbase">
+              <span className="tag-coinbase">COINBASE</span>
+              <span className="muted sir-status">newly minted BTC — no prev output to check</span>
+            </div>
+          ))}
+
+          {/* Inputs with no prevTxid and no bcTxIndex — cannot check */}
+          {uncheckedInputs.map((inp, i) => (
+            <div key={`unk-${i}`} className="simple-input-row sir-unknown">
+              {inp.address
+                ? <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer"
+                     className="addr-link sir-ref">{shortHash(inp.address, 8)}</a>
+                : <span className="muted sir-ref">input:{i}</span>}
+              <span className="muted sir-status">❓ no prevTxid — cannot check UTXO</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── TX explorer links ── */}
+      <div className="simple-tx-links">
+        <span className="explorer-label">TX:</span>
+        <a href={`https://mempool.space/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
+        <a href={`https://www.blockchain.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
+        <a href={`https://live.blockcypher.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
       </div>
 
       {/* ── Provider status ── */}
       <div className="provider-row">
-        <span>BlockCypher: <b className={d.providers.blockcypher   === 'ok' ? 'ok' : 'fail'}>{d.providers.blockcypher}</b></span>
-        <span>Blockchain.com: <b className={d.providers.blockchainCom === 'ok' ? 'ok' : 'fail'}>{d.providers.blockchainCom}</b></span>
-        <span>mempool.space: <b className={d.providers.mempoolSpace  === 'ok' ? 'ok' : 'fail'}>{d.providers.mempoolSpace}</b></span>
+        {Object.entries(d.providers).map(([k, v]) => (
+          <span key={k}>{k}: <b className={v === 'ok' ? 'ok' : 'fail'}>{v}</b></span>
+        ))}
       </div>
     </div>
   )

@@ -981,6 +981,126 @@
 .uc-spent-this-text { color: #4ade80; }
 .uc-spent-other-text{ color: #f87171; display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; }
 
+/* ─── Simplified result card ─────────────────────────────────────────────────── */
+
+/* NOT_FOUND note */
+.simple-note {
+  font-size: 0.87rem;
+  color: #71717a;
+  line-height: 1.6;
+  margin: 0.5rem 0 0.75rem;
+}
+
+/* Spending TX block (REPLACED) */
+.simple-spending-tx {
+  background: rgba(239, 68, 68, 0.07);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.simple-spending-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.simple-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+
+.simple-spending-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.simple-spending-links .explorer-btn {
+  font-size: 0.76rem !important;
+  padding: 0.2rem 0.55rem !important;
+}
+
+/* Input UTXO rows */
+.simple-inputs {
+  margin-bottom: 1rem;
+}
+
+.simple-section-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+
+.simple-section-source {
+  font-size: 0.68rem;
+  color: #52525b;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+
+.simple-input-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 8px;
+  margin-bottom: 0.3rem;
+  font-size: 0.84rem;
+  border: 1px solid transparent;
+}
+
+.simple-input-row.sir-unspent  { background: rgba(245,158,11,0.06);  border-color: rgba(245,158,11,0.18); }
+.simple-input-row.sir-this     { background: rgba(34,197,94,0.06);   border-color: rgba(34,197,94,0.18);  }
+.simple-input-row.sir-other    { background: rgba(239,68,68,0.07);   border-color: rgba(239,68,68,0.2);   }
+.simple-input-row.sir-unknown  { background: rgba(113,113,122,0.06); border-color: rgba(113,113,122,0.14);}
+.simple-input-row.sir-coinbase { background: rgba(247,147,26,0.05);  border-color: rgba(247,147,26,0.15); }
+
+.sir-ref   { white-space: nowrap; font-size: 0.8rem; }
+.sir-addr  { font-size: 0.8rem; }
+.sir-status {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+}
+
+.sir-unspent-label { color: #fbbf24; }
+.sir-this-label    { color: #4ade80; }
+.sir-other-label   { color: #f87171; display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; }
+
+/* TX explorer links row */
+.simple-tx-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .btc-page { flex-direction: column; }
