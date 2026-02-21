@@ -378,6 +378,13 @@ function TonDetails() {
             <span className="sidebar-icon">🔍</span>
             <span className="sidebar-text">Ton Details</span>
           </Link>
+          <Link 
+            to="/btc-safe-to-fail" 
+            className={`sidebar-link ${location.pathname === '/btc-safe-to-fail' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">₿</span>
+            <span className="sidebar-text">BTC Safe-to-Fail</span>
+          </Link>
         </div>
       </nav>
 
