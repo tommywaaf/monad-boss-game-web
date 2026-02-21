@@ -462,37 +462,6 @@ async function analyzeTx(txid) {
   }
 }
 
-// ─── Quick status check (batch mode) ─────────────────────────────────────────
-// Fetches only what's needed for a status row: confirmed/replaced/unconfirmed.
-// Skips UTXO checks, source balances, and replacing-TX details — much faster.
-async function quickCheckTx(txid) {
-  const [cyRes, bcRes, msRes] = await Promise.all([
-    safeFetch(`${BLOCKCYPHER}/txs/${txid}?limit=1&includeHex=false`, 10000),
-    safeFetch(`${BLOCKCHAIN_COM}/rawtx/${txid}?cors=true`, 10000),
-    safeFetch(`https://mempool.space/api/tx/${txid}`, 10000),
-  ])
-  const cyData = cyRes.ok ? cyRes.data : null
-  const bcData = bcRes.ok ? bcRes.data : null
-  const msData = msRes.ok ? msRes.data : null
-
-  if (!cyData && !bcData && !msData) return { status: 'NOT_FOUND', txid, blockHeight: null, replacedBy: null }
-
-  const msConfirmed   = msData?.status?.confirmed === true
-  const cyConfirms    = cyData?.confirmations ?? 0
-  const cyHeight      = (cyData?.block_height > 0) ? cyData.block_height : null
-  const bcHeight      = (bcData?.block_height > 0) ? bcData.block_height : null
-  const msHeight      = msData?.status?.block_height || null
-  const blockHeight   = cyHeight ?? msHeight ?? bcHeight
-  const confirmedByAny = cyConfirms > 0 || !!cyHeight || !!bcHeight || msConfirmed
-  const doubleSpend   = cyData?.double_spend === true
-  const replacedBy    = cyData?.double_spend_tx || null
-
-  let status = 'UNCONFIRMED'
-  if (confirmedByAny)  status = 'CONFIRMED'
-  else if (doubleSpend) status = replacedBy ? 'REPLACED' : 'DOUBLE_SPENT'
-
-  return { status, txid, blockHeight, replacedBy }
-}
 
 // ─── Result card ─────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
@@ -880,7 +849,7 @@ function BtcSafeToFail() {
         const rowIndex = i + bIdx + 1
         try {
           const txid = extractTxid(item)
-          const d    = await quickCheckTx(txid)
+          const d    = await analyzeTx(txid)      // same logic as detail view
           rowsRef.push({ index: rowIndex, input: item, txid, status: d.status, replacedBy: d.replacedBy || null, blockHeight: d.blockHeight || null, error: null })
         } catch (err) {
           rowsRef.push({ index: rowIndex, input: item, txid: null, status: 'ERROR', replacedBy: null, blockHeight: null, error: err.message })
