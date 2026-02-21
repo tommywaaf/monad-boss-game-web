@@ -453,11 +453,6 @@ function TxResultCard({ result }) {
   const isReplaced = d.status === 'REPLACED' || d.status === 'DOUBLE_SPENT'
   const checks     = d.utxoSpendChecks || []
 
-  // Inputs that couldn't be checked (no prevTxid and no bcTxIndex available)
-  const uncheckedInputs = d.inputs.filter(
-    inp => !inp.isCoinbase && !inp.prevTxid && inp.bcTxIndex == null
-  )
-
   return (
     <div className={`btc-result-card ${d.status.toLowerCase()}`}>
 
@@ -500,84 +495,140 @@ function TxResultCard({ result }) {
         </div>
       )}
 
-      {/* ── Input UTXO spend checks ── */}
-      {(checks.length > 0 || d.inputs.some(i => i.isCoinbase) || uncheckedInputs.length > 0) && (
-        <div className="simple-inputs">
-          <div className="simple-section-label">
-            Input UTXO{checks.length !== 1 ? 's' : ''}
-            <span className="simple-section-source">mempool.space → blockchain.com</span>
+      {/* ── Inputs / Outputs panels ── */}
+      <div className="io-panels">
+
+        {/* ── Inputs panel ── */}
+        <div className="io-panel">
+          <div className="io-panel-header">
+            <span className="io-panel-title">
+              ↙ Inputs <span className="io-count">{d.inputs.length}</span>
+            </span>
+            {d.totalIn > 0 && (
+              <span className="io-panel-total">
+                {(d.totalIn / 1e8).toFixed(8)} <span className="btc-sym">BTC</span>
+              </span>
+            )}
           </div>
 
-          {/* Checked inputs */}
-          {checks.map((c, i) => (
-            <div key={i} className={`simple-input-row ${
-              !c.checked        ? 'sir-unknown'
-              : !c.spent        ? 'sir-unspent'
-              : c.spentByThisTx ? 'sir-this'
-              :                   'sir-other'
-            }`}>
-              <span className="sir-ref">
-                {c.prevTxid ? (
-                  <>
-                    <a href={`https://mempool.space/tx/${c.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">
-                      {shortHash(c.prevTxid, 8)}
-                    </a>
-                    <span className="muted">:{c.outputIndex ?? '?'}</span>
-                  </>
-                ) : <span className="muted">input:{i}</span>}
+          {d.inputs.map((inp, idx) => {
+            if (inp.isCoinbase) {
+              return (
+                <div key={idx} className="io-row io-coinbase">
+                  <span className="io-row-ref"><span className="tag-coinbase">COINBASE</span></span>
+                  <span className="io-row-addr muted">newly minted BTC</span>
+                  <span className="io-row-amount muted">—</span>
+                  <span className="io-row-status" />
+                </div>
+              )
+            }
+            const check = checks.find(c =>
+              inp.prevTxid != null
+                ? c.prevTxid === inp.prevTxid && c.outputIndex === inp.outputIndex
+                : c.prevTxid == null && c.outputIndex === inp.outputIndex
+            )
+            const rowCls = !check || !check.checked ? 'io-unknown'
+              : !check.spent        ? 'io-unspent'
+              : check.spentByThisTx ? 'io-this'
+              :                       'io-other'
+            return (
+              <div key={idx} className={`io-row ${rowCls}`}>
+                <span className="io-row-ref">
+                  {inp.prevTxid
+                    ? <a href={`https://mempool.space/tx/${inp.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(inp.prevTxid, 7)}</a>
+                    : <span className="muted">in:{idx}</span>}
+                  <span className="io-vout">:{inp.outputIndex ?? '?'}</span>
+                </span>
+                <span className="io-row-addr">
+                  {inp.address
+                    ? <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(inp.address, 8)}</a>
+                    : <span className="muted">—</span>}
+                </span>
+                <span className="io-row-amount">
+                  {inp.valueSats != null
+                    ? <><b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span></>
+                    : <span className="muted">—</span>}
+                </span>
+                <span className="io-row-status">
+                  {!check || !check.checked ? (
+                    <span className="muted">❓</span>
+                  ) : !check.spent ? (
+                    <span className="sir-unspent-label">⏳ unspent</span>
+                  ) : check.spentByThisTx ? (
+                    <span className="sir-this-label">✅ this TX{check.spentConfirmed ? ` · #${check.spentBlockHeight?.toLocaleString()}` : ''}</span>
+                  ) : check.spentByTxid ? (
+                    <span className="sir-other-label">
+                      🔄 <a href={`https://mempool.space/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(check.spentByTxid, 7)}</a>
+                      <button className="copy-btn" onClick={() => copyToClipboard(check.spentByTxid)}>⧉</button>
+                      {check.spentConfirmed && <> · #{check.spentBlockHeight?.toLocaleString()}</>}
+                    </span>
+                  ) : (
+                    <span className="sir-other-label">🔄 spent (unresolved)</span>
+                  )}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* ── Outputs panel ── */}
+        <div className="io-panel">
+          <div className="io-panel-header">
+            <span className="io-panel-title">
+              ↗ Outputs <span className="io-count">{d.outputs.length}</span>
+            </span>
+            {d.totalOut > 0 && (
+              <span className="io-panel-total">
+                {(d.totalOut / 1e8).toFixed(8)} <span className="btc-sym">BTC</span>
               </span>
-              {c.address && (
-                <a href={`https://mempool.space/address/${c.address}`} target="_blank" rel="noopener noreferrer"
-                   className="addr-link sir-addr">{shortHash(c.address, 8)}</a>
-              )}
-              <span className="sir-status">
-                {!c.checked ? (
-                  <span className="muted">❓ check failed</span>
-                ) : !c.spent ? (
-                  <span className="sir-unspent-label">⏳ unspent</span>
-                ) : c.spentByThisTx ? (
-                  <span className="sir-this-label">
-                    ✅ spent by this TX{c.spentConfirmed ? ` · block ${c.spentBlockHeight?.toLocaleString()}` : ''}
-                  </span>
-                ) : c.spentByTxid ? (
-                  <span className="sir-other-label">
-                    🔄 spent by{' '}
-                    <a href={`https://mempool.space/tx/${c.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">
-                      {shortHash(c.spentByTxid, 8)}
-                    </a>
-                    <button className="copy-btn" onClick={() => copyToClipboard(c.spentByTxid)}>⧉</button>
-                    {c.spentConfirmed ? ` · block ${c.spentBlockHeight?.toLocaleString()}` : ''}
+            )}
+          </div>
+
+          {d.outputs.map((out, i) => (
+            <div key={i} className={`io-row ${out.isOpReturn ? 'io-opreturn' : out.spent ? 'io-out-spent' : 'io-unspent'}`}>
+              <span className="io-row-ref">
+                <span className="io-vout-idx">#{out.index}</span>
+              </span>
+              <span className="io-row-addr">
+                {out.isOpReturn
+                  ? <span className="tag-opreturn">OP_RETURN</span>
+                  : out.address
+                  ? <a href={`https://mempool.space/address/${out.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(out.address, 8)}</a>
+                  : <span className="muted">—</span>}
+              </span>
+              <span className="io-row-amount">
+                {out.valueSats != null
+                  ? <><b>{(out.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span></>
+                  : <span className="muted">—</span>}
+              </span>
+              <span className="io-row-status">
+                {out.isOpReturn ? (
+                  <span className="muted">data</span>
+                ) : out.spent ? (
+                  <span className="io-spent-label">
+                    ✓ spent
+                    {out.spentByTxid && <> · <a href={`https://mempool.space/tx/${out.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(out.spentByTxid, 7)}</a></>}
                   </span>
                 ) : (
-                  <span className="sir-other-label">
-                    🔄 confirmed spent (spending TX unresolved)
-                    {c.prevTxid && (
-                      <> · <a href={`https://www.blockchain.com/btc/tx/${c.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">bc.com ↗</a></>
-                    )}
-                  </span>
+                  <span className="sir-unspent-label">⏳ unspent</span>
                 )}
               </span>
             </div>
           ))}
+        </div>
+      </div>
 
-          {/* Coinbase inputs */}
-          {d.inputs.filter(i => i.isCoinbase).map((_, i) => (
-            <div key={`cb-${i}`} className="simple-input-row sir-coinbase">
-              <span className="tag-coinbase">COINBASE</span>
-              <span className="muted sir-status">newly minted BTC — no prev output to check</span>
-            </div>
-          ))}
-
-          {/* Inputs with no prevTxid and no bcTxIndex — cannot check */}
-          {uncheckedInputs.map((inp, i) => (
-            <div key={`unk-${i}`} className="simple-input-row sir-unknown">
-              {inp.address
-                ? <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer"
-                     className="addr-link sir-ref">{shortHash(inp.address, 8)}</a>
-                : <span className="muted sir-ref">input:{i}</span>}
-              <span className="muted sir-status">❓ no prevTxid — cannot check UTXO</span>
-            </div>
-          ))}
+      {/* ── Fee summary ── */}
+      {d.feeSats != null && (
+        <div className="io-fee-row">
+          <span className="io-fee-label">Fee</span>
+          <span className="io-fee-amount">{(d.feeSats / 1e8).toFixed(8)} BTC</span>
+          {d.vsize != null && (
+            <span className="io-fee-rate">{Math.round(d.feeSats / d.vsize)} sat/vB</span>
+          )}
+          {d.size != null && d.vsize != null && d.size !== d.vsize && (
+            <span className="io-fee-size muted">{d.vsize} vB / {d.size} B</span>
+          )}
         </div>
       )}
 
