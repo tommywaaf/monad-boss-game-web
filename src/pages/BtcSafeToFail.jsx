@@ -626,9 +626,9 @@ function TxResultCard({ result }) {
                     </div>
                     {check.spentByTxid && (
                       <div className="itc-explorer-links">
-                        {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
-                        {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/btc/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
-                        {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
+                        <a href={`https://mempool.space/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
+                        <a href={`https://www.blockchain.com/btc/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
+                        <a href={`https://live.blockcypher.com/btc/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
                       </div>
                     )}
                   </div>
@@ -648,24 +648,30 @@ function TxResultCard({ result }) {
                   </div>
                 )}
 
-                {/* ── check unavailable — but we know the replacing TX at the TX level ── */}
+                {/* ── check unavailable — use replacing TX data (same UTXOs via RBF reuse) ── */}
                 {!check && isReplaced && d.replacedBy && (
                   <div className="inp-trace-claimed">
                     <div className="itc-claimed-title">
-                      This TX was replaced (UTXO-level trace unavailable from providers)
+                      This UTXO was claimed by the below transaction
                     </div>
                     <div className="itc-claimed-detail">
-                      <span className="inp-trace-label">Replacing TX:</span>
-                      <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(d.replacedBy, 12)}</a>
+                      <span className="inp-trace-label">Spent in:</span>
+                      <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(d.replacedBy, 10)}</a>
                       <button className="copy-btn" onClick={() => copyToClipboard(d.replacedBy)}>⧉</button>
+                      {repInputIdx >= 0 && <span className="itc-input-ref">Input #{repInputIdx}</span>}
+                      {repInput?.valueSats != null && (
+                        <span className="itc-match-amt">
+                          · <b>{(repInput.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span>
+                        </span>
+                      )}
                       {d.replacingTx?.blockHeight && (
                         <span className="replacement-confirmed-badge">✓ block {d.replacingTx.blockHeight.toLocaleString()}</span>
                       )}
                     </div>
                     <div className="itc-explorer-links">
-                      {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
-                      {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
-                      {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
+                      <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
+                      <a href={`https://www.blockchain.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
+                      <a href={`https://live.blockcypher.com/btc/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
                     </div>
                   </div>
                 )}
@@ -677,15 +683,22 @@ function TxResultCard({ result }) {
                   </div>
                 )}
 
-                {/* ── source footnote: bonus "where did this input come from?" ── */}
-                {inp.prevTxid && (
-                  <div className="inp-trace-footnote">
-                    <span className="itc-fn-label">Source UTXO:</span>
-                    <a href={`https://mempool.space/tx/${inp.prevTxid}`} target="_blank" rel="noopener noreferrer"
-                       className="hash-link itc-fn-link">{shortHash(inp.prevTxid, 10)}</a>
-                    {inp.outputIndex != null && <span className="muted">:{inp.outputIndex}</span>}
-                  </div>
-                )}
+                {/* ── source footnote: "where did this input come from?" ── */}
+                {/* Fall back to repInput.prevTxid when inp.prevTxid is unavailable
+                    (e.g. blockchain.com-only TX) — the replacing TX has the same UTXO
+                    and was fetched from BlockCypher/mempool which give full prevTxids. */}
+                {(inp.prevTxid || repInput?.prevTxid) && (() => {
+                  const srcTxid = inp.prevTxid || repInput.prevTxid
+                  const srcIdx  = inp.outputIndex ?? repInput?.outputIndex
+                  return (
+                    <div className="inp-trace-footnote">
+                      <span className="itc-fn-label">Source UTXO:</span>
+                      <a href={`https://mempool.space/tx/${srcTxid}`} target="_blank" rel="noopener noreferrer"
+                         className="hash-link itc-fn-link">{shortHash(srcTxid, 10)}</a>
+                      {srcIdx != null && <span className="muted">:{srcIdx}</span>}
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
