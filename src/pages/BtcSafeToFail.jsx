@@ -592,9 +592,12 @@ function TxResultCard({ result }) {
             )
 
             // ── find the same UTXO as an input in the replacing TX (if any) ──
-            const repInput    = d.replacingTx?.inputs?.find(ri =>
-              ri.prevTxid != null && inp.prevTxid != null &&
-              ri.prevTxid === inp.prevTxid && ri.outputIndex === inp.outputIndex
+            // Match by prevTxid+outputIndex first; fall back to address match
+            // (needed when prevTxid is unavailable on the original TX).
+            const repInput = d.replacingTx?.inputs?.find(ri =>
+              ri.prevTxid != null && inp.prevTxid != null
+                ? ri.prevTxid === inp.prevTxid && ri.outputIndex === inp.outputIndex
+                : inp.address != null && ri.address === inp.address
             )
             const repInputIdx = repInput ? d.replacingTx.inputs.indexOf(repInput) : -1
 
@@ -609,28 +612,19 @@ function TxResultCard({ result }) {
             return (
               <div key={idx} className={`inp-trace ${cardCls}`}>
 
-                {/* ── header: Input #n + amount ── */}
+                {/* ── header: Input #n · address · amount ── */}
                 <div className="inp-trace-header">
-                  <span className="inp-trace-idx">Input #{idx}</span>
+                  <div className="inp-trace-header-left">
+                    <span className="inp-trace-idx">Input #{idx}</span>
+                    {inp.address && (
+                      <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer"
+                         className="addr-link inp-trace-addr">{shortHash(inp.address, 11)}</a>
+                    )}
+                  </div>
                   {inp.valueSats != null && (
                     <span className="inp-trace-amount">
                       <b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span>
                     </span>
-                  )}
-                </div>
-
-                {/* ── source UTXO ── */}
-                <div className="inp-trace-source">
-                  <span className="inp-trace-label">Spending:</span>
-                  {inp.prevTxid
-                    ? <a href={`https://mempool.space/tx/${inp.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(inp.prevTxid, 10)}</a>
-                    : <span className="muted">unknown source</span>}
-                  {inp.outputIndex != null && <span className="muted itc-vout">:{inp.outputIndex}</span>}
-                  {inp.address && (
-                    <>
-                      <span className="muted itc-dot">·</span>
-                      <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(inp.address, 9)}</a>
-                    </>
                   )}
                 </div>
 
@@ -696,6 +690,16 @@ function TxResultCard({ result }) {
                 {!check && !isReplaced && (
                   <div className="inp-trace-status itc-status-unknown">
                     ❓ UTXO spend status unavailable
+                  </div>
+                )}
+
+                {/* ── source footnote: bonus "where did this input come from?" ── */}
+                {inp.prevTxid && (
+                  <div className="inp-trace-footnote">
+                    <span className="itc-fn-label">Source UTXO:</span>
+                    <a href={`https://mempool.space/tx/${inp.prevTxid}`} target="_blank" rel="noopener noreferrer"
+                       className="hash-link itc-fn-link">{shortHash(inp.prevTxid, 10)}</a>
+                    {inp.outputIndex != null && <span className="muted">:{inp.outputIndex}</span>}
                   </div>
                 )}
               </div>
