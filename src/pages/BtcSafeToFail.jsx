@@ -186,6 +186,9 @@ async function analyzeTx(txid) {
       address:     cy?.addresses?.[0]    || ms?.prevout?.scriptpubkey_address   || bc?.prev_out?.addr || null,
       valueSats:   cy?.output_value      ?? ms?.prevout?.value                  ?? bc?.prev_out?.value ?? null,
       sequence:    cy?.sequence          ?? ms?.sequence                        ?? bc?.sequence       ?? null,
+      // blockchain.com internal index — used as fallback to look up the prev tx
+      // when no prevTxid hash is available from the other providers
+      bcTxIndex:   isCoinbase ? null : (bc?.prev_out?.tx_index ?? null),
       isCoinbase,
     })
   }
@@ -217,41 +220,104 @@ async function analyzeTx(txid) {
   const totalOut = outputs.reduce((s, out) => s + (out.valueSats ?? 0), 0)
   const rbf      = isRbfSignaled(inputs) || !!bcData?.rbf
 
-  // ── UTXO-level outspend check (mempool.space) ──
-  // This is the most reliable replacement detector: directly asks "was this specific
-  // output already spent, and by which txid?" — works even when BlockCypher misses the TX.
-  const checkableInputs = inputs.filter(i => !i.isCoinbase && i.prevTxid && i.outputIndex != null)
+  // ── UTXO-level outspend check ──
+  // Tries three methods in priority order per input:
+  //   1. mempool.space /outspend  (needs prevTxid hash, returns spending txid)
+  //   2. blockchain.com prev-tx by tx_index (fallback when prevTxid unknown or mempool.space
+  //      doesn't have the tx; fetches the prev tx, checks out[n].spent and
+  //      resolves spending txid via spending_outpoints)
+  const checkableInputs = inputs.filter(
+    i => !i.isCoinbase && (i.prevTxid || i.bcTxIndex != null) && i.outputIndex != null
+  )
   const utxoSpendChecks = checkableInputs.length > 0
     ? await Promise.all(checkableInputs.map(async inp => {
-        const res = await safeFetch(
-          `https://mempool.space/api/tx/${inp.prevTxid}/outspend/${inp.outputIndex}`
-        )
-        if (!res.ok) return {
-          prevTxid: inp.prevTxid, outputIndex: inp.outputIndex, checked: false,
+
+        // ── Method 1: mempool.space outspend ──
+        if (inp.prevTxid) {
+          const msRes = await safeFetch(
+            `https://mempool.space/api/tx/${inp.prevTxid}/outspend/${inp.outputIndex}`
+          )
+          if (msRes.ok) {
+            const d = msRes.data
+            return {
+              prevTxid:         inp.prevTxid,
+              outputIndex:      inp.outputIndex,
+              address:          inp.address,
+              checked:          true,
+              spent:            d.spent === true,
+              spentByTxid:      d.txid  || null,
+              spentByThisTx:    d.txid === txid,
+              spentConfirmed:   d.status?.confirmed    || false,
+              spentBlockHeight: d.status?.block_height || null,
+              method:           'mempool.space',
+            }
+          }
         }
-        const d = res.data
-        return {
-          prevTxid:         inp.prevTxid,
-          outputIndex:      inp.outputIndex,
-          address:          inp.address,
-          checked:          true,
-          spent:            d.spent === true,
-          spentByTxid:      d.txid  || null,
-          spentByThisTx:    d.txid === txid,
-          spentConfirmed:   d.status?.confirmed    || false,
-          spentBlockHeight: d.status?.block_height || null,
+
+        // ── Method 2: blockchain.com prev-tx by tx_index ──
+        // Blockchain.com stores each tx by an internal integer tx_index.
+        // The rawtx response includes out[n].spent (boolean) and
+        // out[n].spending_outpoints[{tx_index}] which lets us resolve the spending txid.
+        if (inp.bcTxIndex != null) {
+          const bcPrevRes = await safeFetch(
+            `${BLOCKCHAIN_COM}/rawtx/${inp.bcTxIndex}?cors=true`
+          )
+          if (bcPrevRes.ok) {
+            const prevTx      = bcPrevRes.data
+            const prevTxidHash = prevTx.hash || inp.prevTxid || null
+            const outEntry    = prevTx.out?.[inp.outputIndex]
+
+            if (outEntry !== undefined) {
+              const spent = outEntry.spent === true
+              let spentByTxid      = null
+              let spentConfirmed   = false
+              let spentBlockHeight = null
+
+              // Try to resolve the spending txid from spending_outpoints
+              if (spent && outEntry.spending_outpoints?.length > 0) {
+                const spendIdx = outEntry.spending_outpoints[0].tx_index
+                const spendRes = await safeFetch(
+                  `${BLOCKCHAIN_COM}/rawtx/${spendIdx}?cors=true`
+                )
+                if (spendRes.ok) {
+                  spentByTxid      = spendRes.data.hash        || null
+                  spentConfirmed   = (spendRes.data.block_height > 0) || false
+                  spentBlockHeight = spendRes.data.block_height  || null
+                }
+              }
+
+              return {
+                prevTxid:         prevTxidHash,
+                outputIndex:      inp.outputIndex,
+                address:          inp.address,
+                checked:          true,
+                spent,
+                spentByTxid,
+                spentByThisTx:    spentByTxid === txid,
+                spentConfirmed,
+                spentBlockHeight,
+                method:           'blockchain.com',
+              }
+            }
+          }
         }
+
+        return { prevTxid: inp.prevTxid, outputIndex: inp.outputIndex, checked: false }
       }))
     : []
 
-  // If any UTXO is spent by a *different* txid and we currently think it's unconfirmed,
-  // it was actually replaced — upgrade the status now.
-  const spentElsewhere = utxoSpendChecks.find(
-    c => c.checked && c.spent && c.spentByTxid && !c.spentByThisTx
+  // Upgrade status to REPLACED if any UTXO is confirmed-spent by a different transaction.
+  // This fires even when BlockCypher/mempool.space never saw the TX —
+  // blockchain.com's out[n].spent=true + our TX is unconfirmed = definite replacement.
+  const spentElsewhere = utxoSpendChecks.find(c =>
+    c.checked && c.spent && !c.spentByThisTx && (
+      (c.spentByTxid !== null) ||                               // explicit different txid
+      (c.method === 'blockchain.com' && status === 'UNCONFIRMED') // bc confirmed-spent, we're not confirmed
+    )
   )
   if (spentElsewhere && (status === 'UNCONFIRMED' || status === 'DOUBLE_SPENT')) {
-    status    = 'REPLACED'
-    replacedBy = spentElsewhere.spentByTxid
+    status     = 'REPLACED'
+    replacedBy = spentElsewhere.spentByTxid || null   // may be null if spending tx fetch failed
   }
 
   // ── Source address balances ──
@@ -558,7 +624,7 @@ function SourceConfidencePanel({ sourceBalances, utxoSpendChecks, status, rbf })
         <div className="utxo-check-section">
           <div className="utxo-check-header">
             Input UTXO Outspend Check
-            <span className="utxo-check-source">via mempool.space</span>
+            <span className="utxo-check-source">mempool.space → blockchain.com</span>
           </div>
           <div className="utxo-check-rows">
             {utxoSpendChecks.map((c, i) => (
@@ -581,14 +647,15 @@ function SourceConfidencePanel({ sourceBalances, utxoSpendChecks, status, rbf })
                   <span className="muted">:{c.outputIndex ?? '?'}</span>
                 </span>
                 {!c.checked ? (
-                  <span className="uc-status muted">Check failed</span>
+                  <span className="uc-status muted">Check failed — try again or verify manually</span>
                 ) : !c.spent ? (
-                  <span className="uc-status uc-unspent-text">Unspent — UTXO still in mempool</span>
+                  <span className="uc-status uc-unspent-text">Unspent — UTXO still available</span>
                 ) : c.spentByThisTx ? (
                   <span className="uc-status uc-spent-this-text">
                     Spent by this TX{c.spentConfirmed ? ` (confirmed @ block ${c.spentBlockHeight})` : ' (unconfirmed)'}
                   </span>
-                ) : (
+                ) : c.spentByTxid ? (
+                  // mempool.space or blockchain.com resolved the spending txid
                   <span className="uc-status uc-spent-other-text">
                     Spent by{' '}
                     <a href={`https://mempool.space/tx/${c.spentByTxid}`}
@@ -596,7 +663,21 @@ function SourceConfidencePanel({ sourceBalances, utxoSpendChecks, status, rbf })
                       {shortHash(c.spentByTxid, 8)}
                     </a>
                     <button className="copy-btn" onClick={() => copyToClipboard(c.spentByTxid)} title="Copy">⧉</button>
-                    {c.spentConfirmed ? ` (confirmed @ block ${c.spentBlockHeight})` : ' (unconfirmed)'}
+                    {c.spentConfirmed
+                      ? ` (confirmed @ block ${c.spentBlockHeight})`
+                      : ' (unconfirmed)'}
+                  </span>
+                ) : (
+                  // blockchain.com confirmed spent=true but spending_outpoints fetch failed
+                  <span className="uc-status uc-spent-other-text">
+                    Confirmed spent by a different TX{c.spentConfirmed ? ` (@ block ${c.spentBlockHeight})` : ''}{' '}
+                    — spending txid unresolved.{' '}
+                    {c.prevTxid && (
+                      <a href={`https://www.blockchain.com/btc/tx/${c.prevTxid}`}
+                         target="_blank" rel="noopener noreferrer" className="hash-link">
+                        Verify on blockchain.com ↗
+                      </a>
+                    )}
                   </span>
                 )}
               </div>
@@ -604,7 +685,8 @@ function SourceConfidencePanel({ sourceBalances, utxoSpendChecks, status, rbf })
           </div>
           {uncheckedUtxos.length > 0 && (
             <div className="conf-error-footer">
-              {uncheckedUtxos.length} UTXO check{uncheckedUtxos.length > 1 ? 's' : ''} failed (rate limit or missing prevTxid).
+              {uncheckedUtxos.length} UTXO check{uncheckedUtxos.length > 1 ? 's' : ''} could not be resolved
+              (both mempool.space and blockchain.com failed — rate limit or tx too old).
             </div>
           )}
         </div>
