@@ -1101,44 +1101,37 @@
   margin-bottom: 0.6rem;
 }
 
-/* ─── Inputs / Outputs two-panel layout ──────────────────────────────────────── */
-.io-panels {
+/* ─── Transaction Flow two-column layout ─────────────────────────────────────── */
+.txflow {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.85rem;
   margin-bottom: 0.85rem;
 }
 
-.io-panel {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 10px;
-  overflow: hidden;
+.txflow-col {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
-.io-panel-header {
+.txflow-col-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.55rem 0.85rem;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  gap: 0.5rem;
-}
-
-.io-panel-title {
+  gap: 0.4rem;
   font-size: 0.72rem;
   font-weight: 700;
   color: #71717a;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  white-space: nowrap;
+  padding: 0.5rem 0.85rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  margin-bottom: 0.45rem;
 }
 
-.io-count {
-  display: inline-flex;
-  align-items: center;
+.txflow-count {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 10px;
   padding: 0 0.45rem;
@@ -1147,100 +1140,194 @@
   font-weight: 500;
   text-transform: none;
   letter-spacing: 0;
-  margin-left: 0.3rem;
 }
 
-.io-panel-total {
+.txflow-total {
+  margin-left: auto;
   font-size: 0.8rem;
   font-weight: 600;
   color: #e4e4e7;
-  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
-/* Each row is a 4-column grid: ref | addr | amount | status */
-.io-row {
-  display: grid;
-  grid-template-columns: minmax(70px, max-content) minmax(50px, 1fr) minmax(100px, max-content) auto;
-  align-items: center;
-  column-gap: 0.55rem;
-  padding: 0.45rem 0.85rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  font-size: 0.82rem;
-  border-left: 2px solid transparent;
-  transition: background 0.12s;
+/* ─── Input Trace Cards ──────────────────────────────────────────────────────── */
+.inp-trace {
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-left: 3px solid rgba(113, 113, 122, 0.3);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
 
-.io-row:last-child { border-bottom: none; }
+.inp-trace.itc-replaced { border-left-color: #ef4444; background: rgba(239, 68,  68,  0.05); }
+.inp-trace.itc-this     { border-left-color: #22c55e; background: rgba(34,  197, 94,  0.05); }
+.inp-trace.itc-unspent  { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.05); }
+.inp-trace.itc-unknown  { border-left-color: rgba(113, 113, 122, 0.3); }
+.inp-trace.itc-coinbase { border-left-color: #f7931a; background: rgba(247, 147, 26,  0.05); }
 
-.io-row:hover { background: rgba(255, 255, 255, 0.025) !important; }
-
-/* Row color variants — inputs */
-.io-row.io-unspent  { border-left-color: rgba(245, 158, 11, 0.65); background: rgba(245, 158, 11, 0.04); }
-.io-row.io-this     { border-left-color: rgba(34,  197, 94,  0.65); background: rgba(34,  197, 94,  0.04); }
-.io-row.io-other    { border-left-color: rgba(239, 68,  68,  0.65); background: rgba(239, 68,  68,  0.04); }
-.io-row.io-unknown  { border-left-color: rgba(113, 113, 122, 0.35); }
-.io-row.io-coinbase { border-left-color: rgba(247, 147, 26,  0.55); background: rgba(247, 147, 26,  0.04); }
-
-/* Row color variants — outputs */
-.io-row.io-out-spent { border-left-color: rgba(255, 255, 255, 0.15); }
-.io-row.io-opreturn  { border-left-color: rgba(139, 92,  246, 0.45); background: rgba(139, 92,  246, 0.04); }
-
-/* Column styles */
-.io-row-ref {
+.inp-trace-header {
   display: flex;
   align-items: center;
-  gap: 0.1rem;
-  white-space: nowrap;
-  overflow: hidden;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.inp-trace-idx {
   font-size: 0.78rem;
-  min-width: 0;
+  font-weight: 700;
+  color: #a1a1aa;
 }
 
-.io-vout     { color: #52525b; font-size: 0.75rem; }
-.io-vout-idx { color: #71717a; font-size: 0.78rem; }
-
-.io-row-addr {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.io-row-amount {
-  text-align: right;
-  white-space: nowrap;
-  font-size: 0.81rem;
-  color: #d4d4d8;
-}
-
-.io-row-amount b {
-  font-weight: 600;
+.inp-trace-amount {
+  font-size: 0.88rem;
   color: #e4e4e7;
+  white-space: nowrap;
 }
 
+.inp-trace-amount b { font-weight: 700; }
+
+.inp-trace-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.inp-trace-label {
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.itc-vout { color: #52525b; font-size: 0.75rem; }
+.itc-dot  { color: #3f3f46; }
+
+.inp-trace-note {
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+/* ── Replacement detail block ── */
+.inp-trace-claimed {
+  background: rgba(239, 68, 68, 0.09);
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.itc-claimed-title {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: #f87171;
+}
+
+.itc-claimed-detail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.itc-input-ref {
+  font-size: 0.74rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  padding: 0.06rem 0.45rem;
+  color: #f87171;
+  white-space: nowrap;
+}
+
+.itc-match-amt {
+  font-size: 0.8rem;
+  color: #d4d4d8;
+  white-space: nowrap;
+}
+
+/* ── Status lines ── */
+.inp-trace-status {
+  font-size: 0.81rem;
+  padding: 0.32rem 0.6rem;
+  border-radius: 5px;
+  line-height: 1.4;
+}
+
+.itc-status-this    { background: rgba(34,  197, 94,  0.1); color: #4ade80; }
+.itc-status-unspent { background: rgba(245, 158, 11, 0.1); color: #fbbf24; }
+.itc-status-unknown { color: #71717a; }
+
+/* ─── BTC symbol ─────────────────────────────────────────────────────────────── */
 .btc-sym {
   color: #f7931a;
   font-size: 0.72rem;
   font-weight: 500;
 }
 
-.io-row-status {
-  font-size: 0.77rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: flex;
+/* ─── Output List ────────────────────────────────────────────────────────────── */
+.out-item {
+  display: grid;
+  grid-template-columns: 2rem minmax(50px, 1fr) minmax(88px, max-content) auto;
   align-items: center;
-  gap: 0.3rem;
-  padding-left: 0.35rem;
+  column-gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 7px;
+  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 3px solid transparent;
 }
 
-.io-spent-label {
+.out-item.oi-unspent  { border-left-color: rgba(245, 158, 11, 0.55); background: rgba(245, 158, 11, 0.04); }
+.out-item.oi-spent    { border-left-color: rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.02); }
+.out-item.oi-opreturn { border-left-color: rgba(139,  92, 246, 0.45); background: rgba(139,  92, 246, 0.04); }
+
+.out-item-idx {
+  font-size: 0.75rem;
+  color: #71717a;
+  text-align: center;
+}
+
+.out-item-addr {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.out-item-amount {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 0.81rem;
+  color: #d4d4d8;
+}
+
+.out-item-amount b { font-weight: 600; color: #e4e4e7; }
+
+.out-item-status {
+  font-size: 0.76rem;
+  white-space: nowrap;
+  padding-left: 0.3rem;
+}
+
+.oi-spent-label {
   color: #a1a1aa;
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  white-space: nowrap;
 }
 
 /* ─── Fee summary row ─────────────────────────────────────────────────────────── */
@@ -1307,12 +1394,12 @@
   .utxo-table th,
   .utxo-table td { padding: 0.5rem 0.6rem; }
 
-  .io-panels { grid-template-columns: 1fr; }
+  .txflow { grid-template-columns: 1fr; }
 
-  .io-row {
-    grid-template-columns: minmax(65px, max-content) minmax(40px, 1fr) minmax(88px, max-content) auto;
-    column-gap: 0.35rem;
-    padding: 0.4rem 0.65rem;
+  .out-item {
+    grid-template-columns: 1.8rem minmax(40px, 1fr) minmax(80px, max-content) auto;
+    column-gap: 0.3rem;
+    padding: 0.4rem 0.55rem;
     font-size: 0.78rem;
   }
 }

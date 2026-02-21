@@ -495,117 +495,165 @@ function TxResultCard({ result }) {
         </div>
       )}
 
-      {/* ── Inputs / Outputs panels ── */}
-      <div className="io-panels">
+      {/* ── Transaction Flow ── */}
+      <div className="txflow">
 
-        {/* ── Inputs panel ── */}
-        <div className="io-panel">
-          <div className="io-panel-header">
-            <span className="io-panel-title">
-              ↙ Inputs <span className="io-count">{d.inputs.length}</span>
-            </span>
+        {/* ── Inputs column: one trace-card per input ── */}
+        <div className="txflow-col">
+          <div className="txflow-col-header">
+            <span>↙ Inputs</span>
+            <span className="txflow-count">{d.inputs.length}</span>
             {d.totalIn > 0 && (
-              <span className="io-panel-total">
-                {(d.totalIn / 1e8).toFixed(8)} <span className="btc-sym">BTC</span>
-              </span>
+              <span className="txflow-total">{(d.totalIn / 1e8).toFixed(8)} <span className="btc-sym">BTC</span></span>
             )}
           </div>
 
           {d.inputs.map((inp, idx) => {
+            // ── coinbase ──
             if (inp.isCoinbase) {
               return (
-                <div key={idx} className="io-row io-coinbase">
-                  <span className="io-row-ref"><span className="tag-coinbase">COINBASE</span></span>
-                  <span className="io-row-addr muted">newly minted BTC</span>
-                  <span className="io-row-amount muted">—</span>
-                  <span className="io-row-status" />
+                <div key={idx} className="inp-trace itc-coinbase">
+                  <div className="inp-trace-header">
+                    <span className="inp-trace-idx">Input #{idx}</span>
+                    <span className="tag-coinbase">COINBASE</span>
+                  </div>
+                  <div className="inp-trace-note muted">Newly minted BTC — no previous UTXO to spend</div>
                 </div>
               )
             }
+
+            // ── find matching UTXO check ──
             const check = checks.find(c =>
               inp.prevTxid != null
                 ? c.prevTxid === inp.prevTxid && c.outputIndex === inp.outputIndex
                 : c.prevTxid == null && c.outputIndex === inp.outputIndex
             )
-            const rowCls = !check || !check.checked ? 'io-unknown'
-              : !check.spent        ? 'io-unspent'
-              : check.spentByThisTx ? 'io-this'
-              :                       'io-other'
+
+            // ── find the same UTXO as an input in the replacing TX (if any) ──
+            const repInput    = d.replacingTx?.inputs?.find(ri =>
+              ri.prevTxid != null && inp.prevTxid != null &&
+              ri.prevTxid === inp.prevTxid && ri.outputIndex === inp.outputIndex
+            )
+            const repInputIdx = repInput ? d.replacingTx.inputs.indexOf(repInput) : -1
+
+            const spentElsewhere = check?.checked && check.spent && !check.spentByThisTx
+            const spentHere      = check?.checked && check.spentByThisTx
+            const utxoUnspent    = check?.checked && !check.spent
+            const cardCls = spentElsewhere ? 'itc-replaced'
+              : spentHere   ? 'itc-this'
+              : utxoUnspent ? 'itc-unspent'
+              :               'itc-unknown'
+
             return (
-              <div key={idx} className={`io-row ${rowCls}`}>
-                <span className="io-row-ref">
-                  {inp.prevTxid
-                    ? <a href={`https://mempool.space/tx/${inp.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(inp.prevTxid, 7)}</a>
-                    : <span className="muted">in:{idx}</span>}
-                  <span className="io-vout">:{inp.outputIndex ?? '?'}</span>
-                </span>
-                <span className="io-row-addr">
-                  {inp.address
-                    ? <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(inp.address, 8)}</a>
-                    : <span className="muted">—</span>}
-                </span>
-                <span className="io-row-amount">
-                  {inp.valueSats != null
-                    ? <><b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span></>
-                    : <span className="muted">—</span>}
-                </span>
-                <span className="io-row-status">
-                  {!check || !check.checked ? (
-                    <span className="muted">❓</span>
-                  ) : !check.spent ? (
-                    <span className="sir-unspent-label">⏳ unspent</span>
-                  ) : check.spentByThisTx ? (
-                    <span className="sir-this-label">✅ this TX{check.spentConfirmed ? ` · #${check.spentBlockHeight?.toLocaleString()}` : ''}</span>
-                  ) : check.spentByTxid ? (
-                    <span className="sir-other-label">
-                      🔄 <a href={`https://mempool.space/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(check.spentByTxid, 7)}</a>
-                      <button className="copy-btn" onClick={() => copyToClipboard(check.spentByTxid)}>⧉</button>
-                      {check.spentConfirmed && <> · #{check.spentBlockHeight?.toLocaleString()}</>}
+              <div key={idx} className={`inp-trace ${cardCls}`}>
+
+                {/* ── header: Input #n + amount ── */}
+                <div className="inp-trace-header">
+                  <span className="inp-trace-idx">Input #{idx}</span>
+                  {inp.valueSats != null && (
+                    <span className="inp-trace-amount">
+                      <b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span>
                     </span>
-                  ) : (
-                    <span className="sir-other-label">🔄 spent (unresolved)</span>
                   )}
-                </span>
+                </div>
+
+                {/* ── source UTXO ── */}
+                <div className="inp-trace-source">
+                  <span className="inp-trace-label">Spending:</span>
+                  {inp.prevTxid
+                    ? <a href={`https://mempool.space/tx/${inp.prevTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(inp.prevTxid, 10)}</a>
+                    : <span className="muted">unknown source</span>}
+                  {inp.outputIndex != null && <span className="muted itc-vout">:{inp.outputIndex}</span>}
+                  {inp.address && (
+                    <>
+                      <span className="muted itc-dot">·</span>
+                      <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(inp.address, 9)}</a>
+                    </>
+                  )}
+                </div>
+
+                {/* ── spent by a DIFFERENT TX (replacement) ── */}
+                {spentElsewhere && (
+                  <div className="inp-trace-claimed">
+                    <div className="itc-claimed-title">
+                      🔄 This UTXO was claimed by a different transaction
+                    </div>
+                    <div className="itc-claimed-detail">
+                      <span className="inp-trace-label">Spent in:</span>
+                      {check.spentByTxid ? (
+                        <>
+                          <a href={`https://mempool.space/tx/${check.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(check.spentByTxid, 10)}</a>
+                          <button className="copy-btn" onClick={() => copyToClipboard(check.spentByTxid)}>⧉</button>
+                        </>
+                      ) : <span className="muted">txid unresolved</span>}
+                      {repInputIdx >= 0 && <span className="itc-input-ref">Input #{repInputIdx}</span>}
+                      {repInput?.valueSats != null && (
+                        <span className="itc-match-amt">
+                          · <b>{(repInput.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span>
+                        </span>
+                      )}
+                      {check.spentConfirmed && (
+                        <span className="replacement-confirmed-badge">✓ block {check.spentBlockHeight?.toLocaleString()}</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── spent by THIS tx ── */}
+                {spentHere && (
+                  <div className="inp-trace-status itc-status-this">
+                    ✅ Claimed by this TX{check.spentConfirmed ? ` · confirmed block ${check.spentBlockHeight?.toLocaleString()}` : ' · pending confirmation'}
+                  </div>
+                )}
+
+                {/* ── UTXO still unspent ── */}
+                {utxoUnspent && (
+                  <div className="inp-trace-status itc-status-unspent">
+                    ⏳ UTXO still unspent
+                  </div>
+                )}
+
+                {/* ── check unavailable ── */}
+                {!check && (
+                  <div className="inp-trace-status itc-status-unknown">
+                    ❓ UTXO spend status unavailable
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
 
-        {/* ── Outputs panel ── */}
-        <div className="io-panel">
-          <div className="io-panel-header">
-            <span className="io-panel-title">
-              ↗ Outputs <span className="io-count">{d.outputs.length}</span>
-            </span>
+        {/* ── Outputs column: compact list ── */}
+        <div className="txflow-col">
+          <div className="txflow-col-header">
+            <span>↗ Outputs</span>
+            <span className="txflow-count">{d.outputs.length}</span>
             {d.totalOut > 0 && (
-              <span className="io-panel-total">
-                {(d.totalOut / 1e8).toFixed(8)} <span className="btc-sym">BTC</span>
-              </span>
+              <span className="txflow-total">{(d.totalOut / 1e8).toFixed(8)} <span className="btc-sym">BTC</span></span>
             )}
           </div>
 
           {d.outputs.map((out, i) => (
-            <div key={i} className={`io-row ${out.isOpReturn ? 'io-opreturn' : out.spent ? 'io-out-spent' : 'io-unspent'}`}>
-              <span className="io-row-ref">
-                <span className="io-vout-idx">#{out.index}</span>
-              </span>
-              <span className="io-row-addr">
+            <div key={i} className={`out-item ${out.isOpReturn ? 'oi-opreturn' : out.spent ? 'oi-spent' : 'oi-unspent'}`}>
+              <span className="out-item-idx">#{out.index}</span>
+              <span className="out-item-addr">
                 {out.isOpReturn
                   ? <span className="tag-opreturn">OP_RETURN</span>
                   : out.address
-                  ? <a href={`https://mempool.space/address/${out.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(out.address, 8)}</a>
+                  ? <a href={`https://mempool.space/address/${out.address}`} target="_blank" rel="noopener noreferrer" className="addr-link">{shortHash(out.address, 9)}</a>
                   : <span className="muted">—</span>}
               </span>
-              <span className="io-row-amount">
+              <span className="out-item-amount">
                 {out.valueSats != null
                   ? <><b>{(out.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span></>
                   : <span className="muted">—</span>}
               </span>
-              <span className="io-row-status">
+              <span className="out-item-status">
                 {out.isOpReturn ? (
                   <span className="muted">data</span>
                 ) : out.spent ? (
-                  <span className="io-spent-label">
+                  <span className="oi-spent-label">
                     ✓ spent
                     {out.spentByTxid && <> · <a href={`https://mempool.space/tx/${out.spentByTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(out.spentByTxid, 7)}</a></>}
                   </span>
