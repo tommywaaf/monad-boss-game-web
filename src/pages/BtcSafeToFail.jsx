@@ -120,101 +120,141 @@ async function fetchAddressBalance(addr) {
 
 // ─── Core analysis ────────────────────────────────────────────────────────────
 async function analyzeTx(txid) {
-  // Parallel-fetch both providers
-  const [cyRes, bcRes] = await Promise.all([
+  // Parallel-fetch all three providers
+  // mempool.space is the key addition: it gives prevTxid for every input AND
+  // exposes the /outspend endpoint we use to detect UTXO-level replacements.
+  const [cyRes, bcRes, msRes] = await Promise.all([
     safeFetch(`${BLOCKCYPHER}/txs/${txid}?limit=50&includeHex=false`),
     safeFetch(`${BLOCKCHAIN_COM}/rawtx/${txid}?cors=true`),
+    safeFetch(`https://mempool.space/api/tx/${txid}`),
   ])
 
   const cyData = cyRes.ok ? cyRes.data : null
   const bcData = bcRes.ok ? bcRes.data : null
+  const msData = msRes.ok ? msRes.data : null
 
-  if (!cyData && !bcData) {
+  if (!cyData && !bcData && !msData) {
     return {
       status: 'NOT_FOUND',
       txid,
       providers: {
         blockcypher:   cyRes.notFound ? 'not found' : `error (${cyRes.error || cyRes.httpStatus})`,
         blockchainCom: bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`,
+        mempoolSpace:  msRes.notFound ? 'not found' : `error (${msRes.error || msRes.httpStatus})`,
       },
     }
   }
 
   // ── Confirmation / block info ──
-  const cyConfirms  = cyData?.confirmations ?? 0
-  const cyHeight    = (cyData?.block_height > 0) ? cyData.block_height : null
-  const bcHeight    = (bcData?.block_height > 0) ? bcData.block_height : null
-  const blockHeight = cyHeight ?? bcHeight
+  const msConfirmed   = msData?.status?.confirmed === true
+  const msHeight      = msData?.status?.block_height  || null
+  const msTime        = msData?.status?.block_time    || null
+  const cyConfirms    = cyData?.confirmations ?? 0
+  const cyHeight      = (cyData?.block_height > 0) ? cyData.block_height : null
+  const bcHeight      = (bcData?.block_height > 0) ? bcData.block_height : null
+  const blockHeight   = cyHeight ?? msHeight ?? bcHeight
   const confirmations = cyConfirms || (blockHeight ? 1 : 0)
 
-  // ── Double-spend / RBF ──
-  const doubleSpend  = cyData?.double_spend === true
-  const replacedBy   = cyData?.double_spend_tx || null
+  // ── Double-spend detection (BlockCypher) ──
+  const doubleSpend = cyData?.double_spend === true
+  let   replacedBy  = cyData?.double_spend_tx || null
 
   // ── Status ──
   let status = 'UNCONFIRMED'
-  if (confirmations > 0 || blockHeight) status = 'CONFIRMED'
+  if (confirmations > 0 || blockHeight || msConfirmed) status = 'CONFIRMED'
   if (doubleSpend) status = replacedBy ? 'REPLACED' : 'DOUBLE_SPENT'
 
   // ── Inputs ──
-  // BlockCypher has prev_hash; blockchain.com only has internal tx_index
+  // Priority for prevTxid: BlockCypher → mempool.space → (blockchain.com has none)
+  // Priority for address/value: BlockCypher → mempool.space prevout → blockchain.com
   let inputs = []
-  if (cyData?.inputs?.length) {
-    inputs = cyData.inputs.map((inp, i) => {
-      const bcInp = bcData?.inputs?.[i]
-      return {
-        prevTxid:    inp.prev_hash   || null,
-        outputIndex: inp.output_index ?? null,
-        address:     inp.addresses?.[0] || bcInp?.prev_out?.addr || null,
-        valueSats:   inp.output_value   ?? bcInp?.prev_out?.value ?? null,
-        sequence:    inp.sequence       ?? bcInp?.sequence        ?? null,
-        isCoinbase:  inp.prev_hash === '0000000000000000000000000000000000000000000000000000000000000000',
-      }
+  const maxLen = Math.max(
+    cyData?.inputs?.length ?? 0,
+    msData?.vin?.length    ?? 0,
+    bcData?.inputs?.length ?? 0,
+  )
+  for (let i = 0; i < maxLen; i++) {
+    const cy  = cyData?.inputs?.[i]
+    const ms  = msData?.vin?.[i]
+    const bc  = bcData?.inputs?.[i]
+    const isCoinbase =
+      cy?.prev_hash === '0000000000000000000000000000000000000000000000000000000000000000' ||
+      ms?.is_coinbase === true
+    inputs.push({
+      prevTxid:    cy?.prev_hash         || (isCoinbase ? null : ms?.txid)      || null,
+      outputIndex: cy?.output_index      ?? (isCoinbase ? null : ms?.vout)      ?? bc?.prev_out?.n    ?? null,
+      address:     cy?.addresses?.[0]    || ms?.prevout?.scriptpubkey_address   || bc?.prev_out?.addr || null,
+      valueSats:   cy?.output_value      ?? ms?.prevout?.value                  ?? bc?.prev_out?.value ?? null,
+      sequence:    cy?.sequence          ?? ms?.sequence                        ?? bc?.sequence       ?? null,
+      isCoinbase,
     })
-  } else if (bcData?.inputs?.length) {
-    inputs = bcData.inputs.map(inp => ({
-      prevTxid:    null,
-      outputIndex: inp.prev_out?.n      ?? null,
-      address:     inp.prev_out?.addr   || null,
-      valueSats:   inp.prev_out?.value  ?? null,
-      sequence:    inp.sequence         ?? null,
-      isCoinbase:  false,
-    }))
   }
 
   // ── Outputs ──
-  // BlockCypher has spent_by txid; blockchain.com has boolean spent
+  // BlockCypher has spent_by txid; mempool.space gives address/value; blockchain.com has boolean spent
   let outputs = []
-  if (cyData?.outputs?.length) {
-    outputs = cyData.outputs.map((out, i) => {
-      const bcOut = bcData?.out?.[i]
-      return {
-        index:       i,
-        address:     out.addresses?.[0] || bcOut?.addr  || null,
-        valueSats:   out.value          ?? bcOut?.value ?? null,
-        spent:       !!out.spent_by     || bcOut?.spent || false,
-        spentByTxid: out.spent_by       || null,
-        isOpReturn:  out.addresses == null && out.value === 0,
-      }
-    })
-  } else if (bcData?.out?.length) {
-    outputs = bcData.out.map((out, i) => ({
+  const outLen = Math.max(
+    cyData?.outputs?.length ?? 0,
+    msData?.vout?.length    ?? 0,
+    bcData?.out?.length     ?? 0,
+  )
+  for (let i = 0; i < outLen; i++) {
+    const cy  = cyData?.outputs?.[i]
+    const ms  = msData?.vout?.[i]
+    const bc  = bcData?.out?.[i]
+    outputs.push({
       index:       i,
-      address:     out.addr    || null,
-      valueSats:   out.value   ?? null,
-      spent:       !!out.spent,
-      spentByTxid: null,
-      isOpReturn:  !out.addr && out.value === 0,
-    }))
+      address:     cy?.addresses?.[0]           || ms?.scriptpubkey_address || bc?.addr  || null,
+      valueSats:   cy?.value                    ?? ms?.value                ?? bc?.value ?? null,
+      spent:       !!cy?.spent_by               || !!bc?.spent,
+      spentByTxid: cy?.spent_by                 || null,
+      isOpReturn:  (!cy?.addresses && cy?.value === 0) || (!ms?.scriptpubkey_address && ms?.value === 0),
+    })
   }
 
-  const feeSats  = cyData?.fees ?? bcData?.fee ?? null
-  const totalIn  = inputs.reduce( (s, i) => s + (i.valueSats ?? 0), 0)
-  const totalOut = outputs.reduce((s, o) => s + (o.valueSats ?? 0), 0)
+  const feeSats  = cyData?.fees ?? msData?.fee ?? bcData?.fee ?? null
+  const totalIn  = inputs.reduce( (s, inp) => s + (inp.valueSats ?? 0), 0)
+  const totalOut = outputs.reduce((s, out) => s + (out.valueSats ?? 0), 0)
   const rbf      = isRbfSignaled(inputs) || !!bcData?.rbf
 
-  // ── Source address balances (for confidence signals) ──
-  // Unique non-coinbase addresses, cap at 5 to respect rate limits
+  // ── UTXO-level outspend check (mempool.space) ──
+  // This is the most reliable replacement detector: directly asks "was this specific
+  // output already spent, and by which txid?" — works even when BlockCypher misses the TX.
+  const checkableInputs = inputs.filter(i => !i.isCoinbase && i.prevTxid && i.outputIndex != null)
+  const utxoSpendChecks = checkableInputs.length > 0
+    ? await Promise.all(checkableInputs.map(async inp => {
+        const res = await safeFetch(
+          `https://mempool.space/api/tx/${inp.prevTxid}/outspend/${inp.outputIndex}`
+        )
+        if (!res.ok) return {
+          prevTxid: inp.prevTxid, outputIndex: inp.outputIndex, checked: false,
+        }
+        const d = res.data
+        return {
+          prevTxid:         inp.prevTxid,
+          outputIndex:      inp.outputIndex,
+          address:          inp.address,
+          checked:          true,
+          spent:            d.spent === true,
+          spentByTxid:      d.txid  || null,
+          spentByThisTx:    d.txid === txid,
+          spentConfirmed:   d.status?.confirmed    || false,
+          spentBlockHeight: d.status?.block_height || null,
+        }
+      }))
+    : []
+
+  // If any UTXO is spent by a *different* txid and we currently think it's unconfirmed,
+  // it was actually replaced — upgrade the status now.
+  const spentElsewhere = utxoSpendChecks.find(
+    c => c.checked && c.spent && c.spentByTxid && !c.spentByThisTx
+  )
+  if (spentElsewhere && (status === 'UNCONFIRMED' || status === 'DOUBLE_SPENT')) {
+    status    = 'REPLACED'
+    replacedBy = spentElsewhere.spentByTxid
+  }
+
+  // ── Source address balances ──
   const uniqueInputAddrs = [
     ...new Set(inputs.filter(i => !i.isCoinbase && i.address).map(i => i.address))
   ].slice(0, 5)
@@ -222,29 +262,46 @@ async function analyzeTx(txid) {
     ? await Promise.all(uniqueInputAddrs.map(fetchAddressBalance))
     : []
 
-  // ── If replaced, fetch replacing tx summary ──
+  // ── Replacing TX details ──
   let replacingTx = null
   if (replacedBy) {
-    const repRes = await safeFetch(`${BLOCKCYPHER}/txs/${replacedBy}?limit=50&includeHex=false`)
-    if (repRes.ok) {
-      const r = repRes.data
+    // Try BlockCypher first, fall back to mempool.space
+    const repCy = await safeFetch(`${BLOCKCYPHER}/txs/${replacedBy}?limit=50&includeHex=false`)
+    if (repCy.ok) {
+      const r = repCy.data
       replacingTx = {
         txid:          r.hash,
         confirmations: r.confirmations ?? 0,
         blockHeight:   r.block_height > 0 ? r.block_height : null,
         feeSats:       r.fees,
-        inputs:        (r.inputs || []).map(inp => ({
-          prevTxid:    inp.prev_hash,
-          outputIndex: inp.output_index,
-          address:     inp.addresses?.[0] || null,
-          valueSats:   inp.output_value   ?? null,
+        inputs:  (r.inputs  || []).map(inp => ({
+          prevTxid: inp.prev_hash, outputIndex: inp.output_index,
+          address:  inp.addresses?.[0] || null, valueSats: inp.output_value ?? null, isCoinbase: false,
         })),
         outputs: (r.outputs || []).map((out, i) => ({
-          index:     i,
-          address:   out.addresses?.[0] || null,
-          valueSats: out.value          ?? null,
-          spent:     !!out.spent_by,
+          index: i, address: out.addresses?.[0] || null,
+          valueSats: out.value ?? null, spent: !!out.spent_by,
         })),
+      }
+    } else {
+      const repMs = await safeFetch(`https://mempool.space/api/tx/${replacedBy}`)
+      if (repMs.ok) {
+        const r = repMs.data
+        replacingTx = {
+          txid:          r.txid,
+          confirmations: r.status?.confirmed ? 1 : 0,
+          blockHeight:   r.status?.block_height || null,
+          feeSats:       r.fee,
+          inputs:  (r.vin  || []).map(inp => ({
+            prevTxid: inp.txid, outputIndex: inp.vout,
+            address:  inp.prevout?.scriptpubkey_address || null, valueSats: inp.prevout?.value ?? null,
+            isCoinbase: inp.is_coinbase || false,
+          })),
+          outputs: (r.vout || []).map((out, i) => ({
+            index: i, address: out.scriptpubkey_address || null,
+            valueSats: out.value ?? null, spent: false,
+          })),
+        }
       }
     }
   }
@@ -263,14 +320,16 @@ async function analyzeTx(txid) {
     feeSats,
     totalIn,
     totalOut,
+    utxoSpendChecks,
     sourceBalances,
-    timestamp: bcData?.time || null,
-    size:      bcData?.size || cyData?.size  || null,
-    vsize:     cyData?.vsize || null,
-    weight:    cyData?.vsize ? cyData.vsize * 4 : null,
+    timestamp: bcData?.time || msTime || null,
+    size:      bcData?.size  || cyData?.size  || msData?.size   || null,
+    vsize:     cyData?.vsize || (msData?.weight ? Math.ceil(msData.weight / 4) : null),
+    weight:    msData?.weight || null,
     providers: {
       blockcypher:   cyData ? 'ok' : (cyRes.notFound ? 'not found' : `error (${cyRes.error || cyRes.httpStatus})`),
       blockchainCom: bcData ? 'ok' : (bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`),
+      mempoolSpace:  msData ? 'ok' : (msRes.notFound ? 'not found' : `error (${msRes.error || msRes.httpStatus})`),
     },
   }
 }
@@ -426,50 +485,66 @@ function OutputsTable({ outputs }) {
 }
 
 // ─── Source Confidence Panel ──────────────────────────────────────────────────
-function SourceConfidencePanel({ sourceBalances, status, rbf }) {
-  if (!sourceBalances || sourceBalances.length === 0) return null
+function SourceConfidencePanel({ sourceBalances, utxoSpendChecks, status, rbf }) {
+  const hasUtxoChecks  = utxoSpendChecks?.length > 0
+  const hasBalances    = sourceBalances?.length  > 0
+  if (!hasUtxoChecks && !hasBalances) return null
 
-  const validBalances = sourceBalances.filter(b => !b.error)
-  const allZero  = validBalances.length > 0 && validBalances.every(b => b.finalBalance === 0)
-  const someZero = validBalances.some(b => b.finalBalance === 0)
-  const anyError = sourceBalances.some(b => b.error)
+  // ── UTXO-level summary ──
+  const checkedUtxos      = (utxoSpendChecks || []).filter(c => c.checked)
+  const spentByThis       = checkedUtxos.filter(c => c.spent &&  c.spentByThisTx)
+  const spentElsewhere    = checkedUtxos.filter(c => c.spent && !c.spentByThisTx)
+  const unspentUtxos      = checkedUtxos.filter(c => !c.spent)
+  const uncheckedUtxos    = (utxoSpendChecks || []).filter(c => !c.checked)
 
-  // Determine the overall confidence verdict
+  // ── Address balance summary ──
+  const validBalances = (sourceBalances || []).filter(b => !b.error)
+  const allZero       = validBalances.length > 0 && validBalances.every(b => b.finalBalance === 0)
+  const someZero      = validBalances.some(b => b.finalBalance === 0)
+  const anyBalErr     = (sourceBalances || []).some(b => b.error)
+
+  // ── Overall verdict driven by UTXO checks first, then balance ──
   let verdict = null
-  if (allZero) {
+  if (spentElsewhere.length > 0) {
     verdict = {
-      cls:  'verdict-high',
-      icon: '✅',
-      text: `All ${validBalances.length} source address${validBalances.length > 1 ? 'es' : ''} have a 0 BTC balance — ` +
-            `every UTXO from ${validBalances.length > 1 ? 'these addresses' : 'this address'} has been spent. ` +
+      cls: 'verdict-high', icon: '🔄',
+      text: `${spentElsewhere.length} input UTXO${spentElsewhere.length > 1 ? 's were' : ' was'} spent by a ` +
+            `DIFFERENT transaction — this TX was replaced / double-spent.`,
+    }
+  } else if (spentByThis.length > 0 && unspentUtxos.length === 0 && spentElsewhere.length === 0) {
+    verdict = {
+      cls: 'verdict-high', icon: '✅',
+      text: `All checked input UTXOs are confirmed spent by this transaction.`,
+    }
+  } else if (unspentUtxos.length > 0) {
+    verdict = {
+      cls: 'verdict-low', icon: '⏳',
+      text: `${unspentUtxos.length} input UTXO${unspentUtxos.length > 1 ? 's are' : ' is'} still unspent ` +
+            `— this TX has not yet been processed${rbf ? ' (RBF signalled; can be replaced)' : ''}.`,
+    }
+  } else if (!hasUtxoChecks && allZero) {
+    verdict = {
+      cls: 'verdict-high', icon: '✅',
+      text: `All source addresses have 0 BTC — every UTXO was spent ` +
             (status === 'UNCONFIRMED'
-              ? 'The inputs were consumed (by this TX or a replacement). ' +
-                (rbf ? 'RBF was signalled — check the replacing TX tab if present.'
-                     : 'No RBF signal detected, so replacement is less likely.')
-              : status === 'REPLACED'
-              ? 'Spent by the replacing transaction.'
-              : 'Confirmed spent.'),
+              ? `(by this TX or a replacement). ${rbf ? 'RBF signalled.' : 'No RBF signal — replacement unlikely.'}`
+              : status === 'REPLACED' ? 'by the replacing transaction.' : '(confirmed).'),
     }
-  } else if (someZero) {
+  } else if (!hasUtxoChecks && someZero) {
     verdict = {
-      cls:  'verdict-medium',
-      icon: '⚠️',
-      text: 'Some source addresses are fully spent (balance = 0) while others still hold funds. ' +
-            'The zero-balance addresses definitively had their UTXOs consumed; the others may have unrelated UTXOs remaining.',
+      cls: 'verdict-medium', icon: '⚠️',
+      text: 'Some source addresses are fully spent (balance = 0); others still hold funds (may have unrelated UTXOs).',
     }
-  } else if (validBalances.length > 0) {
+  } else if (!hasUtxoChecks && validBalances.length > 0) {
     verdict = {
-      cls:  'verdict-low',
-      icon: '⚠️',
-      text: 'Source address(es) still carry a non-zero balance. ' +
-            'This does not prove the inputs were unspent — the address may simply have other UTXOs. ' +
-            'Cannot add confidence from balance alone.',
+      cls: 'verdict-low', icon: '⚠️',
+      text: 'Source addresses still carry non-zero balances. Cannot confirm from balance alone — they may have other UTXOs.',
     }
   }
 
   return (
     <div className="confidence-panel">
-      <div className="confidence-title">🔍 Source Address Balance Confidence</div>
+      <div className="confidence-title">🔍 Spend Confidence</div>
 
       {verdict && (
         <div className={`confidence-verdict ${verdict.cls}`}>
@@ -478,64 +553,123 @@ function SourceConfidencePanel({ sourceBalances, status, rbf }) {
         </div>
       )}
 
-      <div className="confidence-addrs">
-        {sourceBalances.map((bal, i) => {
-          const isZero    = !bal.error && bal.finalBalance === 0
-          const isNonZero = !bal.error && bal.finalBalance  >  0
-          return (
-            <div key={i} className={`confidence-addr-row ${bal.error ? 'conf-err' : isZero ? 'conf-zero' : 'conf-nonzero'}`}>
-              <div className="conf-addr-top">
-                <a href={`https://mempool.space/address/${bal.addr}`}
-                   target="_blank" rel="noopener noreferrer"
-                   className="addr-link" title={bal.addr}>
-                  {shortHash(bal.addr, 10)}
-                </a>
-                {bal.error ? (
-                  <span className="conf-pill conf-pill-err">❓ Fetch failed</span>
-                ) : isZero ? (
-                  <span className="conf-pill conf-pill-zero">✅ 0.00000000 BTC</span>
+      {/* ── UTXO-level outspend check rows ── */}
+      {hasUtxoChecks && (
+        <div className="utxo-check-section">
+          <div className="utxo-check-header">
+            Input UTXO Outspend Check
+            <span className="utxo-check-source">via mempool.space</span>
+          </div>
+          <div className="utxo-check-rows">
+            {utxoSpendChecks.map((c, i) => (
+              <div key={i} className={`utxo-check-row ${
+                !c.checked            ? 'uc-unknown'
+                : !c.spent            ? 'uc-unspent'
+                : c.spentByThisTx     ? 'uc-spent-this'
+                :                       'uc-spent-other'
+              }`}>
+                <span className="uc-label">
+                  {!c.checked ? '❓' : !c.spent ? '⏳' : c.spentByThisTx ? '✅' : '🔄'}
+                </span>
+                <span className="uc-utxo">
+                  {c.prevTxid ? (
+                    <a href={`https://mempool.space/tx/${c.prevTxid}`}
+                       target="_blank" rel="noopener noreferrer" className="hash-link">
+                      {shortHash(c.prevTxid, 7)}
+                    </a>
+                  ) : <span className="muted">?</span>}
+                  <span className="muted">:{c.outputIndex ?? '?'}</span>
+                </span>
+                {!c.checked ? (
+                  <span className="uc-status muted">Check failed</span>
+                ) : !c.spent ? (
+                  <span className="uc-status uc-unspent-text">Unspent — UTXO still in mempool</span>
+                ) : c.spentByThisTx ? (
+                  <span className="uc-status uc-spent-this-text">
+                    Spent by this TX{c.spentConfirmed ? ` (confirmed @ block ${c.spentBlockHeight})` : ' (unconfirmed)'}
+                  </span>
                 ) : (
-                  <span className="conf-pill conf-pill-nonzero">⚠ {fmtBtc(bal.finalBalance)}</span>
-                )}
-                {!bal.error && (
-                  <span className="conf-source">via {bal.source}</span>
+                  <span className="uc-status uc-spent-other-text">
+                    Spent by{' '}
+                    <a href={`https://mempool.space/tx/${c.spentByTxid}`}
+                       target="_blank" rel="noopener noreferrer" className="hash-link">
+                      {shortHash(c.spentByTxid, 8)}
+                    </a>
+                    <button className="copy-btn" onClick={() => copyToClipboard(c.spentByTxid)} title="Copy">⧉</button>
+                    {c.spentConfirmed ? ` (confirmed @ block ${c.spentBlockHeight})` : ' (unconfirmed)'}
+                  </span>
                 )}
               </div>
-
-              {!bal.error && (
-                <div className="conf-addr-detail">
-                  {isZero && (
-                    <span className="conf-note-zero">
-                      Balance is 0 → this address has no remaining UTXOs.
-                      {status === 'UNCONFIRMED' && !rbf && ' No RBF signal — strong indicator this TX was processed.'}
-                      {status === 'UNCONFIRMED' && rbf  && ' RBF was signalled — a bump/replacement tx may have spent these inputs instead.'}
-                      {status === 'REPLACED'           && ' The replacing transaction consumed these inputs.'}
-                      {status === 'CONFIRMED'           && ' Consistent with the confirmed spend.'}
-                    </span>
-                  )}
-                  {isNonZero && (
-                    <span className="conf-note-nonzero">
-                      Balance is {fmtBtc(bal.finalBalance)}{bal.unconfirmedBalance > 0 ? ` (incl. ${fmtBtc(bal.unconfirmedBalance)} unconfirmed)` : ''} — address has other UTXOs.
-                      Cannot determine from balance alone whether this specific input was spent.
-                    </span>
-                  )}
-                  {(bal.totalReceived != null || bal.nTx != null) && (
-                    <span className="conf-stats">
-                      {bal.totalReceived != null && `Received: ${fmtBtc(bal.totalReceived)}`}
-                      {bal.totalSent    != null && ` · Sent: ${fmtBtc(bal.totalSent)}`}
-                      {bal.nTx          != null && ` · TXs: ${bal.nTx.toLocaleString()}`}
-                    </span>
-                  )}
-                </div>
-              )}
+            ))}
+          </div>
+          {uncheckedUtxos.length > 0 && (
+            <div className="conf-error-footer">
+              {uncheckedUtxos.length} UTXO check{uncheckedUtxos.length > 1 ? 's' : ''} failed (rate limit or missing prevTxid).
             </div>
-          )
-        })}
-      </div>
+          )}
+        </div>
+      )}
 
-      {anyError && (
-        <div className="conf-error-footer">
-          One or more address lookups failed (rate limit or network error). Results above may be incomplete.
+      {/* ── Source address balance rows ── */}
+      {hasBalances && (
+        <div className="confidence-addrs">
+          <div className="utxo-check-header" style={{ marginTop: hasUtxoChecks ? '1rem' : 0 }}>
+            Source Address Balance
+            <span className="utxo-check-source">secondary signal</span>
+          </div>
+          {sourceBalances.map((bal, i) => {
+            const isZero    = !bal.error && bal.finalBalance === 0
+            const isNonZero = !bal.error && bal.finalBalance  >  0
+            return (
+              <div key={i} className={`confidence-addr-row ${bal.error ? 'conf-err' : isZero ? 'conf-zero' : 'conf-nonzero'}`}>
+                <div className="conf-addr-top">
+                  <a href={`https://mempool.space/address/${bal.addr}`}
+                     target="_blank" rel="noopener noreferrer"
+                     className="addr-link" title={bal.addr}>
+                    {shortHash(bal.addr, 10)}
+                  </a>
+                  {bal.error ? (
+                    <span className="conf-pill conf-pill-err">❓ Fetch failed</span>
+                  ) : isZero ? (
+                    <span className="conf-pill conf-pill-zero">✅ 0.00000000 BTC</span>
+                  ) : (
+                    <span className="conf-pill conf-pill-nonzero">⚠ {fmtBtc(bal.finalBalance)}</span>
+                  )}
+                  {!bal.error && <span className="conf-source">via {bal.source}</span>}
+                </div>
+                {!bal.error && (
+                  <div className="conf-addr-detail">
+                    {isZero && (
+                      <span className="conf-note-zero">
+                        Balance is 0 → address fully spent. No UTXOs can remain here.
+                        {status === 'UNCONFIRMED' && !rbf && ' No RBF signal — strong indicator this TX was processed.'}
+                        {status === 'UNCONFIRMED' &&  rbf && ' RBF signalled — replacement TX may have spent these inputs.'}
+                        {status === 'REPLACED'         && ' Spent by the replacing transaction.'}
+                        {status === 'CONFIRMED'        && ' Consistent with the confirmed spend.'}
+                      </span>
+                    )}
+                    {isNonZero && (
+                      <span className="conf-note-nonzero">
+                        Balance is {fmtBtc(bal.finalBalance)}{bal.unconfirmedBalance > 0 ? ` (incl. ${fmtBtc(bal.unconfirmedBalance)} unconfirmed)` : ''} — address has other UTXOs. Cannot determine from balance alone.
+                      </span>
+                    )}
+                    {(bal.totalReceived != null || bal.nTx != null) && (
+                      <span className="conf-stats">
+                        {bal.totalReceived != null && `Received: ${fmtBtc(bal.totalReceived)}`}
+                        {bal.totalSent     != null && ` · Sent: ${fmtBtc(bal.totalSent)}`}
+                        {bal.nTx           != null && ` · TXs: ${bal.nTx.toLocaleString()}`}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {anyBalErr && (
+            <div className="conf-error-footer">
+              Some address lookups failed (rate limit or network error).
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -589,6 +723,7 @@ function TxResultCard({ result }) {
         <div className="provider-row">
           <span>BlockCypher: <b>{d.providers.blockcypher}</b></span>
           <span>Blockchain.com: <b>{d.providers.blockchainCom}</b></span>
+          <span>mempool.space: <b>{d.providers.mempoolSpace}</b></span>
         </div>
       </div>
     )
@@ -673,9 +808,10 @@ function TxResultCard({ result }) {
         </div>
       </div>
 
-      {/* ── Source address balance confidence ── */}
+      {/* ── Spend confidence (UTXO outspend + address balance) ── */}
       <SourceConfidencePanel
         sourceBalances={d.sourceBalances}
+        utxoSpendChecks={d.utxoSpendChecks}
         status={d.status}
         rbf={d.rbf}
       />
@@ -735,8 +871,9 @@ function TxResultCard({ result }) {
 
       {/* ── Provider status ── */}
       <div className="provider-row">
-        <span>BlockCypher: <b className={d.providers.blockcypher === 'ok' ? 'ok' : 'fail'}>{d.providers.blockcypher}</b></span>
+        <span>BlockCypher: <b className={d.providers.blockcypher   === 'ok' ? 'ok' : 'fail'}>{d.providers.blockcypher}</b></span>
         <span>Blockchain.com: <b className={d.providers.blockchainCom === 'ok' ? 'ok' : 'fail'}>{d.providers.blockchainCom}</b></span>
+        <span>mempool.space: <b className={d.providers.mempoolSpace  === 'ok' ? 'ok' : 'fail'}>{d.providers.mempoolSpace}</b></span>
       </div>
     </div>
   )
