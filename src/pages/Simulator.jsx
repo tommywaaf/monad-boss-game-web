@@ -42,16 +42,11 @@ const COMMON_SELECTORS = {
   '0x06fdde03': { name: 'name', signature: 'name()', standard: 'ERC20' },
   '0x95d89b41': { name: 'symbol', signature: 'symbol()', standard: 'ERC20' },
   '0x313ce567': { name: 'decimals', signature: 'decimals()', standard: 'ERC20' },
-  // ERC721
+  // ERC721 (unique selectors only — transferFrom/balanceOf/name/symbol/totalSupply share selectors with ERC20 above)
   '0x42842e0e': { name: 'safeTransferFrom', signature: 'safeTransferFrom(address,address,uint256)', standard: 'ERC721' },
   '0xb88d4fde': { name: 'safeTransferFrom', signature: 'safeTransferFrom(address,address,uint256,bytes)', standard: 'ERC721' },
-  '0x23b872dd': { name: 'transferFrom', signature: 'transferFrom(address,address,uint256)', standard: 'ERC721' },
   '0x081812fc': { name: 'ownerOf', signature: 'ownerOf(uint256)', standard: 'ERC721' },
   '0x6352211e': { name: 'tokenURI', signature: 'tokenURI(uint256)', standard: 'ERC721' },
-  '0x70a08231': { name: 'balanceOf', signature: 'balanceOf(address)', standard: 'ERC721' },
-  '0x06fdde03': { name: 'name', signature: 'name()', standard: 'ERC721' },
-  '0x95d89b41': { name: 'symbol', signature: 'symbol()', standard: 'ERC721' },
-  '0x18160ddd': { name: 'totalSupply', signature: 'totalSupply()', standard: 'ERC721' },
   // ERC1155
   '0xf242432a': { name: 'safeTransferFrom', signature: 'safeTransferFrom(address,address,uint256,uint256,bytes)', standard: 'ERC1155' },
   '0x2eb2c2d6': { name: 'safeBatchTransferFrom', signature: 'safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)', standard: 'ERC1155' },
