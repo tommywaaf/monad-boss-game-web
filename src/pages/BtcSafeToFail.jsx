@@ -306,18 +306,29 @@ async function analyzeTx(txid) {
       }))
     : []
 
-  // Upgrade status to REPLACED if any UTXO is confirmed-spent by a different transaction.
-  // This fires even when BlockCypher/mempool.space never saw the TX —
-  // blockchain.com's out[n].spent=true + our TX is unconfirmed = definite replacement.
+  // ── Status + replacedBy override from UTXO ground truth ──
+  // BlockCypher's double_spend_tx can point to an intermediate dropped transaction
+  // (a replacement that itself got replaced). The UTXO outspend check resolves the
+  // actual confirmed spending txid — always prefer it over BlockCypher's value.
   const spentElsewhere = utxoSpendChecks.find(c =>
     c.checked && c.spent && !c.spentByThisTx && (
-      (c.spentByTxid !== null) ||                               // explicit different txid
-      (c.method === 'blockchain.com' && status === 'UNCONFIRMED') // bc confirmed-spent, we're not confirmed
+      c.spentByTxid !== null ||   // explicit spending txid resolved
+      c.method === 'blockchain.com' // bc confirmed spent=true (our tx still unconfirmed)
     )
   )
-  if (spentElsewhere && (status === 'UNCONFIRMED' || status === 'DOUBLE_SPENT')) {
-    status     = 'REPLACED'
-    replacedBy = spentElsewhere.spentByTxid || null   // may be null if spending tx fetch failed
+  if (spentElsewhere) {
+    // Upgrade status regardless of what BlockCypher said
+    if (status !== 'CONFIRMED') status = 'REPLACED'
+
+    // UTXO check is ground truth — overwrite BlockCypher's replacedBy if we found
+    // a real spending txid (it may be different from BlockCypher's dropped intermediate tx)
+    if (spentElsewhere.spentByTxid) {
+      replacedBy = spentElsewhere.spentByTxid
+    } else if (!replacedBy) {
+      replacedBy = null  // confirmed spent but spending txid fetch failed; mark as replaced anyway
+    }
+    // If spentElsewhere.spentByTxid is null but replacedBy was already set by BlockCypher,
+    // keep BlockCypher's value rather than clearing it to null
   }
 
   // ── Source address balances ──
@@ -833,15 +844,43 @@ function TxResultCard({ result }) {
       {(d.status === 'REPLACED' || d.status === 'DOUBLE_SPENT') && (
         <div className="replacement-banner">
           <div className="replacement-title">🔄 This transaction was replaced / double-spent</div>
-          {d.replacedBy ? (
-            <div className="replacement-by">
-              Replaced by:{' '}
-              <a href={`https://mempool.space/tx/${d.replacedBy}`} target="_blank" rel="noopener noreferrer"
-                 className="hash-link mono">{d.replacedBy}</a>
-              <button className="copy-btn" onClick={() => copyToClipboard(d.replacedBy)} title="Copy">⧉</button>
-            </div>
-          ) : (
-            <p className="muted">Replacing txid not available from provider.</p>
+          {d.replacedBy ? (() => {
+            // Determine if this replacedBy came from the UTXO check (confirmed spend)
+            const utxoConfirm = d.utxoSpendChecks?.find(
+              c => c.checked && c.spentByTxid === d.replacedBy && c.spentConfirmed
+            )
+            return (
+              <>
+                <div className="replacement-by">
+                  <span>Spending TX:{' '}</span>
+                  <span className="hash-link mono" style={{ wordBreak: 'break-all' }}>{d.replacedBy}</span>
+                  <button className="copy-btn" onClick={() => copyToClipboard(d.replacedBy)} title="Copy">⧉</button>
+                  {utxoConfirm && utxoConfirm.spentBlockHeight && (
+                    <span className="replacement-confirmed-badge">
+                      ✓ confirmed @ block {utxoConfirm.spentBlockHeight.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <div className="replacement-links">
+                  <a href={`https://mempool.space/tx/${d.replacedBy}`}
+                     target="_blank" rel="noopener noreferrer" className="explorer-btn replacement-explorer-btn">
+                    🔗 mempool.space
+                  </a>
+                  <a href={`https://www.blockchain.com/btc/tx/${d.replacedBy}`}
+                     target="_blank" rel="noopener noreferrer" className="explorer-btn replacement-explorer-btn">
+                    🔗 blockchain.com
+                  </a>
+                  <a href={`https://live.blockcypher.com/btc/tx/${d.replacedBy}`}
+                     target="_blank" rel="noopener noreferrer" className="explorer-btn replacement-explorer-btn">
+                    🔗 BlockCypher
+                  </a>
+                </div>
+              </>
+            )
+          })() : (
+            <p className="muted" style={{ margin: '0.25rem 0 0' }}>
+              Spending txid not resolved — check the UTXO outspend section below for details.
+            </p>
           )}
         </div>
       )}
