@@ -1247,6 +1247,60 @@
 
 .itc-fn-link:hover { color: #f7931a !important; }
 
+/* ── Source card ("This transaction · provided") ── */
+.itc-source {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.itc-source-label {
+  font-size: 0.67rem;
+  font-weight: 700;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.itc-source-body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.itc-source-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.itc-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.1rem;
+}
+
+.itc-source-links .explorer-btn {
+  font-size: 0.74rem !important;
+  padding: 0.2rem 0.55rem !important;
+}
+
+/* ── Flow arrow connector ── */
+.itc-flow-arrow {
+  font-size: 0.72rem;
+  color: #52525b;
+  text-align: center;
+  padding: 0.2rem 0;
+  letter-spacing: 0.02em;
+}
+
 /* ── Replacement detail block ── */
 .inp-trace-claimed {
   background: rgba(239, 68, 68, 0.09);
