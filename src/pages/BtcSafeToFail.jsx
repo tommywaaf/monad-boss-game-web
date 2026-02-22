@@ -48,9 +48,9 @@ function isRbfSignaled(inputs = []) {
   })
 }
 
-function shortHash(hash, chars = 10) {
+function shortHash(hash) {
   if (!hash) return '?'
-  return `${hash.slice(0, chars)}…${hash.slice(-chars)}`
+  return hash
 }
 
 function copyToClipboard(text) {
@@ -601,7 +601,7 @@ function TxResultCard({ result }) {
                   <>
                     {/* ── Source: this (checked) transaction ── */}
                     <div className="itc-source">
-                      <div className="itc-source-label">This transaction · provided</div>
+                      <div className="itc-source-label">The Provided Transaction</div>
                       <div className="itc-source-body">
                         <div className="itc-source-left">
                           <span className="inp-trace-idx">Input #{idx}</span>

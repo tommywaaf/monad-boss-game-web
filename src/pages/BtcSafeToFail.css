@@ -539,6 +539,7 @@
   font-family: inherit;
   font-size: 0.82rem;
   transition: color 0.15s;
+  word-break: break-all;
 }
 
 .hash-link:hover { color: #fbbf24; text-decoration: underline; }
@@ -549,6 +550,7 @@
   font-family: inherit;
   font-size: 0.82rem;
   transition: color 0.15s;
+  word-break: break-all;
 }
 
 .addr-link:hover { color: #bae6fd; text-decoration: underline; }
@@ -1321,10 +1323,11 @@
 
 .itc-claimed-detail {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 0.35rem;
   font-size: 0.8rem;
+  word-break: break-all;
 }
 
 .itc-explorer-links {
@@ -1708,9 +1711,9 @@
 
 /* column sizing */
 .bt-idx      { color: #71717a; width: 2.5rem; text-align: center; }
-.bt-hash     { min-width: 180px; display: flex; align-items: center; gap: 0.3rem; }
+.bt-hash     { max-width: 320px; word-break: break-all; }
 .bt-status   { white-space: nowrap; }
-.bt-spending { min-width: 160px; }
+.bt-spending { max-width: 320px; word-break: break-all; }
 .bt-block    { white-space: nowrap; color: #a1a1aa; }
 
 /* status badges */
