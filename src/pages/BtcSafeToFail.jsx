@@ -658,7 +658,7 @@ function TxResultCard({ result }) {
                     {/* ── Source footnote ── */}
                     {srcTxid && (
                       <div className="inp-trace-footnote">
-                        <span className="itc-fn-label">Source UTXO:</span>
+                        <span className="itc-fn-label">Source TX (where the input came from):</span>
                         <a href={`https://mempool.space/tx/${srcTxid}`} target="_blank" rel="noopener noreferrer"
                            className="hash-link itc-fn-link">{shortHash(srcTxid, 10)}</a>
                         {srcIdx != null && <span className="muted">:{srcIdx}</span>}
@@ -701,7 +701,7 @@ function TxResultCard({ result }) {
 
                     {srcTxid && (
                       <div className="inp-trace-footnote">
-                        <span className="itc-fn-label">Source UTXO:</span>
+                        <span className="itc-fn-label">Source UTXO (where the input came from):</span>
                         <a href={`https://mempool.space/tx/${srcTxid}`} target="_blank" rel="noopener noreferrer"
                            className="hash-link itc-fn-link">{shortHash(srcTxid, 10)}</a>
                         {srcIdx != null && <span className="muted">:{srcIdx}</span>}
