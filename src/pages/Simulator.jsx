@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { createPublicClient, http, recoverTransactionAddress, parseTransaction, formatEther, formatGwei, isAddress, decodeErrorResult } from 'viem'
+import { trackUsage } from '../utils/counter'
 import './Simulator.css'
 
 // Standard Solidity error ABIs
@@ -1155,6 +1156,8 @@ function Simulator() {
       setError('Only EVM RLP transactions are supported for simulation')
       return
     }
+
+    trackUsage('sim')
 
     try {
       // Normalize raw input

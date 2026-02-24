@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { trackUsage } from '../utils/counter'
 import './TonDetails.css'
 
 const TONCENTER = "https://toncenter.com"
@@ -317,6 +318,7 @@ function TonDetails() {
     if (!input.trim()) return
 
     const items = input.trim().split(/\s+/).filter(x => x.trim())
+    trackUsage('ton', items.length)
     setProcessing(true)
     setResults([])
     setProgress(0)

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { trackUsage } from '../utils/counter'
 import './BtcSafeToFail.css'
 
 // ─── API endpoints ────────────────────────────────────────────────────────────
@@ -798,6 +799,7 @@ function BtcSafeToFail() {
     if (!input.trim()) return
 
     const items = input.trim().split(/[\s,\n]+/).filter(x => x.trim())
+    trackUsage('btc', items.length)
     setProcessing(true)
     setResults([])
 
@@ -827,6 +829,7 @@ function BtcSafeToFail() {
     if (!input.trim()) return
     const items = input.trim().split(/[\s,\n]+/).filter(x => x.trim())
 
+    trackUsage('btc', items.length)
     abortRef.current = false
     setProcessing(true)
     setBatchRows([])

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { trackUsage } from '../utils/counter'
 import './Broadcaster.css'
 
 const NETWORKS = [
@@ -979,6 +980,8 @@ function Broadcaster() {
     // Create abort controller
     abortControllerRef.current = new AbortController()
     const signal = abortControllerRef.current.signal
+
+    trackUsage('bcaster', transactions.length)
 
     setIsBroadcasting(true)
     setBroadcastProgress({ current: 0, total: transactions.length })
