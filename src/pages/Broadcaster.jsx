@@ -1078,7 +1078,8 @@ function Broadcaster() {
   const failCount = results.filter(r => !r.success).length
 
   // Group networks by type for the dropdown
-  const evmNetworks = NETWORKS.filter(n => n.type === 'evm')
+  const autoNetwork = NETWORKS.filter(n => n.isAuto)
+  const evmNetworks = NETWORKS.filter(n => n.type === 'evm' && !n.isAuto)
   const solanaNetworks = NETWORKS.filter(n => n.type === 'solana')
   const xrpNetworks = NETWORKS.filter(n => n.type === 'xrp')
   const stellarNetworks = NETWORKS.filter(n => n.type === 'stellar')
@@ -1148,36 +1149,43 @@ function Broadcaster() {
               }}
               className="network-dropdown"
             >
-              <optgroup label="EVM Networks">
-                {evmNetworks.map(network => (
+              <optgroup label="─── Auto">
+                {autoNetwork.map(network => (
                   <option key={network.id} value={network.id}>
                     {network.name}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Solana">
+              <optgroup label="─── Solana">
                 {solanaNetworks.map(network => (
                   <option key={network.id} value={network.id}>
                     {network.name}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="XRP Ledger">
+              <optgroup label="─── XRP Ledger">
                 {xrpNetworks.map(network => (
                   <option key={network.id} value={network.id}>
                     {network.name}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Stellar (XLM)">
+              <optgroup label="─── Stellar (XLM)">
                 {stellarNetworks.map(network => (
                   <option key={network.id} value={network.id}>
                     {network.name}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Bitcoin & Forks">
+              <optgroup label="─── Bitcoin & Forks">
                 {bitcoinNetworks.map(network => (
+                  <option key={network.id} value={network.id}>
+                    {network.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="─── EVM Networks">
+                {evmNetworks.map(network => (
                   <option key={network.id} value={network.id}>
                     {network.name}
                   </option>
