@@ -314,6 +314,78 @@ const detectSolanaEncoding = (input) => {
   }
 }
 
+// Auto-detect network type from a raw transaction payload
+// Returns { type, rpc, chainName, explorer } or null if unknown
+const detectAutoNetworkType = (txPayload) => {
+  const trimmed = txPayload.trim().replace(/^["']|["']$/g, '')
+  if (!trimmed) return null
+
+  const isHexInput = /^(?:0x)?[0-9a-fA-F]+$/.test(trimmed)
+
+  if (isHexInput) {
+    const hex = (trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed).toLowerCase()
+    if (hex.length % 2 !== 0) return null
+
+    const b0 = parseInt(hex.slice(0, 2), 16)
+
+    // EVM: typed transactions (0x01–0x03) or legacy RLP list (0xc0–0xff)
+    if (b0 === 0x01 || b0 === 0x02 || b0 === 0x03 || b0 >= 0xc0) {
+      return { type: 'evm' }
+    }
+
+    // XRP: binary-serialized ledger objects always start with the
+    // TransactionType field code (0x12) followed by value high byte (0x00)
+    if (hex.startsWith('1200')) {
+      return {
+        type: 'xrp',
+        rpc: 'https://xrplcluster.com/',
+        chainName: 'XRP Mainnet',
+        explorer: 'https://xrpscan.com/tx/',
+      }
+    }
+
+    // Bitcoin-style (BTC / LTC / BCH): version field is 4 bytes LE
+    // Version 1 → 01000000, Version 2 → 02000000
+    if (hex.startsWith('01000000') || hex.startsWith('02000000')) {
+      return {
+        type: 'bitcoin',
+        rpc: 'https://mempool.space/api',
+        chainName: 'Bitcoin (BTC)',
+        explorer: 'https://mempool.space/tx/',
+      }
+    }
+
+    return null
+  }
+
+  // Solana base58: only base58 alphabet, minimum ~87 chars for a real tx
+  if (/^[1-9A-HJ-NP-Za-km-z]{87,}$/.test(trimmed)) {
+    return {
+      type: 'solana',
+      rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/',
+      chainName: 'Solana Mainnet',
+      explorer: 'https://solscan.io/tx/',
+    }
+  }
+
+  // Solana base64: standard base64 chars, long enough to hold ≥64 decoded bytes
+  if (/^[A-Za-z0-9+/]+=*$/.test(trimmed) && trimmed.length >= 88) {
+    try {
+      const decoded = atob(trimmed)
+      if (decoded.length >= 64) {
+        return {
+          type: 'solana',
+          rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/',
+          chainName: 'Solana Mainnet',
+          explorer: 'https://solscan.io/tx/',
+        }
+      }
+    } catch { /* not valid base64 */ }
+  }
+
+  return null
+}
+
 function Broadcaster() {
   const [selectedNetwork, setSelectedNetwork] = useState(NETWORKS[0])
   const [customRpc, setCustomRpc] = useState('')
@@ -401,18 +473,25 @@ function Broadcaster() {
   
   // Get chain info for a transaction (for auto mode)
   const getChainInfo = (txPayload) => {
-    // Always decode chain ID from transaction for consistent formatting
+    if (isAutoMode) {
+      // Try to detect non-EVM types first (Solana, XRP, Bitcoin-style)
+      const detected = detectAutoNetworkType(txPayload)
+      if (detected && detected.type !== 'evm') {
+        return detected
+      }
+    }
+
+    // EVM path: decode chain ID from RLP
     const chainId = decodeRlpChainId(txPayload)
     
     // If we have a chain ID in the map, use that format for display
     if (chainId && CHAIN_ID_MAP[chainId]) {
-      // Use CHAIN_ID_MAP format for name and explorer (consistent formatting)
-      // But preserve manually selected RPC (keep logic unchanged)
       return {
         chainId,
         chainName: CHAIN_ID_MAP[chainId].name,
-        rpc: isAutoMode ? CHAIN_ID_MAP[chainId].rpc : getRpcUrl(), // Use selected RPC when not auto mode
-        explorer: CHAIN_ID_MAP[chainId].explorer
+        rpc: isAutoMode ? CHAIN_ID_MAP[chainId].rpc : getRpcUrl(),
+        explorer: CHAIN_ID_MAP[chainId].explorer,
+        type: 'evm',
       }
     }
     
@@ -422,7 +501,8 @@ function Broadcaster() {
         chainId: selectedNetwork.chainId || chainId || null, 
         chainName: selectedNetwork.name, 
         rpc: getRpcUrl(),
-        explorer: selectedNetwork.explorer || null
+        explorer: selectedNetwork.explorer || null,
+        type: selectedNetwork.type,
       }
     }
     
@@ -431,7 +511,8 @@ function Broadcaster() {
       chainId,
       chainName: chainId ? `Unknown (${chainId})` : 'Unknown',
       rpc: null,
-      explorer: null
+      explorer: null,
+      type: 'evm',
     }
   }
 
@@ -459,8 +540,14 @@ function Broadcaster() {
       return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed
     }
     
-    // For EVM, ensure 0x prefix
-    return trimmed.startsWith('0x') ? trimmed : `0x${trimmed}`
+    // For EVM (including auto mode): only add 0x prefix when the input is actually hex.
+    // Non-hex inputs (e.g. Solana base58/base64 pasted while auto mode is active)
+    // are returned as-is so detectAutoNetworkType can handle them at broadcast time.
+    const looksLikeHex = /^(?:0x)?[0-9a-fA-F]+$/.test(trimmed)
+    if (looksLikeHex) {
+      return trimmed.startsWith('0x') ? trimmed : `0x${trimmed}`
+    }
+    return trimmed
   }
 
   const parseTransactions = useCallback((text, networkType) => {
@@ -660,8 +747,16 @@ function Broadcaster() {
     return false
   }
 
-  const broadcastTransaction = async (txPayload, signal, overrideRpc = null) => {
+  const broadcastTransaction = async (txPayload, signal, overrideRpc = null, networkTypeOverride = null) => {
     const rpcUrl = overrideRpc || getRpcUrl()
+
+    // When a type is explicitly detected (auto mode), use it; otherwise fall back
+    // to the currently selected network type.
+    const effectiveType = networkTypeOverride || selectedNetwork.type
+    const effectiveSolana  = effectiveType === 'solana'
+    const effectiveXrp     = effectiveType === 'xrp'
+    const effectiveStellar = effectiveType === 'stellar'
+    const effectiveBitcoin = effectiveType === 'bitcoin' || effectiveType === 'bitcoincash'
     
     if (!rpcUrl) {
       return {
@@ -676,7 +771,7 @@ function Broadcaster() {
     try {
       let response
       
-      if (isStellar) {
+      if (effectiveStellar) {
         // Stellar uses form-encoded POST to /transactions endpoint
         const formBody = new URLSearchParams()
         formBody.append('tx', txPayload)
@@ -717,7 +812,7 @@ function Broadcaster() {
         }
       }
       
-      if (isBitcoin) {
+      if (effectiveBitcoin) {
         // Bitcoin-style chains use different APIs
         // Mempool.space: POST raw hex to /tx
         // BlockCypher: POST JSON to /txs/push
@@ -795,7 +890,7 @@ function Broadcaster() {
       
       let body
       
-      if (isSolana) {
+      if (effectiveSolana) {
         // Detect encoding for Solana transactions
         const { payload, encoding } = detectSolanaEncoding(txPayload)
         body = {
@@ -811,7 +906,7 @@ function Broadcaster() {
             }
           ]
         }
-      } else if (isXrp) {
+      } else if (effectiveXrp) {
         // XRP Ledger transaction
         body = {
           method: 'submit',
@@ -844,7 +939,7 @@ function Broadcaster() {
       const data = await response.json()
       
       // Handle XRP response format
-      if (isXrp) {
+      if (effectiveXrp) {
         const result = data.result
         if (!result) {
           return {
@@ -919,7 +1014,7 @@ function Broadcaster() {
     }
   }
 
-  const broadcastWithRetry = async (rlpHex, signal, onRetry, overrideRpc = null) => {
+  const broadcastWithRetry = async (rlpHex, signal, onRetry, overrideRpc = null, networkTypeOverride = null) => {
     let lastResult = null
     let attempts = 0
     
@@ -928,7 +1023,7 @@ function Broadcaster() {
         return { ...lastResult, attempts, aborted: true }
       }
       
-      lastResult = await broadcastTransaction(rlpHex, signal, overrideRpc)
+      lastResult = await broadcastTransaction(rlpHex, signal, overrideRpc, networkTypeOverride)
       attempts++
       
       // Success or non-retryable error - we're done
@@ -1000,8 +1095,8 @@ function Broadcaster() {
       // Get chain info (for auto mode, this decodes the tx)
       const chainInfo = getChainInfo(tx)
 
-      // Broadcast with retry support, using chain-specific RPC for auto mode
-      const result = await broadcastWithRetry(tx, signal, null, chainInfo.rpc)
+      // Broadcast with retry support, using chain-specific RPC and type for auto mode
+      const result = await broadcastWithRetry(tx, signal, null, chainInfo.rpc, chainInfo.type || null)
       
       newResults.push({
         index: i + 1,
