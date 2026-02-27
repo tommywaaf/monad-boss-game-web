@@ -1266,6 +1266,13 @@ function Simulator() {
             <span className="sidebar-text">Ton Details</span>
           </Link>
           <Link 
+            to="/ton-batch-lookup" 
+            className={`sidebar-link ${location.pathname === '/ton-batch-lookup' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">📋</span>
+            <span className="sidebar-text">TON Batch Lookup</span>
+          </Link>
+          <Link 
             to="/btc-safe-to-fail" 
             className={`sidebar-link ${location.pathname === '/btc-safe-to-fail' ? 'active' : ''}`}
           >
