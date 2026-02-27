@@ -434,11 +434,12 @@
   letter-spacing: 0.06em;
 }
 
-.stat-card.stat-found    .stat-value { color: #2dd4bf; }
+.stat-card.stat-found     .stat-value { color: #2dd4bf; }
 .stat-card.stat-not-found .stat-value { color: #71717a; }
-.stat-card.stat-success  .stat-value { color: #4ade80; }
-.stat-card.stat-failed   .stat-value { color: #f87171; }
-.stat-card.stat-errors   .stat-value { color: #fb923c; }
+.stat-card.stat-success   .stat-value { color: #4ade80; }
+.stat-card.stat-failed    .stat-value { color: #f87171; }
+.stat-card.stat-partial   .stat-value { color: #facc15; }
+.stat-card.stat-errors    .stat-value { color: #fb923c; }
 
 /* ── Table card ─────────────────────────────────────────────────────────── */
 
@@ -589,7 +590,8 @@
 .badge-found     { color: #2dd4bf; background: rgba(45,  212, 191, 0.12); border: 1px solid rgba(45,  212, 191, 0.3); }
 .badge-not-found { color: #71717a; background: rgba(113, 113, 122, 0.12); border: 1px solid rgba(113, 113, 122, 0.25); }
 .badge-success   { color: #4ade80; background: rgba(74,  222, 128, 0.12); border: 1px solid rgba(74,  222, 128, 0.3); }
-.badge-failed    { color: #f87171; background: rgba(248,  113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.3); }
+.badge-failed    { color: #f87171; background: rgba(248, 113, 113, 0.12); border: 1px solid rgba(248, 113, 113, 0.3); }
+.badge-partial   { color: #facc15; background: rgba(250, 204,  21, 0.12); border: 1px solid rgba(250, 204,  21, 0.3); }
 .badge-skipped   { color: #fb923c; background: rgba(251, 146,  60, 0.12); border: 1px solid rgba(251, 146,  60, 0.3); }
 .badge-unknown   { color: #a1a1aa; background: rgba(161, 161, 170, 0.12); border: 1px solid rgba(161, 161, 170, 0.2); }
 .badge-na        { color: #3f3f46; background: transparent; border: 1px solid transparent; }

@@ -84,10 +84,10 @@ function getTxStatus(tx) {
   const ap = desc.action
   if (ap) {
     if (ap.success === false) return 'failed'
-    // Only mark failed when ALL actions were skipped (none executed).
-    // e.g. tonscan: "total_actions=1, skipped_actions=1, 0 output msgs"
-    // Partial skips (some actions still ran) are not a full failure.
+    // All actions skipped → full failure
     if (ap.skipped_actions > 0 && ap.skipped_actions === ap.tot_actions) return 'failed'
+    // Some (but not all) actions skipped → partial failure
+    if (ap.skipped_actions > 0 && ap.skipped_actions < ap.tot_actions) return 'partial'
   }
 
   if (cp?.success === true) return 'success'
@@ -317,6 +317,7 @@ function TonBatchLookup() {
       notFound: valid.filter(r => !r.found && !r.error).length,
       success:  valid.filter(r => r.status === 'success').length,
       failed:   valid.filter(r => r.status === 'failed').length,
+      partial:  valid.filter(r => r.status === 'partial').length,
       skipped:  valid.filter(r => r.status === 'skipped').length,
       unknown:  valid.filter(r => r.found && r.status === 'unknown').length,
       errors:   valid.filter(r => r.error && r.error !== 'Aborted').length,
@@ -331,7 +332,7 @@ function TonBatchLookup() {
       case 'found':     return valid.filter(r => r.found)
       case 'not_found': return valid.filter(r => !r.found && !r.error)
       case 'success':   return valid.filter(r => r.status === 'success')
-      case 'failed':    return valid.filter(r => r.status === 'failed' || r.status === 'skipped')
+      case 'failed':    return valid.filter(r => r.status === 'failed' || r.status === 'partial' || r.status === 'skipped')
       case 'errors':    return valid.filter(r => r.error && r.error !== 'Aborted')
       default:          return valid
     }
@@ -398,6 +399,7 @@ function TonBatchLookup() {
     switch (status) {
       case 'success': return <span className="badge badge-success">✓ Success</span>
       case 'failed':  return <span className="badge badge-failed">✗ Failed</span>
+      case 'partial': return <span className="badge badge-partial">⚠ Partial Fail</span>
       case 'skipped': return <span className="badge badge-skipped">⚠ Skipped</span>
       case 'unknown': return <span className="badge badge-unknown">? Unknown</span>
       default:        return <span className="badge badge-na">—</span>
@@ -598,6 +600,15 @@ function TonBatchLookup() {
                 <span className="stat-value">{stats.failed.toLocaleString()}</span>
                 <span className="stat-label">Failed</span>
               </button>
+              {stats.partial > 0 && (
+                <button
+                  className={`stat-card stat-partial ${filter === 'failed' ? 'active' : ''}`}
+                  onClick={() => handleFilterChange('failed')}
+                >
+                  <span className="stat-value">{stats.partial.toLocaleString()}</span>
+                  <span className="stat-label">Partial Fail</span>
+                </button>
+              )}
               {stats.errors > 0 && (
                 <button
                   className={`stat-card stat-errors ${filter === 'errors' ? 'active' : ''}`}
