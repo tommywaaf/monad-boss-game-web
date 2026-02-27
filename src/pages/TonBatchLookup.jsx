@@ -92,7 +92,10 @@ function getTxStatus(tx) {
 // ── Single hash lookup ─────────────────────────────────────────────────────
 
 async function lookupHash(session, hex64, signal, requestDelayMs) {
-  // Try as message hash first (tonscan workflow)
+  let tx = null
+  let mode = null
+
+  // 1) Try as message hash (tonscan workflow)
   const msgHashB64 = txHexToB64(hex64)
   const byMsg = await fetchJson(
     session,
@@ -101,27 +104,64 @@ async function lookupHash(session, hex64, signal, requestDelayMs) {
     signal,
     requestDelayMs,
   )
-
   const txsByMsg = byMsg?.transactions || []
   if (txsByMsg.length > 0) {
-    return { found: true, mode: 'message', status: getTxStatus(txsByMsg[0]) }
+    tx   = txsByMsg[0]
+    mode = 'message'
   }
 
-  // Fallback: try as transaction hash (tonviewer workflow)
-  const byTx = await fetchJson(
-    session,
-    `${TONCENTER}/api/v3/transactions`,
-    { hash: hex64, limit: 1 },
-    signal,
-    requestDelayMs,
-  )
-
-  const txsByHash = byTx?.transactions || []
-  if (txsByHash.length > 0) {
-    return { found: true, mode: 'transaction', status: getTxStatus(txsByHash[0]) }
+  // 2) Fallback: try as transaction hash (tonviewer workflow)
+  if (!tx) {
+    const byTx = await fetchJson(
+      session,
+      `${TONCENTER}/api/v3/transactions`,
+      { hash: hex64, limit: 1 },
+      signal,
+      requestDelayMs,
+    )
+    const txsByHash = byTx?.transactions || []
+    if (txsByHash.length > 0) {
+      tx   = txsByHash[0]
+      mode = 'transaction'
+    }
   }
 
-  return { found: false, mode: null, status: null }
+  if (!tx) return { found: false, mode: null, status: null }
+
+  // 3) Check the outer-transaction description (compute + action phase)
+  const txStatus = getTxStatus(tx)
+
+  // Already clearly failed at the transaction level — no need to dig deeper
+  if (txStatus === 'failed') {
+    return { found: true, mode, status: 'failed' }
+  }
+
+  // 4) Check trace-level actions for inner failures.
+  //    A transaction can be "Confirmed" on-chain while a child action inside
+  //    the same trace (e.g. Transfer TON) shows as Failed — tonviewer displays
+  //    exactly this pattern. We must inspect every action in the trace.
+  const traceId = tx.trace_id
+  if (traceId) {
+    try {
+      const actData = await fetchJson(
+        session,
+        `${TONCENTER}/api/v3/actions`,
+        { trace_id: traceId, limit: 100, include_transactions: 'false' },
+        signal,
+        requestDelayMs,
+      )
+      const actions = actData?.actions || []
+      const hasFailedAction = actions.some(a => a.status === 'failed')
+      if (hasFailedAction) {
+        return { found: true, mode, status: 'failed' }
+      }
+    } catch (e) {
+      // Actions fetch failed — fall through to tx-level status
+      if (e.name === 'AbortError') throw e
+    }
+  }
+
+  return { found: true, mode, status: txStatus }
 }
 
 // ── ETA formatting ─────────────────────────────────────────────────────────
