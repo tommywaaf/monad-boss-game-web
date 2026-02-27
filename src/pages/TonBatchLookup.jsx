@@ -82,7 +82,13 @@ function getTxStatus(tx) {
   }
 
   const ap = desc.action
-  if (ap && ap.success === false) return 'failed'
+  if (ap) {
+    if (ap.success === false) return 'failed'
+    // Only mark failed when ALL actions were skipped (none executed).
+    // e.g. tonscan: "total_actions=1, skipped_actions=1, 0 output msgs"
+    // Partial skips (some actions still ran) are not a full failure.
+    if (ap.skipped_actions > 0 && ap.skipped_actions === ap.tot_actions) return 'failed'
+  }
 
   if (cp?.success === true) return 'success'
 
