@@ -12,6 +12,7 @@ import App from './App.jsx'
 import Broadcaster from './pages/Broadcaster.jsx'
 import Simulator from './pages/Simulator.jsx'
 import TonDetails from './pages/TonDetails.jsx'
+import TonBatchLookup from './pages/TonBatchLookup.jsx'
 import BtcSafeToFail from './pages/BtcSafeToFail.jsx'
 
 // Get Dynamic Environment ID from environment variable
@@ -113,6 +114,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/broadcaster" element={<Broadcaster />} />
         <Route path="/simulator" element={<Simulator />} />
         <Route path="/ton-details" element={<TonDetails />} />
+        <Route path="/ton-batch-lookup" element={<TonBatchLookup />} />
         <Route path="/btc-safe-to-fail" element={<BtcSafeToFail />} />
         <Route path="/*" element={<MainApp />} />
       </Routes>
