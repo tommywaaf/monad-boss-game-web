@@ -311,6 +311,64 @@ function TonBatchLookup() {
     abortRef.current?.abort()
   }, [])
 
+  // ── Retry API errors ──────────────────────────────────────────────────────
+  // Re-runs only the errored entries in-place with a doubled request delay
+  // to back off from rate limits without re-processing the whole batch.
+
+  const handleRetry = useCallback(async () => {
+    const erroredEntries = results
+      .map((r, i) => ({ r, i }))
+      .filter(({ r }) => r?.error && r.error !== 'Aborted')
+
+    if (erroredEntries.length === 0) return
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    // Seed the working ref with the current results so we patch in-place
+    resultsRef.current = [...results]
+    progressRef.current = { completed: 0, total: erroredEntries.length, startTime: Date.now() }
+    setProcessing(true)
+    setProgress({ completed: 0, total: erroredEntries.length, startTime: Date.now() })
+
+    const session     = getSession()
+    const retryDelay  = Math.max(requestDelay * 2, 800)  // back off to avoid repeat 429s
+    const signal      = controller.signal
+    let nextIdx  = 0
+    let completed = 0
+
+    const worker = async () => {
+      while (true) {
+        if (signal.aborted) break
+        const qi = nextIdx++
+        if (qi >= erroredEntries.length) break
+
+        const { r: prev, i: slot } = erroredEntries[qi]
+
+        try {
+          const data = await lookupHash(session, prev.hash, signal, retryDelay)
+          resultsRef.current[slot] = { hash: prev.hash, ...data, error: null }
+        } catch (e) {
+          resultsRef.current[slot] = {
+            ...prev,
+            error: e.name === 'AbortError' ? 'Aborted' : e.message,
+          }
+        }
+
+        completed++
+        progressRef.current = { ...progressRef.current, completed }
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, erroredEntries.length) }, worker)
+    )
+
+    setProgress({ ...progressRef.current })
+    setResults([...resultsRef.current])
+    setProcessing(false)
+  }, [results, concurrency, requestDelay])
+
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   const stats = useMemo(() => {
@@ -532,6 +590,11 @@ function TonBatchLookup() {
             {processing && (
               <button className="btn-stop" onClick={handleStop}>
                 ⛔ Stop
+              </button>
+            )}
+            {!processing && stats.errors > 0 && (
+              <button className="btn-retry" onClick={handleRetry}>
+                🔄 Retry {stats.errors} API Error{stats.errors !== 1 ? 's' : ''}
               </button>
             )}
           </div>

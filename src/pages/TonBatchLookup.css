@@ -306,6 +306,24 @@
   border-color: rgba(239, 68, 68, 0.6);
 }
 
+.btn-retry {
+  padding: 0.9rem 1.5rem;
+  background: rgba(251, 146, 60, 0.12);
+  border: 1px solid rgba(251, 146, 60, 0.4);
+  border-radius: 8px;
+  color: #fb923c;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.btn-retry:hover {
+  background: rgba(251, 146, 60, 0.22);
+  border-color: rgba(251, 146, 60, 0.65);
+}
+
 /* ── Progress card ──────────────────────────────────────────────────────── */
 
 .progress-card {
