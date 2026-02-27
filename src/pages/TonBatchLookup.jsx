@@ -79,6 +79,10 @@ function getTxStatus(tx) {
   if (cp) {
     if (cp.skipped) return 'skipped'
     if (cp.success === false) return 'failed'
+    // TonCenter can report success:true even when the TVM exit code is non-zero
+    // (e.g. -14 = out of gas). Only exit codes 0 and 1 are genuine TVM successes.
+    if (cp.exit_code !== undefined && cp.exit_code !== null
+        && cp.exit_code !== 0 && cp.exit_code !== 1) return 'failed'
   }
 
   const ap = desc.action
