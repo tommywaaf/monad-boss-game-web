@@ -169,6 +169,13 @@ function App() {
               <span className="sidebar-text">Simulator</span>
             </Link>
             <Link 
+              to="/tx-fetcher" 
+              className={`sidebar-link ${location.pathname === '/tx-fetcher' ? 'active' : ''}`}
+            >
+              <span className="sidebar-icon">📥</span>
+              <span className="sidebar-text">TX Fetcher</span>
+            </Link>
+            <Link 
               to="/ton-details" 
               className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}
             >
@@ -180,7 +187,7 @@ function App() {
               className={`sidebar-link ${location.pathname === '/ton-batch-lookup' ? 'active' : ''}`}
             >
               <span className="sidebar-icon">📋</span>
-              <span className="sidebar-text">TON Batch Lookup</span>
+              <span className="sidebar-text">TON Safe-to-Fail</span>
             </Link>
             <Link 
               to="/btc-safe-to-fail" 
