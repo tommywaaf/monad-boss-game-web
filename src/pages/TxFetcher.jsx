@@ -80,6 +80,34 @@ async function apiCall(chainId, params, signal, onLog, retries = 7) {
   throw new Error(`API failed after ${retries} retries. Last: ${JSON.stringify(last)}`)
 }
 
+async function getExpectedCount(chainId, address, action, signal, onLog) {
+  let total = 0
+  let page = 1
+  try {
+    while (true) {
+      const json = await apiCall(chainId, {
+        module: 'account',
+        action,
+        address,
+        startblock: '0',
+        endblock: '999999999',
+        page: String(page),
+        offset: String(PAGE_SIZE),
+        sort: 'asc',
+      }, signal, onLog)
+      const result = json.result
+      if (!Array.isArray(result) || result.length === 0) break
+      total += result.length
+      if (result.length < PAGE_SIZE) break
+      page++
+      await sleep(DELAY_MS, signal)
+    }
+    onLog?.(`Verification count for ${action}: ${total.toLocaleString()} (via page-based pagination)`)
+    return total
+  } catch { /* non-critical */ }
+  return null
+}
+
 async function getBlockByTimestamp(chainId, timestamp, closest, signal, onLog) {
   const json = await apiCall(chainId, {
     module: 'block',
@@ -94,31 +122,29 @@ async function getBlockByTimestamp(chainId, timestamp, closest, signal, onLog) {
   return block
 }
 
-async function fetchDirection(chainId, address, action, startblock, endblock, sort, signal, onLog, label) {
+async function fetchAllPages(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
   const hashes = new Set()
-  let currentStart = sort === 'asc' ? startblock : endblock
+  let currentStart = startblock
   let chunk = 1
 
   while (true) {
-    const sb = sort === 'asc' ? String(currentStart) : String(startblock)
-    const eb = sort === 'asc' ? String(endblock) : String(currentStart)
-    onLog?.(`[${action}] ${label} chunk ${chunk}, blocks ${sb}–${eb}...`)
+    onLog?.(`[${action}] Chunk ${chunk}, fetching from block ${currentStart}...`)
     const json = await apiCall(chainId, {
       module: 'account',
       action,
       address,
-      startblock: sb,
-      endblock: eb,
+      startblock: String(currentStart),
+      endblock: String(endblock),
       page: '1',
       offset: String(PAGE_SIZE),
-      sort,
+      sort: 'asc',
     }, signal, onLog)
 
     const result = json.result
 
     if (!Array.isArray(result) || result.length === 0) {
       const msg = typeof result === 'string' ? result : 'empty'
-      onLog?.(`[${action}] ${label} chunk ${chunk}: ${msg} — done`)
+      onLog?.(`[${action}] Chunk ${chunk}: ${msg} — done with this endpoint`)
       break
     }
 
@@ -127,53 +153,20 @@ async function fetchDirection(chainId, address, action, startblock, endblock, so
       if (hash) hashes.add(hash.toLowerCase())
     }
 
-    onLog?.(`[${action}] ${label} chunk ${chunk}: ${result.length} txs, ${hashes.size} unique hashes so far`)
+    onLog?.(`[${action}] Chunk ${chunk}: ${result.length} txs, ${hashes.size} unique hashes so far`)
+    onProgress({ action, page: chunk, found: hashes.size })
 
     if (result.length < PAGE_SIZE) break
 
-    const edgeIdx = sort === 'asc' ? result.length - 1 : 0
-    const edgeBlock = parseInt(result[edgeIdx].blockNumber, 10)
-    if (isNaN(edgeBlock)) break
+    const lastBlock = parseInt(result[result.length - 1].blockNumber, 10)
+    if (isNaN(lastBlock) || lastBlock <= currentStart) break
 
-    if (sort === 'asc') {
-      if (edgeBlock <= currentStart) break
-      currentStart = edgeBlock
-    } else {
-      if (edgeBlock >= currentStart) break
-      currentStart = edgeBlock
-    }
-
+    currentStart = lastBlock
     chunk++
     await sleep(DELAY_MS, signal)
   }
 
   return hashes
-}
-
-async function fetchAllPages(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
-  // Fetch ascending (oldest first)
-  onLog?.(`[${action}] Fetching ascending...`)
-  const ascHashes = await fetchDirection(chainId, address, action, startblock, endblock, 'asc', signal, onLog, 'ASC')
-  onProgress({ action, page: 1, found: ascHashes.size })
-
-  await sleep(DELAY_MS, signal)
-
-  // Fetch descending (newest first) to catch anything the ascending pass missed
-  onLog?.(`[${action}] Fetching descending...`)
-  const descHashes = await fetchDirection(chainId, address, action, startblock, endblock, 'desc', signal, onLog, 'DESC')
-
-  // Merge both directions
-  const merged = new Set(ascHashes)
-  let newFromDesc = 0
-  for (const h of descHashes) {
-    if (!merged.has(h)) newFromDesc++
-    merged.add(h)
-  }
-
-  onLog?.(`[${action}] ASC: ${ascHashes.size}, DESC: ${descHashes.size}, merged: ${merged.size} (${newFromDesc} new from DESC)`)
-  onProgress({ action, page: 1, found: merged.size })
-
-  return merged
 }
 
 export default function TxFetcher() {
@@ -256,6 +249,7 @@ export default function TxFetcher() {
         token1155tx: 'ERC-1155 Transfers',
       }
 
+      const perEndpoint = {}
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
         addLog(`--- Starting ${actionLabels[action]} (${action}) [${i + 1}/${actions.length}] ---`)
@@ -275,6 +269,7 @@ export default function TxFetcher() {
           addLog
         )
 
+        perEndpoint[action] = result.size
         const beforeSize = allHashes.size
         for (const h of result) allHashes.add(h)
         addLog(`${actionLabels[action]}: ${result.size} hashes (${allHashes.size - beforeSize} new, ${allHashes.size} total unique)`)
@@ -288,6 +283,24 @@ export default function TxFetcher() {
       setHashes(sorted)
       setProgress(null)
       addLog(`=== Done! ${sorted.length} unique transaction hashes found ===`)
+
+      if (fetchAll) {
+        addLog('--- Verification (checked AFTER scan to account for new activity) ---')
+        const checks = ['txlist', 'txlistinternal', 'tokentx']
+        for (const action of checks) {
+          const expected = await getExpectedCount(chainId, address, action, signal, addLog)
+          if (expected === null) continue
+          const found = perEndpoint[action] || 0
+          if (found >= expected) {
+            addLog(`VERIFIED ${action}: found ${found.toLocaleString()} unique hashes, API reports ${expected.toLocaleString()} total rows — all accounted for`)
+          } else {
+            const missing = expected - found
+            addLog(`WARNING ${action}: found ${found.toLocaleString()} unique hashes but API reports ${expected.toLocaleString()} total rows — ${missing.toLocaleString()} may be missing (possible indexing gap)`)
+          }
+          await sleep(DELAY_MS, signal)
+        }
+      }
+
       trackUsage('txfetcher', sorted.length)
     } catch (e) {
       if (e.name === 'AbortError') {
