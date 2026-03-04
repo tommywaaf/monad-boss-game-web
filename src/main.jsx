@@ -14,6 +14,7 @@ import Simulator from './pages/Simulator.jsx'
 import TonDetails from './pages/TonDetails.jsx'
 import TonBatchLookup from './pages/TonBatchLookup.jsx'
 import BtcSafeToFail from './pages/BtcSafeToFail.jsx'
+import TxFetcher from './pages/TxFetcher.jsx'
 
 // Get Dynamic Environment ID from environment variable
 const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
@@ -116,6 +117,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/ton-details" element={<TonDetails />} />
         <Route path="/ton-batch-lookup" element={<TonBatchLookup />} />
         <Route path="/btc-safe-to-fail" element={<BtcSafeToFail />} />
+        <Route path="/tx-fetcher" element={<TxFetcher />} />
         <Route path="/*" element={<MainApp />} />
       </Routes>
     </BrowserRouter>

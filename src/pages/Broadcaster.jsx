@@ -1212,6 +1212,13 @@ function Broadcaster() {
             <span className="sidebar-text">Simulator</span>
           </Link>
           <Link 
+            to="/tx-fetcher" 
+            className={`sidebar-link ${location.pathname === '/tx-fetcher' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">📥</span>
+            <span className="sidebar-text">TX Fetcher</span>
+          </Link>
+          <Link 
             to="/ton-details" 
             className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}
           >
