@@ -6,15 +6,22 @@ import './TxFetcher.css'
 const ETHERSCAN_API_KEY = import.meta.env.VITE_ETHERSCAN_API_KEY || ''
 const HAS_API_KEY = ETHERSCAN_API_KEY.length > 0
 
+const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
+
 const NETWORKS = [
-  {
-    id: 'ethereum',
-    name: 'Ethereum',
-    apiBase: 'https://api.etherscan.io/api',
-    explorer: 'https://etherscan.io/tx/',
-    apiKey: ETHERSCAN_API_KEY,
-    delayMs: HAS_API_KEY ? 250 : 5500,
-  },
+  { id: 'ethereum',  name: 'Ethereum',          chainId: 1,     explorer: 'https://etherscan.io/tx/' },
+  { id: 'base',      name: 'Base',              chainId: 8453,  explorer: 'https://basescan.org/tx/' },
+  { id: 'arbitrum',  name: 'Arbitrum One',      chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
+  { id: 'optimism',  name: 'Optimism',          chainId: 10,    explorer: 'https://optimistic.etherscan.io/tx/' },
+  { id: 'polygon',   name: 'Polygon',           chainId: 137,   explorer: 'https://polygonscan.com/tx/' },
+  { id: 'bsc',       name: 'BNB Smart Chain',   chainId: 56,    explorer: 'https://bscscan.com/tx/' },
+  { id: 'avalanche', name: 'Avalanche C-Chain', chainId: 43114, explorer: 'https://snowtrace.io/tx/' },
+  { id: 'fantom',    name: 'Fantom',            chainId: 250,   explorer: 'https://ftmscan.com/tx/' },
+  { id: 'linea',     name: 'Linea',             chainId: 59144, explorer: 'https://lineascan.build/tx/' },
+  { id: 'gnosis',    name: 'Gnosis Chain',      chainId: 100,   explorer: 'https://gnosisscan.io/tx/' },
+  { id: 'celo',      name: 'Celo',              chainId: 42220, explorer: 'https://celoscan.io/tx/' },
+  { id: 'moonbeam',  name: 'Moonbeam',          chainId: 1284,  explorer: 'https://moonscan.io/tx/' },
+  { id: 'zkevm',     name: 'Polygon zkEVM',     chainId: 1101,  explorer: 'https://zkevm.polygonscan.com/tx/' },
 ]
 
 const PAGE_SIZE = 10000
@@ -33,12 +40,15 @@ function sleep(ms, signal) {
   })
 }
 
-async function apiCall(apiBase, params, signal, delayMs, onLog, apiKey = '', retries = 7) {
+const DELAY_MS = HAS_API_KEY ? 250 : 5500
+
+async function apiCall(chainId, params, signal, onLog, retries = 7) {
   let last = null
   for (let i = 0; i < retries; i++) {
     try {
-      const fullParams = apiKey ? { ...params, apikey: apiKey } : params
-      const url = `${apiBase}?${new URLSearchParams(fullParams)}`
+      const fullParams = { chainid: String(chainId), ...params }
+      if (ETHERSCAN_API_KEY) fullParams.apikey = ETHERSCAN_API_KEY
+      const url = `${ETHERSCAN_V2}?${new URLSearchParams(fullParams)}`
       const res = await fetch(url, { signal })
       const json = await res.json()
 
@@ -52,8 +62,8 @@ async function apiCall(apiBase, params, signal, delayMs, onLog, apiKey = '', ret
       if (typeof json.result === 'string') {
         const lower = json.result.toLowerCase()
         if (lower.includes('rate limit') || lower.includes('max rate')) {
-          onLog?.(`Rate limited, waiting ${Math.round(delayMs / 1000)}s before retry ${i + 1}/${retries}...`)
-          await sleep(delayMs + i * 1000, signal)
+          onLog?.(`Rate limited, waiting ${Math.round(DELAY_MS / 1000)}s before retry ${i + 1}/${retries}...`)
+          await sleep(DELAY_MS + i * 1000, signal)
           continue
         }
       }
@@ -69,27 +79,27 @@ async function apiCall(apiBase, params, signal, delayMs, onLog, apiKey = '', ret
   throw new Error(`API failed after ${retries} retries. Last: ${JSON.stringify(last)}`)
 }
 
-async function getBlockByTimestamp(apiBase, timestamp, closest, signal, delayMs, onLog, apiKey) {
-  const json = await apiCall(apiBase, {
+async function getBlockByTimestamp(chainId, timestamp, closest, signal, onLog) {
+  const json = await apiCall(chainId, {
     module: 'block',
     action: 'getblocknobytime',
     timestamp: String(timestamp),
     closest,
-  }, signal, delayMs, onLog, apiKey)
-  await sleep(delayMs, signal)
+  }, signal, onLog)
+  await sleep(DELAY_MS, signal)
   const block = parseInt(json.result, 10)
   if (isNaN(block)) throw new Error(`Could not resolve block for timestamp ${timestamp}: ${JSON.stringify(json)}`)
   onLog?.(`Resolved timestamp ${timestamp} → block ${block}`)
   return block
 }
 
-async function fetchAllPages(apiBase, address, action, startblock, endblock, delayMs, signal, onProgress, onLog, apiKey) {
+async function fetchAllPages(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
   const hashes = new Set()
   let page = 1
 
   while (true) {
     onLog?.(`[${action}] Fetching page ${page} (blocks ${startblock}–${endblock})...`)
-    const json = await apiCall(apiBase, {
+    const json = await apiCall(chainId, {
       module: 'account',
       action,
       address,
@@ -98,7 +108,7 @@ async function fetchAllPages(apiBase, address, action, startblock, endblock, del
       page: String(page),
       offset: String(PAGE_SIZE),
       sort: 'asc',
-    }, signal, delayMs, onLog, apiKey)
+    }, signal, onLog)
 
     const result = json.result
 
@@ -118,7 +128,7 @@ async function fetchAllPages(apiBase, address, action, startblock, endblock, del
 
     if (result.length < PAGE_SIZE) break
     page++
-    await sleep(delayMs, signal)
+    await sleep(DELAY_MS, signal)
   }
 
   return hashes
@@ -171,23 +181,23 @@ export default function TxFetcher() {
     setProgress({ action: 'Preparing...', page: 0, found: 0 })
 
     try {
-      const { apiBase, delayMs, apiKey } = selectedNetwork
+      const { chainId } = selectedNetwork
       let startblock = 0
       let endblock = 99999999
 
-      addLog(`Starting fetch on ${selectedNetwork.name} for ${address}`)
-      addLog(`API: ${apiBase}`)
-      addLog(apiKey ? `API key: active (${apiKey.slice(0, 4)}...${apiKey.slice(-4)}) — fast mode ~5 req/s` : 'No API key — slow mode ~1 req/5s')
+      addLog(`Starting fetch on ${selectedNetwork.name} (chainId ${chainId}) for ${address}`)
+      addLog(`API: ${ETHERSCAN_V2}`)
+      addLog(HAS_API_KEY ? `API key: active (${ETHERSCAN_API_KEY.slice(0, 4)}...${ETHERSCAN_API_KEY.slice(-4)}) — fast mode ~5 req/s` : 'No API key — slow mode ~1 req/5s')
 
       if (!fetchAll && startDate && endDate) {
         setProgress({ action: 'Resolving start block...', page: 0, found: 0 })
         addLog(`Resolving date range: ${startDate} → ${endDate}`)
         const startTs = Math.floor(new Date(startDate + 'T00:00:00Z').getTime() / 1000)
-        startblock = await getBlockByTimestamp(apiBase, startTs, 'after', signal, delayMs, addLog, apiKey)
+        startblock = await getBlockByTimestamp(chainId, startTs, 'after', signal, addLog)
 
         setProgress({ action: 'Resolving end block...', page: 0, found: 0 })
         const endTs = Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000)
-        endblock = await getBlockByTimestamp(apiBase, endTs, 'before', signal, delayMs, addLog, apiKey)
+        endblock = await getBlockByTimestamp(chainId, endTs, 'before', signal, addLog)
 
         addLog(`Block range: ${startblock} → ${endblock}`)
       } else {
@@ -208,7 +218,7 @@ export default function TxFetcher() {
         setProgress({ action: actionLabels[action], page: 0, found: allHashes.size, step: i + 1, totalSteps: 3 })
 
         const result = await fetchAllPages(
-          apiBase, address, action, startblock, endblock, delayMs, signal,
+          chainId, address, action, startblock, endblock, signal,
           ({ page, found }) => {
             setProgress({
               action: actionLabels[action],
@@ -218,8 +228,7 @@ export default function TxFetcher() {
               totalSteps: 3,
             })
           },
-          addLog,
-          apiKey
+          addLog
         )
 
         const beforeSize = allHashes.size
@@ -227,7 +236,7 @@ export default function TxFetcher() {
         addLog(`${actionLabels[action]}: ${result.size} hashes (${allHashes.size - beforeSize} new, ${allHashes.size} total unique)`)
 
         if (i < actions.length - 1) {
-          await sleep(delayMs, signal)
+          await sleep(DELAY_MS, signal)
         }
       }
 
@@ -363,9 +372,9 @@ export default function TxFetcher() {
               <option key={n.id} value={n.id}>{n.name}</option>
             ))}
           </select>
-          {selectedNetwork.apiKey ? (
+          {HAS_API_KEY ? (
             <div className="api-info api-info-ok">
-              API key active — fast mode (~5 requests/sec)
+              Etherscan V2 API key active — fast mode (~5 requests/sec), works across all chains
             </div>
           ) : (
             <div className="api-info">
