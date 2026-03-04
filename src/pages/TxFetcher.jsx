@@ -25,15 +25,23 @@ function parseChainlist(data) {
 }
 
 const FALLBACK_NETWORKS = [
-  { id: '1',     name: 'Ethereum Mainnet',   chainId: 1,     explorer: 'https://etherscan.io/tx/' },
-  { id: '999',   name: 'HyperEVM Mainnet',   chainId: 999,   explorer: 'https://hyperevmscan.io/tx/' },
-  { id: '8453',  name: 'Base Mainnet',       chainId: 8453,  explorer: 'https://basescan.org/tx/' },
-  { id: '42161', name: 'Arbitrum One Mainnet', chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
-  { id: '137',   name: 'Polygon Mainnet',    chainId: 137,   explorer: 'https://polygonscan.com/tx/' },
-  { id: '10',    name: 'OP Mainnet',         chainId: 10,    explorer: 'https://optimistic.etherscan.io/tx/' },
+  { id: '1',     name: 'Ethereum Mainnet',     chainId: 1,     explorer: 'https://etherscan.io/tx/' },
+  { id: '999',   name: 'HyperEVM Mainnet',     chainId: 999,   explorer: 'https://hyperevmscan.io/tx/' },
+  { id: '8453',  name: 'Base Mainnet',         chainId: 8453,  explorer: 'https://basescan.org/tx/' },
+  { id: '42161', name: 'Arbitrum One Mainnet',  chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
+  { id: '137',   name: 'Polygon Mainnet',      chainId: 137,   explorer: 'https://polygonscan.com/tx/' },
+  { id: '10',    name: 'OP Mainnet',           chainId: 10,    explorer: 'https://optimistic.etherscan.io/tx/' },
 ]
 
 const PAGE_SIZE = 10000
+
+const ACTION_LABELS = {
+  txlist: 'Normal',
+  txlistinternal: 'Internal',
+  tokentx: 'ERC-20',
+  tokennfttx: 'ERC-721',
+  token1155tx: 'ERC-1155',
+}
 
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -100,8 +108,21 @@ async function getBlockByTimestamp(chainId, timestamp, closest, signal, onLog) {
   return block
 }
 
-async function fetchAllPages(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
-  const hashes = new Set()
+function getDirection(tx, addr) {
+  const from = (tx.from || '').toLowerCase()
+  const to = (tx.to || '').toLowerCase()
+  const a = addr.toLowerCase()
+  const isFrom = from === a
+  const isTo = to === a
+  if (isFrom && isTo) return 'self'
+  if (isFrom) return 'outgoing'
+  if (isTo) return 'incoming'
+  return 'related'
+}
+
+// Returns Map<hash, { from, to, nonce, direction }>
+async function fetchAllPagesRich(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
+  const txMap = new Map()
   let currentStart = startblock
   let chunk = 1
 
@@ -127,12 +148,20 @@ async function fetchAllPages(chainId, address, action, startblock, endblock, sig
     }
 
     for (const tx of result) {
-      const hash = tx.hash || tx.transactionHash
-      if (hash) hashes.add(hash.toLowerCase())
+      const hash = (tx.hash || tx.transactionHash || '').toLowerCase()
+      if (!hash) continue
+      if (!txMap.has(hash)) {
+        txMap.set(hash, {
+          from: (tx.from || '').toLowerCase(),
+          to: (tx.to || '').toLowerCase(),
+          nonce: tx.nonce || null,
+          direction: getDirection(tx, address),
+        })
+      }
     }
 
-    onLog?.(`[${action}] Chunk ${chunk}: ${result.length} txs, ${hashes.size} unique hashes so far`)
-    onProgress({ action, page: chunk, found: hashes.size })
+    onLog?.(`[${action}] Chunk ${chunk}: ${result.length} txs, ${txMap.size} unique hashes so far`)
+    onProgress({ action, page: chunk, found: txMap.size })
 
     if (result.length < PAGE_SIZE) break
 
@@ -144,7 +173,7 @@ async function fetchAllPages(chainId, address, action, startblock, endblock, sig
     await sleep(DELAY_MS, signal)
   }
 
-  return hashes
+  return txMap
 }
 
 export default function TxFetcher() {
@@ -154,12 +183,14 @@ export default function TxFetcher() {
   const [fetchAll, setFetchAll] = useState(true)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [directionFilter, setDirectionFilter] = useState('all')
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [hashes, setHashes] = useState([])
+  const [hashMeta, setHashMeta] = useState({})
+  const [highestNonce, setHighestNonce] = useState(null)
   const [error, setError] = useState(null)
   const [copyFeedback, setCopyFeedback] = useState('')
-  const [hashSources, setHashSources] = useState({})
   const [logs, setLogs] = useState([])
   const [resultsPage, setResultsPage] = useState(0)
   const [pageSize, setPageSize] = useState(200)
@@ -182,7 +213,6 @@ export default function TxFetcher() {
   }, [])
 
   const isValidAddress = address.match(/^0x[a-fA-F0-9]{40}$/)
-
   const canFetch = isValidAddress && !loading && (fetchAll || (startDate && endDate))
 
   const addLog = useCallback((msg) => {
@@ -194,6 +224,14 @@ export default function TxFetcher() {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
+  const filteredHashes = hashes.filter(h => {
+    if (directionFilter === 'all') return true
+    const dir = hashMeta[h]?.direction
+    if (directionFilter === 'outgoing') return dir === 'outgoing' || dir === 'self'
+    if (directionFilter === 'incoming') return dir === 'incoming' || dir === 'self'
+    return true
+  })
+
   const handleFetch = useCallback(async () => {
     if (!canFetch) return
 
@@ -204,7 +242,8 @@ export default function TxFetcher() {
     setLoading(true)
     setError(null)
     setHashes([])
-    setHashSources({})
+    setHashMeta({})
+    setHighestNonce(null)
     setLogs([])
     setResultsPage(0)
     setProgress({ action: 'Preparing...', page: 0, found: 0 })
@@ -217,6 +256,7 @@ export default function TxFetcher() {
       addLog(`Starting fetch on ${selectedNetwork.name} (chainId ${chainId}) for ${address}`)
       addLog(`API: ${ETHERSCAN_V2}`)
       addLog(HAS_API_KEY ? `API key: active (${ETHERSCAN_API_KEY.slice(0, 4)}...${ETHERSCAN_API_KEY.slice(-4)}) — fast mode ~5 req/s` : 'No API key — slow mode ~1 req/5s')
+      addLog(`Direction filter: ${directionFilter}`)
 
       if (!fetchAll && startDate && endDate) {
         setProgress({ action: 'Resolving start block...', page: 0, found: 0 })
@@ -233,28 +273,24 @@ export default function TxFetcher() {
         addLog('Fetching ALL transactions (no date filter)')
       }
 
-      const hashSources = new Map()
+      // Master map: hash → { sources: Set, direction, nonce }
+      const master = new Map()
       const actions = ['txlist', 'txlistinternal', 'tokentx', 'tokennfttx', 'token1155tx']
-      const actionLabels = {
-        txlist: 'Normal',
-        txlistinternal: 'Internal',
-        tokentx: 'ERC-20',
-        tokennfttx: 'ERC-721',
-        token1155tx: 'ERC-1155',
-      }
+      let maxNonce = -1
 
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
-        addLog(`--- Starting ${actionLabels[action]} Transactions (${action}) [${i + 1}/${actions.length}] ---`)
-        setProgress({ action: `${actionLabels[action]} Transactions`, page: 0, found: hashSources.size, step: i + 1, totalSteps: actions.length })
+        const label = ACTION_LABELS[action]
+        addLog(`--- Starting ${label} Transactions (${action}) [${i + 1}/${actions.length}] ---`)
+        setProgress({ action: `${label} Transactions`, page: 0, found: master.size, step: i + 1, totalSteps: actions.length })
 
-        const result = await fetchAllPages(
+        const result = await fetchAllPagesRich(
           chainId, address, action, startblock, endblock, signal,
           ({ page, found }) => {
             setProgress({
-              action: `${actionLabels[action]} Transactions`,
+              action: `${label} Transactions`,
               page,
-              found: hashSources.size + found,
+              found: master.size + found,
               step: i + 1,
               totalSteps: actions.length,
             })
@@ -262,25 +298,37 @@ export default function TxFetcher() {
           addLog
         )
 
-        const beforeSize = hashSources.size
-        for (const h of result) {
-          if (!hashSources.has(h)) hashSources.set(h, new Set())
-          hashSources.get(h).add(actionLabels[action])
+        const beforeSize = master.size
+        for (const [h, data] of result) {
+          if (!master.has(h)) {
+            master.set(h, { sources: new Set(), direction: data.direction, nonce: data.nonce })
+          }
+          master.get(h).sources.add(label)
+
+          // Track highest nonce from outgoing normal txs
+          if (action === 'txlist' && (data.direction === 'outgoing' || data.direction === 'self') && data.nonce != null) {
+            const n = parseInt(data.nonce, 10)
+            if (!isNaN(n) && n > maxNonce) maxNonce = n
+          }
         }
-        addLog(`${actionLabels[action]} Transactions: ${result.size} hashes (${hashSources.size - beforeSize} new, ${hashSources.size} total unique)`)
+        addLog(`${label} Transactions: ${result.size} hashes (${master.size - beforeSize} new, ${master.size} total unique)`)
 
         if (i < actions.length - 1) {
           await sleep(DELAY_MS, signal)
         }
       }
 
-      const sorted = [...hashSources.keys()].sort()
-      const sourcesObj = {}
-      for (const [h, s] of hashSources) sourcesObj[h] = [...s].sort().join('|')
+      const sorted = [...master.keys()].sort()
+      const meta = {}
+      for (const [h, d] of master) {
+        meta[h] = { sources: [...d.sources].sort().join('|'), direction: d.direction }
+      }
       setHashes(sorted)
-      setHashSources(sourcesObj)
+      setHashMeta(meta)
+      if (maxNonce >= 0) setHighestNonce(maxNonce)
       setProgress(null)
       addLog(`=== Done! ${sorted.length} unique transaction hashes found ===`)
+      if (maxNonce >= 0) addLog(`Highest confirmed outgoing nonce: ${maxNonce.toLocaleString()}`)
 
       trackUsage('txfetcher', sorted.length)
     } catch (e) {
@@ -296,7 +344,7 @@ export default function TxFetcher() {
       setLoading(false)
       abortRef.current = null
     }
-  }, [canFetch, selectedNetwork, address, fetchAll, startDate, endDate, addLog])
+  }, [canFetch, selectedNetwork, address, fetchAll, startDate, endDate, directionFilter, addLog])
 
   const handleCancel = () => {
     if (abortRef.current) {
@@ -306,7 +354,7 @@ export default function TxFetcher() {
 
   const handleCopyAll = async () => {
     try {
-      await navigator.clipboard.writeText(hashes.join('\n'))
+      await navigator.clipboard.writeText(filteredHashes.join('\n'))
       setCopyFeedback('Copied!')
       setTimeout(() => setCopyFeedback(''), 2000)
     } catch {
@@ -324,12 +372,16 @@ export default function TxFetcher() {
   }
 
   const handleDownloadCSV = () => {
-    const csv = 'txHash,sources\n' + hashes.map(h => `${h},"${hashSources[h] || ''}"`).join('\n')
+    const rows = filteredHashes.map(h => {
+      const m = hashMeta[h] || {}
+      return `${h},"${m.sources || ''}","${m.direction || ''}"`
+    })
+    const csv = 'txHash,sources,direction\n' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `tx_hashes_${selectedNetwork.id}_${address.slice(0, 10)}.csv`
+    a.download = `tx_hashes_${selectedNetwork.id}_${address.slice(0, 10)}_${directionFilter}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -345,45 +397,27 @@ export default function TxFetcher() {
           <h3>Navigation</h3>
         </div>
         <div className="sidebar-links">
-          <Link
-            to="/broadcaster"
-            className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}
-          >
+          <Link to="/broadcaster" className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}>
             <span className="sidebar-icon">🚀</span>
             <span className="sidebar-text">Broadcaster</span>
           </Link>
-          <Link
-            to="/simulator"
-            className={`sidebar-link ${location.pathname === '/simulator' ? 'active' : ''}`}
-          >
+          <Link to="/simulator" className={`sidebar-link ${location.pathname === '/simulator' ? 'active' : ''}`}>
             <span className="sidebar-icon">⚡</span>
             <span className="sidebar-text">Simulator</span>
           </Link>
-          <Link
-            to="/tx-fetcher"
-            className={`sidebar-link ${location.pathname === '/tx-fetcher' ? 'active' : ''}`}
-          >
+          <Link to="/tx-fetcher" className={`sidebar-link ${location.pathname === '/tx-fetcher' ? 'active' : ''}`}>
             <span className="sidebar-icon">📥</span>
             <span className="sidebar-text">TX Fetcher</span>
           </Link>
-          <Link
-            to="/ton-details"
-            className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}
-          >
+          <Link to="/ton-details" className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}>
             <span className="sidebar-icon">🔍</span>
             <span className="sidebar-text">Ton Details</span>
           </Link>
-          <Link
-            to="/ton-batch-lookup"
-            className={`sidebar-link ${location.pathname === '/ton-batch-lookup' ? 'active' : ''}`}
-          >
+          <Link to="/ton-batch-lookup" className={`sidebar-link ${location.pathname === '/ton-batch-lookup' ? 'active' : ''}`}>
             <span className="sidebar-icon">📋</span>
             <span className="sidebar-text">TON Batch Lookup</span>
           </Link>
-          <Link
-            to="/btc-safe-to-fail"
-            className={`sidebar-link ${location.pathname === '/btc-safe-to-fail' ? 'active' : ''}`}
-          >
+          <Link to="/btc-safe-to-fail" className={`sidebar-link ${location.pathname === '/btc-safe-to-fail' ? 'active' : ''}`}>
             <span className="sidebar-icon">₿</span>
             <span className="sidebar-text">BTC Safe-to-Fail</span>
           </Link>
@@ -436,6 +470,24 @@ export default function TxFetcher() {
               Invalid address format. Must be 0x followed by 40 hex characters.
             </div>
           )}
+        </section>
+
+        <section className="txfetcher-section">
+          <label className="txfetcher-label">Direction Filter</label>
+          <div className="direction-options">
+            {['all', 'outgoing', 'incoming'].map(opt => (
+              <label key={opt} className={`direction-option ${directionFilter === opt ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="direction"
+                  value={opt}
+                  checked={directionFilter === opt}
+                  onChange={() => { setDirectionFilter(opt); setResultsPage(0) }}
+                />
+                <span>{opt === 'all' ? 'All Transactions' : opt === 'outgoing' ? 'Outgoing Only (sent from address)' : 'Incoming Only (received by address)'}</span>
+              </label>
+            ))}
+          </div>
         </section>
 
         <section className="txfetcher-section">
@@ -525,7 +577,7 @@ export default function TxFetcher() {
             <label className="txfetcher-label">Activity Log</label>
             <div className="activity-log">
               {logs.map((log, i) => (
-                <div key={i} className={`log-line${log.includes('ERROR') ? ' log-error' : log.includes('===') ? ' log-success' : log.includes('Rate limited') ? ' log-warn' : ''}`}>
+                <div key={i} className={`log-line${log.includes('ERROR') ? ' log-error' : log.includes('===') ? ' log-success' : log.includes('Rate limited') ? ' log-warn' : log.includes('Highest confirmed') ? ' log-success' : ''}`}>
                   {log}
                 </div>
               ))}
@@ -541,21 +593,28 @@ export default function TxFetcher() {
         )}
 
         {hashes.length > 0 && (() => {
-          const totalPages = Math.ceil(hashes.length / pageSize)
+          const displayHashes = filteredHashes
+          const totalPages = Math.ceil(displayHashes.length / pageSize)
           const startIdx = resultsPage * pageSize
-          const endIdx = Math.min(startIdx + pageSize, hashes.length)
-          const pageHashes = hashes.slice(startIdx, endIdx)
+          const endIdx = Math.min(startIdx + pageSize, displayHashes.length)
+          const pageHashes = displayHashes.slice(startIdx, endIdx)
 
           return (
             <section className="results-section">
               <div className="results-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <h3>Results</h3>
-                  <span className="results-count">{hashes.length.toLocaleString()} unique hashes</span>
+                  <span className="results-count">
+                    {displayHashes.length.toLocaleString()} {directionFilter !== 'all' ? `${directionFilter} ` : ''}hashes
+                    {directionFilter !== 'all' && ` (${hashes.length.toLocaleString()} total)`}
+                  </span>
+                  {highestNonce !== null && (
+                    <span className="nonce-badge">Highest nonce: {highestNonce.toLocaleString()}</span>
+                  )}
                 </div>
                 <div className="results-actions">
                   <button className="copy-btn" onClick={handleCopyAll}>
-                    {copyFeedback || `Copy All ${hashes.length.toLocaleString()}`}
+                    {copyFeedback || `Copy All ${displayHashes.length.toLocaleString()}`}
                   </button>
                   <button className="download-btn" onClick={handleDownloadCSV}>
                     Download CSV
@@ -579,65 +638,45 @@ export default function TxFetcher() {
                   <span>per page</span>
                 </div>
                 <div className="page-range-info">
-                  Showing {(startIdx + 1).toLocaleString()}–{endIdx.toLocaleString()} of {hashes.length.toLocaleString()}
+                  Showing {(startIdx + 1).toLocaleString()}–{endIdx.toLocaleString()} of {displayHashes.length.toLocaleString()}
                 </div>
               </div>
 
               <div className="hash-list">
-                {pageHashes.map((hash, i) => (
-                  <div className="hash-item" key={hash}>
-                    <span className="hash-index">{(startIdx + i + 1).toLocaleString()}</span>
-                    <a
-                      className="hash-value"
-                      href={`${selectedNetwork.explorer}${hash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {hash}
-                    </a>
-                    {hashSources[hash] && (
-                      <span className="hash-sources">{hashSources[hash]}</span>
-                    )}
-                    <button className="hash-copy-btn" onClick={() => handleCopyOne(hash)}>
-                      Copy
-                    </button>
-                  </div>
-                ))}
+                {pageHashes.map((hash, i) => {
+                  const m = hashMeta[hash] || {}
+                  return (
+                    <div className="hash-item" key={hash}>
+                      <span className="hash-index">{(startIdx + i + 1).toLocaleString()}</span>
+                      <a
+                        className="hash-value"
+                        href={`${selectedNetwork.explorer}${hash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {hash}
+                      </a>
+                      {m.direction && (
+                        <span className={`hash-direction dir-${m.direction}`}>{m.direction}</span>
+                      )}
+                      {m.sources && (
+                        <span className="hash-sources">{m.sources}</span>
+                      )}
+                      <button className="hash-copy-btn" onClick={() => handleCopyOne(hash)}>
+                        Copy
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
 
               {totalPages > 1 && (
                 <div className="results-pagination">
-                  <button
-                    className="pagination-btn"
-                    disabled={resultsPage === 0}
-                    onClick={() => setResultsPage(0)}
-                  >
-                    First
-                  </button>
-                  <button
-                    className="pagination-btn"
-                    disabled={resultsPage === 0}
-                    onClick={() => setResultsPage(p => p - 1)}
-                  >
-                    Prev
-                  </button>
-                  <span className="pagination-info">
-                    Page {resultsPage + 1} of {totalPages.toLocaleString()}
-                  </span>
-                  <button
-                    className="pagination-btn"
-                    disabled={resultsPage >= totalPages - 1}
-                    onClick={() => setResultsPage(p => p + 1)}
-                  >
-                    Next
-                  </button>
-                  <button
-                    className="pagination-btn"
-                    disabled={resultsPage >= totalPages - 1}
-                    onClick={() => setResultsPage(totalPages - 1)}
-                  >
-                    Last
-                  </button>
+                  <button className="pagination-btn" disabled={resultsPage === 0} onClick={() => setResultsPage(0)}>First</button>
+                  <button className="pagination-btn" disabled={resultsPage === 0} onClick={() => setResultsPage(p => p - 1)}>Prev</button>
+                  <span className="pagination-info">Page {resultsPage + 1} of {totalPages.toLocaleString()}</span>
+                  <button className="pagination-btn" disabled={resultsPage >= totalPages - 1} onClick={() => setResultsPage(p => p + 1)}>Next</button>
+                  <button className="pagination-btn" disabled={resultsPage >= totalPages - 1} onClick={() => setResultsPage(totalPages - 1)}>Last</button>
                 </div>
               )}
             </section>
