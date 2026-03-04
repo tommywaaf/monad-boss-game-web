@@ -496,7 +496,7 @@ function TonBatchLookup() {
           </Link>
           <Link to="/ton-batch-lookup" className={`sidebar-link ${location.pathname === '/ton-batch-lookup' ? 'active' : ''}`}>
             <span className="sidebar-icon">📋</span>
-            <span className="sidebar-text">TON Batch Lookup</span>
+            <span className="sidebar-text">TON Safe-to-Fail</span>
           </Link>
           <Link to="/btc-safe-to-fail" className={`sidebar-link ${location.pathname === '/btc-safe-to-fail' ? 'active' : ''}`}>
             <span className="sidebar-icon">₿</span>
@@ -510,7 +510,7 @@ function TonBatchLookup() {
 
         {/* Header */}
         <div className="ton-batch-header">
-          <h1>📋 TON Batch Lookup</h1>
+          <h1>📋 TON Safe-to-Fail</h1>
           <p className="subtitle">
             Paste up to 500 000 transaction hashes — get on-chain presence and status for each
           </p>
