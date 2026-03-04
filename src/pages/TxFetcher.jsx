@@ -3,13 +3,17 @@ import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import './TxFetcher.css'
 
+const ETHERSCAN_API_KEY = import.meta.env.VITE_ETHERSCAN_API_KEY || ''
+const HAS_API_KEY = ETHERSCAN_API_KEY.length > 0
+
 const NETWORKS = [
   {
     id: 'ethereum',
     name: 'Ethereum',
     apiBase: 'https://api.etherscan.io/api',
     explorer: 'https://etherscan.io/tx/',
-    delayMs: 5500,
+    apiKey: ETHERSCAN_API_KEY,
+    delayMs: HAS_API_KEY ? 250 : 5500,
   },
 ]
 
@@ -29,11 +33,12 @@ function sleep(ms, signal) {
   })
 }
 
-async function apiCall(apiBase, params, signal, delayMs, onLog, retries = 7) {
+async function apiCall(apiBase, params, signal, delayMs, onLog, apiKey = '', retries = 7) {
   let last = null
   for (let i = 0; i < retries; i++) {
     try {
-      const url = `${apiBase}?${new URLSearchParams(params)}`
+      const fullParams = apiKey ? { ...params, apikey: apiKey } : params
+      const url = `${apiBase}?${new URLSearchParams(fullParams)}`
       const res = await fetch(url, { signal })
       const json = await res.json()
 
@@ -64,13 +69,13 @@ async function apiCall(apiBase, params, signal, delayMs, onLog, retries = 7) {
   throw new Error(`API failed after ${retries} retries. Last: ${JSON.stringify(last)}`)
 }
 
-async function getBlockByTimestamp(apiBase, timestamp, closest, signal, delayMs, onLog) {
+async function getBlockByTimestamp(apiBase, timestamp, closest, signal, delayMs, onLog, apiKey) {
   const json = await apiCall(apiBase, {
     module: 'block',
     action: 'getblocknobytime',
     timestamp: String(timestamp),
     closest,
-  }, signal, delayMs, onLog)
+  }, signal, delayMs, onLog, apiKey)
   await sleep(delayMs, signal)
   const block = parseInt(json.result, 10)
   if (isNaN(block)) throw new Error(`Could not resolve block for timestamp ${timestamp}: ${JSON.stringify(json)}`)
@@ -78,7 +83,7 @@ async function getBlockByTimestamp(apiBase, timestamp, closest, signal, delayMs,
   return block
 }
 
-async function fetchAllPages(apiBase, address, action, startblock, endblock, delayMs, signal, onProgress, onLog) {
+async function fetchAllPages(apiBase, address, action, startblock, endblock, delayMs, signal, onProgress, onLog, apiKey) {
   const hashes = new Set()
   let page = 1
 
@@ -93,7 +98,7 @@ async function fetchAllPages(apiBase, address, action, startblock, endblock, del
       page: String(page),
       offset: String(PAGE_SIZE),
       sort: 'asc',
-    }, signal, delayMs, onLog)
+    }, signal, delayMs, onLog, apiKey)
 
     const result = json.result
 
@@ -166,22 +171,23 @@ export default function TxFetcher() {
     setProgress({ action: 'Preparing...', page: 0, found: 0 })
 
     try {
-      const { apiBase, delayMs } = selectedNetwork
+      const { apiBase, delayMs, apiKey } = selectedNetwork
       let startblock = 0
       let endblock = 99999999
 
       addLog(`Starting fetch on ${selectedNetwork.name} for ${address}`)
       addLog(`API: ${apiBase}`)
+      addLog(apiKey ? `API key: active (${apiKey.slice(0, 4)}...${apiKey.slice(-4)}) — fast mode ~5 req/s` : 'No API key — slow mode ~1 req/5s')
 
       if (!fetchAll && startDate && endDate) {
         setProgress({ action: 'Resolving start block...', page: 0, found: 0 })
         addLog(`Resolving date range: ${startDate} → ${endDate}`)
         const startTs = Math.floor(new Date(startDate + 'T00:00:00Z').getTime() / 1000)
-        startblock = await getBlockByTimestamp(apiBase, startTs, 'after', signal, delayMs, addLog)
+        startblock = await getBlockByTimestamp(apiBase, startTs, 'after', signal, delayMs, addLog, apiKey)
 
         setProgress({ action: 'Resolving end block...', page: 0, found: 0 })
         const endTs = Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000)
-        endblock = await getBlockByTimestamp(apiBase, endTs, 'before', signal, delayMs, addLog)
+        endblock = await getBlockByTimestamp(apiBase, endTs, 'before', signal, delayMs, addLog, apiKey)
 
         addLog(`Block range: ${startblock} → ${endblock}`)
       } else {
@@ -212,7 +218,8 @@ export default function TxFetcher() {
               totalSteps: 3,
             })
           },
-          addLog
+          addLog,
+          apiKey
         )
 
         const beforeSize = allHashes.size
@@ -356,9 +363,15 @@ export default function TxFetcher() {
               <option key={n.id} value={n.id}>{n.name}</option>
             ))}
           </select>
-          <div className="api-info">
-            No API key — rate limited to ~1 request per 5 seconds. Large wallets may take a while.
-          </div>
+          {selectedNetwork.apiKey ? (
+            <div className="api-info api-info-ok">
+              API key active — fast mode (~5 requests/sec)
+            </div>
+          ) : (
+            <div className="api-info">
+              No API key — rate limited to ~1 request per 5 seconds. Set VITE_ETHERSCAN_API_KEY to speed this up.
+            </div>
+          )}
         </section>
 
         <section className="txfetcher-section">

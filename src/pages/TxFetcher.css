@@ -465,6 +465,12 @@
   color: #fbbf24;
 }
 
+.api-info.api-info-ok {
+  background: rgba(45, 212, 191, 0.08);
+  border-color: rgba(45, 212, 191, 0.2);
+  color: #2dd4bf;
+}
+
 .activity-log {
   max-height: 300px;
   overflow-y: auto;
