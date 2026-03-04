@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import './TxFetcher.css'
@@ -17,52 +17,73 @@ const PAGE_SIZE = 10000
 
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'))
     const timer = setTimeout(resolve, ms)
     if (signal) {
-      signal.addEventListener('abort', () => {
+      const onAbort = () => {
         clearTimeout(timer)
         reject(new DOMException('Aborted', 'AbortError'))
-      }, { once: true })
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
     }
   })
 }
 
-async function apiCall(apiBase, params, signal, retries = 5) {
+async function apiCall(apiBase, params, signal, delayMs, onLog, retries = 7) {
   let last = null
   for (let i = 0; i < retries; i++) {
     try {
       const url = `${apiBase}?${new URLSearchParams(params)}`
       const res = await fetch(url, { signal })
       const json = await res.json()
-      if (json.result !== undefined) return json
-      last = json
+
+      if (json.result === undefined) {
+        last = json
+        onLog?.(`Unexpected response (no result field), retrying... ${JSON.stringify(json).slice(0, 120)}`)
+        await sleep(2000 + i * 1000, signal)
+        continue
+      }
+
+      if (typeof json.result === 'string') {
+        const lower = json.result.toLowerCase()
+        if (lower.includes('rate limit') || lower.includes('max rate')) {
+          onLog?.(`Rate limited, waiting ${Math.round(delayMs / 1000)}s before retry ${i + 1}/${retries}...`)
+          await sleep(delayMs + i * 1000, signal)
+          continue
+        }
+      }
+
+      return json
     } catch (e) {
       if (e.name === 'AbortError') throw e
       last = e.message
+      onLog?.(`Request error: ${e.message}, retry ${i + 1}/${retries}`)
     }
     await sleep(1000 + i * 1000, signal)
   }
   throw new Error(`API failed after ${retries} retries. Last: ${JSON.stringify(last)}`)
 }
 
-async function getBlockByTimestamp(apiBase, timestamp, closest, signal, delayMs) {
+async function getBlockByTimestamp(apiBase, timestamp, closest, signal, delayMs, onLog) {
   const json = await apiCall(apiBase, {
     module: 'block',
     action: 'getblocknobytime',
     timestamp: String(timestamp),
     closest,
-  }, signal)
+  }, signal, delayMs, onLog)
   await sleep(delayMs, signal)
   const block = parseInt(json.result, 10)
   if (isNaN(block)) throw new Error(`Could not resolve block for timestamp ${timestamp}: ${JSON.stringify(json)}`)
+  onLog?.(`Resolved timestamp ${timestamp} → block ${block}`)
   return block
 }
 
-async function fetchAllPages(apiBase, address, action, startblock, endblock, delayMs, signal, onProgress) {
+async function fetchAllPages(apiBase, address, action, startblock, endblock, delayMs, signal, onProgress, onLog) {
   const hashes = new Set()
   let page = 1
 
   while (true) {
+    onLog?.(`[${action}] Fetching page ${page} (blocks ${startblock}–${endblock})...`)
     const json = await apiCall(apiBase, {
       module: 'account',
       action,
@@ -72,16 +93,22 @@ async function fetchAllPages(apiBase, address, action, startblock, endblock, del
       page: String(page),
       offset: String(PAGE_SIZE),
       sort: 'asc',
-    }, signal)
+    }, signal, delayMs, onLog)
 
     const result = json.result
-    if (typeof result === 'string' || !Array.isArray(result) || result.length === 0) break
+
+    if (!Array.isArray(result) || result.length === 0) {
+      const msg = typeof result === 'string' ? result : 'empty'
+      onLog?.(`[${action}] Page ${page}: ${msg} — done with this endpoint`)
+      break
+    }
 
     for (const tx of result) {
       const hash = tx.hash || tx.transactionHash
       if (hash) hashes.add(hash.toLowerCase())
     }
 
+    onLog?.(`[${action}] Page ${page}: ${result.length} txs, ${hashes.size} unique hashes so far`)
     onProgress({ action, page, found: hashes.size })
 
     if (result.length < PAGE_SIZE) break
@@ -103,13 +130,26 @@ export default function TxFetcher() {
   const [hashes, setHashes] = useState([])
   const [error, setError] = useState(null)
   const [copyFeedback, setCopyFeedback] = useState('')
+  const [logs, setLogs] = useState([])
+  const [resultsPage, setResultsPage] = useState(0)
+  const [pageSize, setPageSize] = useState(200)
 
   const abortRef = useRef(null)
+  const logEndRef = useRef(null)
   const location = useLocation()
 
   const isValidAddress = address.match(/^0x[a-fA-F0-9]{40}$/)
 
   const canFetch = isValidAddress && !loading && (fetchAll || (startDate && endDate))
+
+  const addLog = useCallback((msg) => {
+    const ts = new Date().toLocaleTimeString()
+    setLogs(prev => [...prev, `[${ts}] ${msg}`])
+  }, [])
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs])
 
   const handleFetch = useCallback(async () => {
     if (!canFetch) return
@@ -121,6 +161,8 @@ export default function TxFetcher() {
     setLoading(true)
     setError(null)
     setHashes([])
+    setLogs([])
+    setResultsPage(0)
     setProgress({ action: 'Preparing...', page: 0, found: 0 })
 
     try {
@@ -128,14 +170,22 @@ export default function TxFetcher() {
       let startblock = 0
       let endblock = 99999999
 
+      addLog(`Starting fetch on ${selectedNetwork.name} for ${address}`)
+      addLog(`API: ${apiBase}`)
+
       if (!fetchAll && startDate && endDate) {
         setProgress({ action: 'Resolving start block...', page: 0, found: 0 })
+        addLog(`Resolving date range: ${startDate} → ${endDate}`)
         const startTs = Math.floor(new Date(startDate + 'T00:00:00Z').getTime() / 1000)
-        startblock = await getBlockByTimestamp(apiBase, startTs, 'after', signal, delayMs)
+        startblock = await getBlockByTimestamp(apiBase, startTs, 'after', signal, delayMs, addLog)
 
         setProgress({ action: 'Resolving end block...', page: 0, found: 0 })
         const endTs = Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000)
-        endblock = await getBlockByTimestamp(apiBase, endTs, 'before', signal, delayMs)
+        endblock = await getBlockByTimestamp(apiBase, endTs, 'before', signal, delayMs, addLog)
+
+        addLog(`Block range: ${startblock} → ${endblock}`)
+      } else {
+        addLog('Fetching ALL transactions (no date filter)')
       }
 
       const allHashes = new Set()
@@ -148,6 +198,7 @@ export default function TxFetcher() {
 
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
+        addLog(`--- Starting ${actionLabels[action]} (${action}) ---`)
         setProgress({ action: actionLabels[action], page: 0, found: allHashes.size, step: i + 1, totalSteps: 3 })
 
         const result = await fetchAllPages(
@@ -160,10 +211,13 @@ export default function TxFetcher() {
               step: i + 1,
               totalSteps: 3,
             })
-          }
+          },
+          addLog
         )
 
+        const beforeSize = allHashes.size
         for (const h of result) allHashes.add(h)
+        addLog(`${actionLabels[action]}: ${result.size} hashes (${allHashes.size - beforeSize} new, ${allHashes.size} total unique)`)
 
         if (i < actions.length - 1) {
           await sleep(delayMs, signal)
@@ -173,19 +227,22 @@ export default function TxFetcher() {
       const sorted = [...allHashes].sort()
       setHashes(sorted)
       setProgress(null)
+      addLog(`=== Done! ${sorted.length} unique transaction hashes found ===`)
       trackUsage('txfetcher', sorted.length)
     } catch (e) {
       if (e.name === 'AbortError') {
+        addLog('Cancelled by user.')
         setProgress(null)
         return
       }
+      addLog(`ERROR: ${e.message}`)
       setError(e.message)
       setProgress(null)
     } finally {
       setLoading(false)
       abortRef.current = null
     }
-  }, [canFetch, selectedNetwork, address, fetchAll, startDate, endDate])
+  }, [canFetch, selectedNetwork, address, fetchAll, startDate, endDate, addLog])
 
   const handleCancel = () => {
     if (abortRef.current) {
@@ -398,51 +455,126 @@ export default function TxFetcher() {
           )}
         </section>
 
+        {logs.length > 0 && (
+          <section className="txfetcher-section">
+            <label className="txfetcher-label">Activity Log</label>
+            <div className="activity-log">
+              {logs.map((log, i) => (
+                <div key={i} className={`log-line${log.includes('ERROR') ? ' log-error' : log.includes('===') ? ' log-success' : log.includes('Rate limited') ? ' log-warn' : ''}`}>
+                  {log}
+                </div>
+              ))}
+              <div ref={logEndRef} />
+            </div>
+          </section>
+        )}
+
         {error && (
           <div className="error-box">
             {error}
           </div>
         )}
 
-        {hashes.length > 0 && (
-          <section className="results-section">
-            <div className="results-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <h3>Results</h3>
-                <span className="results-count">{hashes.length.toLocaleString()} unique hashes</span>
-              </div>
-              <div className="results-actions">
-                <button className="copy-btn" onClick={handleCopyAll}>
-                  {copyFeedback || 'Copy All'}
-                </button>
-                <button className="download-btn" onClick={handleDownloadCSV}>
-                  Download CSV
-                </button>
-              </div>
-            </div>
-            <div className="hash-list">
-              {hashes.map((hash, i) => (
-                <div className="hash-item" key={hash}>
-                  <span className="hash-index">{i + 1}</span>
-                  <a
-                    className="hash-value"
-                    href={`${selectedNetwork.explorer}${hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#a1a1aa', textDecoration: 'none' }}
-                    onMouseOver={(e) => e.target.style.color = '#667eea'}
-                    onMouseOut={(e) => e.target.style.color = '#a1a1aa'}
-                  >
-                    {hash}
-                  </a>
-                  <button className="hash-copy-btn" onClick={() => handleCopyOne(hash)}>
-                    Copy
+        {hashes.length > 0 && (() => {
+          const totalPages = Math.ceil(hashes.length / pageSize)
+          const startIdx = resultsPage * pageSize
+          const endIdx = Math.min(startIdx + pageSize, hashes.length)
+          const pageHashes = hashes.slice(startIdx, endIdx)
+
+          return (
+            <section className="results-section">
+              <div className="results-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <h3>Results</h3>
+                  <span className="results-count">{hashes.length.toLocaleString()} unique hashes</span>
+                </div>
+                <div className="results-actions">
+                  <button className="copy-btn" onClick={handleCopyAll}>
+                    {copyFeedback || `Copy All ${hashes.length.toLocaleString()}`}
+                  </button>
+                  <button className="download-btn" onClick={handleDownloadCSV}>
+                    Download CSV
                   </button>
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+              </div>
+
+              <div className="results-pagination-bar">
+                <div className="page-size-control">
+                  <span>Show</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setResultsPage(0) }}
+                    className="page-size-select"
+                  >
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                    <option value={500}>500</option>
+                    <option value={1000}>1,000</option>
+                  </select>
+                  <span>per page</span>
+                </div>
+                <div className="page-range-info">
+                  Showing {(startIdx + 1).toLocaleString()}–{endIdx.toLocaleString()} of {hashes.length.toLocaleString()}
+                </div>
+              </div>
+
+              <div className="hash-list">
+                {pageHashes.map((hash, i) => (
+                  <div className="hash-item" key={hash}>
+                    <span className="hash-index">{(startIdx + i + 1).toLocaleString()}</span>
+                    <a
+                      className="hash-value"
+                      href={`${selectedNetwork.explorer}${hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {hash}
+                    </a>
+                    <button className="hash-copy-btn" onClick={() => handleCopyOne(hash)}>
+                      Copy
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="results-pagination">
+                  <button
+                    className="pagination-btn"
+                    disabled={resultsPage === 0}
+                    onClick={() => setResultsPage(0)}
+                  >
+                    First
+                  </button>
+                  <button
+                    className="pagination-btn"
+                    disabled={resultsPage === 0}
+                    onClick={() => setResultsPage(p => p - 1)}
+                  >
+                    Prev
+                  </button>
+                  <span className="pagination-info">
+                    Page {resultsPage + 1} of {totalPages.toLocaleString()}
+                  </span>
+                  <button
+                    className="pagination-btn"
+                    disabled={resultsPage >= totalPages - 1}
+                    onClick={() => setResultsPage(p => p + 1)}
+                  >
+                    Next
+                  </button>
+                  <button
+                    className="pagination-btn"
+                    disabled={resultsPage >= totalPages - 1}
+                    onClick={() => setResultsPage(totalPages - 1)}
+                  >
+                    Last
+                  </button>
+                </div>
+              )}
+            </section>
+          )
+        })()}
 
         {!loading && !error && hashes.length === 0 && address && (
           <div className="empty-results">
