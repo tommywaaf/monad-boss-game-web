@@ -94,29 +94,31 @@ async function getBlockByTimestamp(chainId, timestamp, closest, signal, onLog) {
   return block
 }
 
-async function fetchAllPages(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
+async function fetchDirection(chainId, address, action, startblock, endblock, sort, signal, onLog, label) {
   const hashes = new Set()
-  let currentStart = startblock
+  let currentStart = sort === 'asc' ? startblock : endblock
   let chunk = 1
 
   while (true) {
-    onLog?.(`[${action}] Chunk ${chunk}, fetching from block ${currentStart}...`)
+    const sb = sort === 'asc' ? String(currentStart) : String(startblock)
+    const eb = sort === 'asc' ? String(endblock) : String(currentStart)
+    onLog?.(`[${action}] ${label} chunk ${chunk}, blocks ${sb}–${eb}...`)
     const json = await apiCall(chainId, {
       module: 'account',
       action,
       address,
-      startblock: String(currentStart),
-      endblock: String(endblock),
+      startblock: sb,
+      endblock: eb,
       page: '1',
       offset: String(PAGE_SIZE),
-      sort: 'asc',
+      sort,
     }, signal, onLog)
 
     const result = json.result
 
     if (!Array.isArray(result) || result.length === 0) {
       const msg = typeof result === 'string' ? result : 'empty'
-      onLog?.(`[${action}] Chunk ${chunk}: ${msg} — done with this endpoint`)
+      onLog?.(`[${action}] ${label} chunk ${chunk}: ${msg} — done`)
       break
     }
 
@@ -125,43 +127,53 @@ async function fetchAllPages(chainId, address, action, startblock, endblock, sig
       if (hash) hashes.add(hash.toLowerCase())
     }
 
-    onLog?.(`[${action}] Chunk ${chunk}: ${result.length} txs, ${hashes.size} unique hashes so far`)
-    onProgress({ action, page: chunk, found: hashes.size })
+    onLog?.(`[${action}] ${label} chunk ${chunk}: ${result.length} txs, ${hashes.size} unique hashes so far`)
 
     if (result.length < PAGE_SIZE) break
 
-    // Etherscan caps at 10k per query — advance startblock past the last result
-    const lastBlock = parseInt(result[result.length - 1].blockNumber, 10)
-    if (isNaN(lastBlock) || lastBlock <= currentStart) {
-      onLog?.(`[${action}] Block didn't advance (stuck at ${currentStart}), trying next page...`)
-      let page = 2
-      while (true) {
-        await sleep(DELAY_MS, signal)
-        const pJson = await apiCall(chainId, {
-          module: 'account', action, address,
-          startblock: String(currentStart), endblock: String(endblock),
-          page: String(page), offset: String(PAGE_SIZE), sort: 'asc',
-        }, signal, onLog)
-        const pResult = pJson.result
-        if (!Array.isArray(pResult) || pResult.length === 0) break
-        for (const tx of pResult) {
-          const hash = tx.hash || tx.transactionHash
-          if (hash) hashes.add(hash.toLowerCase())
-        }
-        onLog?.(`[${action}] Page ${page}: ${pResult.length} txs, ${hashes.size} unique hashes`)
-        onProgress({ action, page, found: hashes.size })
-        if (pResult.length < PAGE_SIZE) break
-        page++
-      }
-      break
+    const edgeIdx = sort === 'asc' ? result.length - 1 : 0
+    const edgeBlock = parseInt(result[edgeIdx].blockNumber, 10)
+    if (isNaN(edgeBlock)) break
+
+    if (sort === 'asc') {
+      if (edgeBlock <= currentStart) break
+      currentStart = edgeBlock
+    } else {
+      if (edgeBlock >= currentStart) break
+      currentStart = edgeBlock
     }
 
-    currentStart = lastBlock
     chunk++
     await sleep(DELAY_MS, signal)
   }
 
   return hashes
+}
+
+async function fetchAllPages(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
+  // Fetch ascending (oldest first)
+  onLog?.(`[${action}] Fetching ascending...`)
+  const ascHashes = await fetchDirection(chainId, address, action, startblock, endblock, 'asc', signal, onLog, 'ASC')
+  onProgress({ action, page: 1, found: ascHashes.size })
+
+  await sleep(DELAY_MS, signal)
+
+  // Fetch descending (newest first) to catch anything the ascending pass missed
+  onLog?.(`[${action}] Fetching descending...`)
+  const descHashes = await fetchDirection(chainId, address, action, startblock, endblock, 'desc', signal, onLog, 'DESC')
+
+  // Merge both directions
+  const merged = new Set(ascHashes)
+  let newFromDesc = 0
+  for (const h of descHashes) {
+    if (!merged.has(h)) newFromDesc++
+    merged.add(h)
+  }
+
+  onLog?.(`[${action}] ASC: ${ascHashes.size}, DESC: ${descHashes.size}, merged: ${merged.size} (${newFromDesc} new from DESC)`)
+  onProgress({ action, page: 1, found: merged.size })
+
+  return merged
 }
 
 export default function TxFetcher() {
@@ -213,7 +225,7 @@ export default function TxFetcher() {
     try {
       const { chainId } = selectedNetwork
       let startblock = 0
-      let endblock = 99999999
+      let endblock = 999999999
 
       addLog(`Starting fetch on ${selectedNetwork.name} (chainId ${chainId}) for ${address}`)
       addLog(`API: ${ETHERSCAN_V2}`)
@@ -444,25 +456,30 @@ export default function TxFetcher() {
               <span>Fetch ALL transactions (no date filter)</span>
             </label>
             {!fetchAll && (
-              <div className="date-inputs">
-                <div className="date-field">
-                  <label>Start Date</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
+              <>
+                <div className="date-inputs">
+                  <div className="date-field">
+                    <label>Start Date (inclusive)</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                  </div>
+                  <span className="date-separator">→</span>
+                  <div className="date-field">
+                    <label>End Date (inclusive)</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <span className="date-separator">→</span>
-                <div className="date-field">
-                  <label>End Date</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
+                <div className="date-hint">
+                  Both dates are inclusive. Uses UTC — start date begins at 00:00 UTC, end date runs through 23:59:59 UTC.
                 </div>
-              </div>
+              </>
             )}
           </div>
         </section>
