@@ -6,6 +6,7 @@ import './TxFetcher.css'
 const ETHERSCAN_API_KEY = import.meta.env.VITE_ETHERSCAN_API_KEY || ''
 const HAS_API_KEY = ETHERSCAN_API_KEY.length > 0
 
+// Etherscan V2 multichain API — single key works across all supported chains
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
 
 const NETWORKS = [
