@@ -8,21 +8,23 @@ const HAS_API_KEY = ETHERSCAN_API_KEY.length > 0
 
 // Etherscan V2 multichain API — single key works across all supported chains
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
+const DELAY_MS = HAS_API_KEY ? 250 : 5500
 
 const NETWORKS = [
-  { id: 'ethereum',  name: 'Ethereum',          chainId: 1,     explorer: 'https://etherscan.io/tx/' },
-  { id: 'base',      name: 'Base',              chainId: 8453,  explorer: 'https://basescan.org/tx/' },
-  { id: 'arbitrum',  name: 'Arbitrum One',      chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
-  { id: 'optimism',  name: 'Optimism',          chainId: 10,    explorer: 'https://optimistic.etherscan.io/tx/' },
-  { id: 'polygon',   name: 'Polygon',           chainId: 137,   explorer: 'https://polygonscan.com/tx/' },
-  { id: 'bsc',       name: 'BNB Smart Chain',   chainId: 56,    explorer: 'https://bscscan.com/tx/' },
-  { id: 'avalanche', name: 'Avalanche C-Chain', chainId: 43114, explorer: 'https://snowtrace.io/tx/' },
-  { id: 'fantom',    name: 'Fantom',            chainId: 250,   explorer: 'https://ftmscan.com/tx/' },
-  { id: 'linea',     name: 'Linea',             chainId: 59144, explorer: 'https://lineascan.build/tx/' },
-  { id: 'gnosis',    name: 'Gnosis Chain',      chainId: 100,   explorer: 'https://gnosisscan.io/tx/' },
-  { id: 'celo',      name: 'Celo',              chainId: 42220, explorer: 'https://celoscan.io/tx/' },
-  { id: 'moonbeam',  name: 'Moonbeam',          chainId: 1284,  explorer: 'https://moonscan.io/tx/' },
-  { id: 'zkevm',     name: 'Polygon zkEVM',     chainId: 1101,  explorer: 'https://zkevm.polygonscan.com/tx/' },
+  { id: 'ethereum',  name: 'Ethereum',              chainId: 1,     explorer: 'https://etherscan.io/tx/' },
+  { id: 'hyperevm',  name: 'HyperEVM (Hyperliquid)', chainId: 999,  explorer: 'https://hyperliquid.calderaexplorer.xyz/tx/' },
+  { id: 'base',      name: 'Base',                  chainId: 8453,  explorer: 'https://basescan.org/tx/' },
+  { id: 'arbitrum',  name: 'Arbitrum One',          chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
+  { id: 'optimism',  name: 'Optimism',              chainId: 10,    explorer: 'https://optimistic.etherscan.io/tx/' },
+  { id: 'polygon',   name: 'Polygon',               chainId: 137,   explorer: 'https://polygonscan.com/tx/' },
+  { id: 'bsc',       name: 'BNB Smart Chain',       chainId: 56,    explorer: 'https://bscscan.com/tx/' },
+  { id: 'avalanche', name: 'Avalanche C-Chain',     chainId: 43114, explorer: 'https://snowtrace.io/tx/' },
+  { id: 'fantom',    name: 'Fantom',                chainId: 250,   explorer: 'https://ftmscan.com/tx/' },
+  { id: 'linea',     name: 'Linea',                 chainId: 59144, explorer: 'https://lineascan.build/tx/' },
+  { id: 'gnosis',    name: 'Gnosis Chain',          chainId: 100,   explorer: 'https://gnosisscan.io/tx/' },
+  { id: 'celo',      name: 'Celo',                  chainId: 42220, explorer: 'https://celoscan.io/tx/' },
+  { id: 'moonbeam',  name: 'Moonbeam',              chainId: 1284,  explorer: 'https://moonscan.io/tx/' },
+  { id: 'zkevm',     name: 'Polygon zkEVM',         chainId: 1101,  explorer: 'https://zkevm.polygonscan.com/tx/' },
 ]
 
 const PAGE_SIZE = 10000
@@ -40,8 +42,6 @@ function sleep(ms, signal) {
     }
   })
 }
-
-const DELAY_MS = HAS_API_KEY ? 250 : 5500
 
 async function apiCall(chainId, params, signal, onLog, retries = 7) {
   let last = null
@@ -96,17 +96,18 @@ async function getBlockByTimestamp(chainId, timestamp, closest, signal, onLog) {
 
 async function fetchAllPages(chainId, address, action, startblock, endblock, signal, onProgress, onLog) {
   const hashes = new Set()
-  let page = 1
+  let currentStart = startblock
+  let chunk = 1
 
   while (true) {
-    onLog?.(`[${action}] Fetching page ${page} (blocks ${startblock}–${endblock})...`)
+    onLog?.(`[${action}] Chunk ${chunk}, fetching from block ${currentStart}...`)
     const json = await apiCall(chainId, {
       module: 'account',
       action,
       address,
-      startblock: String(startblock),
+      startblock: String(currentStart),
       endblock: String(endblock),
-      page: String(page),
+      page: '1',
       offset: String(PAGE_SIZE),
       sort: 'asc',
     }, signal, onLog)
@@ -115,7 +116,7 @@ async function fetchAllPages(chainId, address, action, startblock, endblock, sig
 
     if (!Array.isArray(result) || result.length === 0) {
       const msg = typeof result === 'string' ? result : 'empty'
-      onLog?.(`[${action}] Page ${page}: ${msg} — done with this endpoint`)
+      onLog?.(`[${action}] Chunk ${chunk}: ${msg} — done with this endpoint`)
       break
     }
 
@@ -124,11 +125,39 @@ async function fetchAllPages(chainId, address, action, startblock, endblock, sig
       if (hash) hashes.add(hash.toLowerCase())
     }
 
-    onLog?.(`[${action}] Page ${page}: ${result.length} txs, ${hashes.size} unique hashes so far`)
-    onProgress({ action, page, found: hashes.size })
+    onLog?.(`[${action}] Chunk ${chunk}: ${result.length} txs, ${hashes.size} unique hashes so far`)
+    onProgress({ action, page: chunk, found: hashes.size })
 
     if (result.length < PAGE_SIZE) break
-    page++
+
+    // Etherscan caps at 10k per query — advance startblock past the last result
+    const lastBlock = parseInt(result[result.length - 1].blockNumber, 10)
+    if (isNaN(lastBlock) || lastBlock <= currentStart) {
+      onLog?.(`[${action}] Block didn't advance (stuck at ${currentStart}), trying next page...`)
+      let page = 2
+      while (true) {
+        await sleep(DELAY_MS, signal)
+        const pJson = await apiCall(chainId, {
+          module: 'account', action, address,
+          startblock: String(currentStart), endblock: String(endblock),
+          page: String(page), offset: String(PAGE_SIZE), sort: 'asc',
+        }, signal, onLog)
+        const pResult = pJson.result
+        if (!Array.isArray(pResult) || pResult.length === 0) break
+        for (const tx of pResult) {
+          const hash = tx.hash || tx.transactionHash
+          if (hash) hashes.add(hash.toLowerCase())
+        }
+        onLog?.(`[${action}] Page ${page}: ${pResult.length} txs, ${hashes.size} unique hashes`)
+        onProgress({ action, page, found: hashes.size })
+        if (pResult.length < PAGE_SIZE) break
+        page++
+      }
+      break
+    }
+
+    currentStart = lastBlock
+    chunk++
     await sleep(DELAY_MS, signal)
   }
 
@@ -206,17 +235,19 @@ export default function TxFetcher() {
       }
 
       const allHashes = new Set()
-      const actions = ['txlist', 'txlistinternal', 'tokentx']
+      const actions = ['txlist', 'txlistinternal', 'tokentx', 'tokennfttx', 'token1155tx']
       const actionLabels = {
         txlist: 'Normal Transactions',
         txlistinternal: 'Internal Transactions',
-        tokentx: 'Token Transfers',
+        tokentx: 'ERC-20 Token Transfers',
+        tokennfttx: 'ERC-721 NFT Transfers',
+        token1155tx: 'ERC-1155 Transfers',
       }
 
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
-        addLog(`--- Starting ${actionLabels[action]} (${action}) ---`)
-        setProgress({ action: actionLabels[action], page: 0, found: allHashes.size, step: i + 1, totalSteps: 3 })
+        addLog(`--- Starting ${actionLabels[action]} (${action}) [${i + 1}/${actions.length}] ---`)
+        setProgress({ action: actionLabels[action], page: 0, found: allHashes.size, step: i + 1, totalSteps: actions.length })
 
         const result = await fetchAllPages(
           chainId, address, action, startblock, endblock, signal,
@@ -226,7 +257,7 @@ export default function TxFetcher() {
               page,
               found: allHashes.size + found,
               step: i + 1,
-              totalSteps: 3,
+              totalSteps: actions.length,
             })
           },
           addLog
@@ -463,7 +494,7 @@ export default function TxFetcher() {
             <div className="progress-info">
               <div className="progress-status">
                 Step <strong>{progress.step || '?'}/{progress.totalSteps || 3}</strong>: {progress.action}
-                {progress.page > 0 && ` (page ${progress.page})`}
+                {progress.page > 0 && ` (chunk ${progress.page})`}
               </div>
               <div className="progress-detail">
                 {progress.found} unique hashes found so far
