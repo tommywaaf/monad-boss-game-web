@@ -8,23 +8,29 @@ const HAS_API_KEY = ETHERSCAN_API_KEY.length > 0
 
 // Etherscan V2 multichain API — single key works across all supported chains
 const ETHERSCAN_V2 = 'https://api.etherscan.io/v2/api'
+const CHAINLIST_URL = 'https://api.etherscan.io/v2/chainlist'
 const DELAY_MS = HAS_API_KEY ? 250 : 5500
 
-const NETWORKS = [
-  { id: 'ethereum',  name: 'Ethereum',              chainId: 1,     explorer: 'https://etherscan.io/tx/' },
-  { id: 'hyperevm',  name: 'HyperEVM (Hyperliquid)', chainId: 999,  explorer: 'https://hyperliquid.calderaexplorer.xyz/tx/' },
-  { id: 'base',      name: 'Base',                  chainId: 8453,  explorer: 'https://basescan.org/tx/' },
-  { id: 'arbitrum',  name: 'Arbitrum One',          chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
-  { id: 'optimism',  name: 'Optimism',              chainId: 10,    explorer: 'https://optimistic.etherscan.io/tx/' },
-  { id: 'polygon',   name: 'Polygon',               chainId: 137,   explorer: 'https://polygonscan.com/tx/' },
-  { id: 'bsc',       name: 'BNB Smart Chain',       chainId: 56,    explorer: 'https://bscscan.com/tx/' },
-  { id: 'avalanche', name: 'Avalanche C-Chain',     chainId: 43114, explorer: 'https://snowtrace.io/tx/' },
-  { id: 'fantom',    name: 'Fantom',                chainId: 250,   explorer: 'https://ftmscan.com/tx/' },
-  { id: 'linea',     name: 'Linea',                 chainId: 59144, explorer: 'https://lineascan.build/tx/' },
-  { id: 'gnosis',    name: 'Gnosis Chain',          chainId: 100,   explorer: 'https://gnosisscan.io/tx/' },
-  { id: 'celo',      name: 'Celo',                  chainId: 42220, explorer: 'https://celoscan.io/tx/' },
-  { id: 'moonbeam',  name: 'Moonbeam',              chainId: 1284,  explorer: 'https://moonscan.io/tx/' },
-  { id: 'zkevm',     name: 'Polygon zkEVM',         chainId: 1101,  explorer: 'https://zkevm.polygonscan.com/tx/' },
+function parseChainlist(data) {
+  if (!data?.result?.length) return []
+  return data.result
+    .filter(c => c.status === 1 && !c.chainname.toLowerCase().includes('testnet') && !c.chainname.toLowerCase().includes('hoodi') && !c.chainname.toLowerCase().includes('bokuto') && !c.chainname.toLowerCase().includes('bepolia'))
+    .map(c => ({
+      id: c.chainid,
+      name: c.chainname,
+      chainId: parseInt(c.chainid, 10),
+      explorer: c.blockexplorer.endsWith('/') ? c.blockexplorer + 'tx/' : c.blockexplorer + '/tx/',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+const FALLBACK_NETWORKS = [
+  { id: '1',     name: 'Ethereum Mainnet',   chainId: 1,     explorer: 'https://etherscan.io/tx/' },
+  { id: '999',   name: 'HyperEVM Mainnet',   chainId: 999,   explorer: 'https://hyperevmscan.io/tx/' },
+  { id: '8453',  name: 'Base Mainnet',       chainId: 8453,  explorer: 'https://basescan.org/tx/' },
+  { id: '42161', name: 'Arbitrum One Mainnet', chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
+  { id: '137',   name: 'Polygon Mainnet',    chainId: 137,   explorer: 'https://polygonscan.com/tx/' },
+  { id: '10',    name: 'OP Mainnet',         chainId: 10,    explorer: 'https://optimistic.etherscan.io/tx/' },
 ]
 
 const PAGE_SIZE = 10000
@@ -78,34 +84,6 @@ async function apiCall(chainId, params, signal, onLog, retries = 7) {
     await sleep(1000 + i * 1000, signal)
   }
   throw new Error(`API failed after ${retries} retries. Last: ${JSON.stringify(last)}`)
-}
-
-async function getExpectedCount(chainId, address, action, signal, onLog) {
-  let total = 0
-  let page = 1
-  try {
-    while (true) {
-      const json = await apiCall(chainId, {
-        module: 'account',
-        action,
-        address,
-        startblock: '0',
-        endblock: '999999999',
-        page: String(page),
-        offset: String(PAGE_SIZE),
-        sort: 'asc',
-      }, signal, onLog)
-      const result = json.result
-      if (!Array.isArray(result) || result.length === 0) break
-      total += result.length
-      if (result.length < PAGE_SIZE) break
-      page++
-      await sleep(DELAY_MS, signal)
-    }
-    onLog?.(`Verification count for ${action}: ${total.toLocaleString()} (via page-based pagination)`)
-    return total
-  } catch { /* non-critical */ }
-  return null
 }
 
 async function getBlockByTimestamp(chainId, timestamp, closest, signal, onLog) {
@@ -170,7 +148,8 @@ async function fetchAllPages(chainId, address, action, startblock, endblock, sig
 }
 
 export default function TxFetcher() {
-  const [selectedNetwork, setSelectedNetwork] = useState(NETWORKS[0])
+  const [networks, setNetworks] = useState(FALLBACK_NETWORKS)
+  const [selectedNetwork, setSelectedNetwork] = useState(FALLBACK_NETWORKS[0])
   const [address, setAddress] = useState('')
   const [fetchAll, setFetchAll] = useState(true)
   const [startDate, setStartDate] = useState('')
@@ -187,6 +166,19 @@ export default function TxFetcher() {
   const abortRef = useRef(null)
   const logEndRef = useRef(null)
   const location = useLocation()
+
+  useEffect(() => {
+    fetch(CHAINLIST_URL)
+      .then(r => r.json())
+      .then(data => {
+        const chains = parseChainlist(data)
+        if (chains.length > 0) {
+          setNetworks(chains)
+          setSelectedNetwork(prev => chains.find(c => c.chainId === prev.chainId) || chains[0])
+        }
+      })
+      .catch(() => { /* use fallback */ })
+  }, [])
 
   const isValidAddress = address.match(/^0x[a-fA-F0-9]{40}$/)
 
@@ -249,7 +241,6 @@ export default function TxFetcher() {
         token1155tx: 'ERC-1155 Transfers',
       }
 
-      const perEndpoint = {}
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
         addLog(`--- Starting ${actionLabels[action]} (${action}) [${i + 1}/${actions.length}] ---`)
@@ -269,7 +260,6 @@ export default function TxFetcher() {
           addLog
         )
 
-        perEndpoint[action] = result.size
         const beforeSize = allHashes.size
         for (const h of result) allHashes.add(h)
         addLog(`${actionLabels[action]}: ${result.size} hashes (${allHashes.size - beforeSize} new, ${allHashes.size} total unique)`)
@@ -283,23 +273,6 @@ export default function TxFetcher() {
       setHashes(sorted)
       setProgress(null)
       addLog(`=== Done! ${sorted.length} unique transaction hashes found ===`)
-
-      if (fetchAll) {
-        addLog('--- Verification (checked AFTER scan to account for new activity) ---')
-        const checks = ['txlist', 'txlistinternal', 'tokentx']
-        for (const action of checks) {
-          const expected = await getExpectedCount(chainId, address, action, signal, addLog)
-          if (expected === null) continue
-          const found = perEndpoint[action] || 0
-          if (found >= expected) {
-            addLog(`VERIFIED ${action}: found ${found.toLocaleString()} unique hashes, API reports ${expected.toLocaleString()} total rows — all accounted for`)
-          } else {
-            const missing = expected - found
-            addLog(`WARNING ${action}: found ${found.toLocaleString()} unique hashes but API reports ${expected.toLocaleString()} total rows — ${missing.toLocaleString()} may be missing (possible indexing gap)`)
-          }
-          await sleep(DELAY_MS, signal)
-        }
-      }
 
       trackUsage('txfetcher', sorted.length)
     } catch (e) {
@@ -421,12 +394,12 @@ export default function TxFetcher() {
             className="txfetcher-dropdown"
             value={selectedNetwork.id}
             onChange={(e) => {
-              const net = NETWORKS.find(n => n.id === e.target.value)
+              const net = networks.find(n => n.id === e.target.value)
               if (net) setSelectedNetwork(net)
             }}
           >
-            {NETWORKS.map(n => (
-              <option key={n.id} value={n.id}>{n.name}</option>
+            {networks.map(n => (
+              <option key={n.id} value={n.id}>{n.name} ({n.chainId})</option>
             ))}
           </select>
           {HAS_API_KEY ? (
