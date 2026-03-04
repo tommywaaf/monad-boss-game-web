@@ -434,6 +434,17 @@
   color: #667eea;
 }
 
+.hash-sources {
+  font-size: 0.65rem;
+  color: #71717a;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .hash-copy-btn {
   padding: 0.25rem 0.5rem;
   font-size: 0.7rem;

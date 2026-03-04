@@ -159,6 +159,7 @@ export default function TxFetcher() {
   const [hashes, setHashes] = useState([])
   const [error, setError] = useState(null)
   const [copyFeedback, setCopyFeedback] = useState('')
+  const [hashSources, setHashSources] = useState({})
   const [logs, setLogs] = useState([])
   const [resultsPage, setResultsPage] = useState(0)
   const [pageSize, setPageSize] = useState(200)
@@ -203,6 +204,7 @@ export default function TxFetcher() {
     setLoading(true)
     setError(null)
     setHashes([])
+    setHashSources({})
     setLogs([])
     setResultsPage(0)
     setProgress({ action: 'Preparing...', page: 0, found: 0 })
@@ -231,28 +233,28 @@ export default function TxFetcher() {
         addLog('Fetching ALL transactions (no date filter)')
       }
 
-      const allHashes = new Set()
+      const hashSources = new Map()
       const actions = ['txlist', 'txlistinternal', 'tokentx', 'tokennfttx', 'token1155tx']
       const actionLabels = {
-        txlist: 'Normal Transactions',
-        txlistinternal: 'Internal Transactions',
-        tokentx: 'ERC-20 Token Transfers',
-        tokennfttx: 'ERC-721 NFT Transfers',
-        token1155tx: 'ERC-1155 Transfers',
+        txlist: 'Normal',
+        txlistinternal: 'Internal',
+        tokentx: 'ERC-20',
+        tokennfttx: 'ERC-721',
+        token1155tx: 'ERC-1155',
       }
 
       for (let i = 0; i < actions.length; i++) {
         const action = actions[i]
-        addLog(`--- Starting ${actionLabels[action]} (${action}) [${i + 1}/${actions.length}] ---`)
-        setProgress({ action: actionLabels[action], page: 0, found: allHashes.size, step: i + 1, totalSteps: actions.length })
+        addLog(`--- Starting ${actionLabels[action]} Transactions (${action}) [${i + 1}/${actions.length}] ---`)
+        setProgress({ action: `${actionLabels[action]} Transactions`, page: 0, found: hashSources.size, step: i + 1, totalSteps: actions.length })
 
         const result = await fetchAllPages(
           chainId, address, action, startblock, endblock, signal,
           ({ page, found }) => {
             setProgress({
-              action: actionLabels[action],
+              action: `${actionLabels[action]} Transactions`,
               page,
-              found: allHashes.size + found,
+              found: hashSources.size + found,
               step: i + 1,
               totalSteps: actions.length,
             })
@@ -260,17 +262,23 @@ export default function TxFetcher() {
           addLog
         )
 
-        const beforeSize = allHashes.size
-        for (const h of result) allHashes.add(h)
-        addLog(`${actionLabels[action]}: ${result.size} hashes (${allHashes.size - beforeSize} new, ${allHashes.size} total unique)`)
+        const beforeSize = hashSources.size
+        for (const h of result) {
+          if (!hashSources.has(h)) hashSources.set(h, new Set())
+          hashSources.get(h).add(actionLabels[action])
+        }
+        addLog(`${actionLabels[action]} Transactions: ${result.size} hashes (${hashSources.size - beforeSize} new, ${hashSources.size} total unique)`)
 
         if (i < actions.length - 1) {
           await sleep(DELAY_MS, signal)
         }
       }
 
-      const sorted = [...allHashes].sort()
+      const sorted = [...hashSources.keys()].sort()
+      const sourcesObj = {}
+      for (const [h, s] of hashSources) sourcesObj[h] = [...s].sort().join('|')
       setHashes(sorted)
+      setHashSources(sourcesObj)
       setProgress(null)
       addLog(`=== Done! ${sorted.length} unique transaction hashes found ===`)
 
@@ -316,7 +324,7 @@ export default function TxFetcher() {
   }
 
   const handleDownloadCSV = () => {
-    const csv = 'txHash\n' + hashes.join('\n')
+    const csv = 'txHash,sources\n' + hashes.map(h => `${h},"${hashSources[h] || ''}"`).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -587,6 +595,9 @@ export default function TxFetcher() {
                     >
                       {hash}
                     </a>
+                    {hashSources[hash] && (
+                      <span className="hash-sources">{hashSources[hash]}</span>
+                    )}
                     <button className="hash-copy-btn" onClick={() => handleCopyOne(hash)}>
                       Copy
                     </button>
