@@ -518,7 +518,7 @@ export default function TxFetcher() {
           </label>
           {nonceOnly && (
             <div className="nonce-only-hint">
-              Only fetches normal transactions to determine the highest confirmed nonce for this address. All other options are disabled.
+              Grabs the highest confirmed nonce for this address. All other options are disabled.
             </div>
           )}
         </section>
