@@ -228,9 +228,13 @@ function CsvBuilder() {
                 </div>
               )}
 
-              {!col.lines.trim() && (
-                <div className="col-field">
-                  <label className="col-field-label">Static Value</label>
+              <div className="col-field">
+                <label className="col-field-label">Static Value</label>
+                {col.lines.trim() ? (
+                  <div className="col-static-notice col-static-notice-small">
+                    Using Values
+                  </div>
+                ) : (
                   <input
                     type="text"
                     className="col-input"
@@ -238,23 +242,27 @@ function CsvBuilder() {
                     value={col.staticValue}
                     onChange={e => updateColumn(col.id, 'staticValue', e.target.value)}
                   />
-                </div>
-              )}
+                )}
+              </div>
 
               {!col.staticValue.trim() && !col.lines.trim() && (
                 <div className="col-field-divider">or</div>
               )}
 
-              {!col.staticValue.trim() && (
-                <div className="col-field col-field-grow">
-                  <label className="col-field-label">
-                    Values (1 per line)
-                    {col.lines.trim() && (
-                      <span className="line-count">
-                        {col.lines.split(/\r?\n/).filter(l => l !== '').length.toLocaleString()} lines
-                      </span>
-                    )}
-                  </label>
+              <div className="col-field col-field-grow">
+                <label className="col-field-label">
+                  Values (1 per line)
+                  {col.lines.trim() && (
+                    <span className="line-count">
+                      {col.lines.split(/\r?\n/).filter(l => l !== '').length.toLocaleString()} lines
+                    </span>
+                  )}
+                </label>
+                {col.staticValue.trim() ? (
+                  <div className="col-static-notice">
+                    Static value set — every row will use "{col.staticValue}"
+                  </div>
+                ) : (
                   <textarea
                     className="col-textarea"
                     placeholder={"Paste values here...\nOne per line"}
@@ -262,14 +270,8 @@ function CsvBuilder() {
                     onChange={e => updateColumn(col.id, 'lines', e.target.value)}
                     spellCheck={false}
                   />
-                </div>
-              )}
-
-              {col.staticValue.trim() && (
-                <div className="col-static-notice">
-                  Static value set — every row will use "{col.staticValue}"
-                </div>
-              )}
+                )}
+              </div>
             </div>
             )
           })}

@@ -345,6 +345,12 @@
   word-break: break-all;
 }
 
+.col-static-notice-small {
+  flex: none;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8rem;
+}
+
 /* ── CSV Preview ── */
 
 .csv-preview-section {
