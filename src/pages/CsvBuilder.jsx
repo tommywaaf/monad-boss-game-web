@@ -39,7 +39,7 @@ function CsvBuilder() {
 
     const colData = active.map(c => {
       if (c.staticValue.trim() !== '') return { label: c.label, isStatic: true, value: c.staticValue }
-      const parsed = c.lines.split('\n').filter(l => l !== '')
+      const parsed = c.lines.split(/\r?\n/).filter(l => l !== '')
       return { label: c.label, isStatic: false, rows: parsed }
     })
 
@@ -82,14 +82,14 @@ function CsvBuilder() {
   const activeCount = getActiveColumns().length
   const totalLines = columns.reduce((sum, c) => {
     if (c.staticValue.trim()) return sum
-    const count = c.lines.trim() ? c.lines.split('\n').filter(l => l !== '').length : 0
+    const count = c.lines.trim() ? c.lines.split(/\r?\n/).filter(l => l !== '').length : 0
     return sum + count
   }, 0)
 
   const colCounts = columns.map(c => {
     if (c.staticValue.trim() === '' && c.lines.trim() === '') return null
     if (c.staticValue.trim() !== '') return 'static'
-    return c.lines.split('\n').filter(l => l !== '').length
+    return c.lines.split(/\r?\n/).filter(l => l !== '').length
   })
   const nonStaticCounts = colCounts.filter(c => c !== null && c !== 'static')
   const maxNonStatic = nonStaticCounts.length > 0 ? Math.max(...nonStaticCounts) : 0
@@ -227,7 +227,7 @@ function CsvBuilder() {
                     Values (1 per line)
                     {col.lines.trim() && (
                       <span className="line-count">
-                        {col.lines.split('\n').filter(l => l !== '').length.toLocaleString()} lines
+                        {col.lines.split(/\r?\n/).filter(l => l !== '').length.toLocaleString()} lines
                       </span>
                     )}
                   </label>
