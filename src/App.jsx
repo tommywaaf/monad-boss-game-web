@@ -180,7 +180,7 @@ function App() {
               className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}
             >
               <span className="sidebar-icon">🔍</span>
-              <span className="sidebar-text">Ton Details</span>
+              <span className="sidebar-text">TON Details</span>
             </Link>
             <Link 
               to="/ton-batch-lookup" 

@@ -391,7 +391,7 @@ function TonDetails() {
             className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}
           >
             <span className="sidebar-icon">🔍</span>
-            <span className="sidebar-text">Ton Details</span>
+            <span className="sidebar-text">TON Details</span>
           </Link>
           <Link 
             to="/ton-batch-lookup" 
@@ -419,7 +419,7 @@ function TonDetails() {
 
       <div className="ton-details-container">
         <div className="ton-details-header">
-          <h1>🔍 Ton Details</h1>
+          <h1>🔍 TON Details</h1>
           <p className="subtitle">Extract transaction details from Tonscan or Tonviewer URLs</p>
         </div>
 

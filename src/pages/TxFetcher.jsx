@@ -447,7 +447,7 @@ export default function TxFetcher() {
           </Link>
           <Link to="/ton-details" className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}>
             <span className="sidebar-icon">🔍</span>
-            <span className="sidebar-text">Ton Details</span>
+            <span className="sidebar-text">TON Details</span>
           </Link>
           <Link to="/ton-batch-lookup" className={`sidebar-link ${location.pathname === '/ton-batch-lookup' ? 'active' : ''}`}>
             <span className="sidebar-icon">📋</span>
