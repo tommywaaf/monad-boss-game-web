@@ -502,6 +502,10 @@ function TonBatchLookup() {
             <span className="sidebar-icon">₿</span>
             <span className="sidebar-text">BTC Safe-to-Fail</span>
           </Link>
+          <Link to="/csv-builder" className={`sidebar-link ${location.pathname === '/csv-builder' ? 'active' : ''}`}>
+            <span className="sidebar-icon">📊</span>
+            <span className="sidebar-text">CSV Builder</span>
+          </Link>
         </div>
       </nav>
 
