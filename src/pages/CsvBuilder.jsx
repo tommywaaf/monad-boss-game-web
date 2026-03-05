@@ -210,16 +210,22 @@ function CsvBuilder() {
                 </div>
               )}
 
-              <div className="col-field">
-                <label className="col-field-label">Static Value</label>
-                <input
-                  type="text"
-                  className="col-input"
-                  placeholder="Same value for every row..."
-                  value={col.staticValue}
-                  onChange={e => updateColumn(col.id, 'staticValue', e.target.value)}
-                />
-              </div>
+              {!col.lines.trim() && (
+                <div className="col-field">
+                  <label className="col-field-label">Static Value</label>
+                  <input
+                    type="text"
+                    className="col-input"
+                    placeholder="Same value for every row..."
+                    value={col.staticValue}
+                    onChange={e => updateColumn(col.id, 'staticValue', e.target.value)}
+                  />
+                </div>
+              )}
+
+              {!col.staticValue.trim() && !col.lines.trim() && (
+                <div className="col-field-divider">or</div>
+              )}
 
               {!col.staticValue.trim() && (
                 <div className="col-field col-field-grow">

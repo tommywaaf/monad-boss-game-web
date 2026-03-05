@@ -320,6 +320,16 @@
   color: #52525b;
 }
 
+.col-field-divider {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #52525b;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.75rem;
+}
+
 .col-static-notice {
   flex: 1;
   display: flex;
