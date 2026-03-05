@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import './CsvBuilder.css'
 
@@ -85,6 +85,18 @@ function CsvBuilder() {
     const count = c.lines.trim() ? c.lines.split(/\r?\n/).filter(l => l !== '').length : 0
     return sum + count
   }, 0)
+
+  const [copied, setCopied] = useState(false)
+
+  const csvPreview = useMemo(() => buildCsv(), [buildCsv])
+
+  const handleCopy = useCallback(() => {
+    if (!csvPreview) return
+    navigator.clipboard.writeText(csvPreview).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [csvPreview])
 
   const colCounts = columns.map(c => {
     if (c.staticValue.trim() === '' && c.lines.trim() === '') return null
@@ -256,6 +268,24 @@ function CsvBuilder() {
             )
           })}
         </section>
+
+        {csvPreview && (
+          <section className="csv-preview-section">
+            <div className="csv-preview-header">
+              <h2 className="csv-preview-title">CSV Preview</h2>
+              <button className="copy-csv-btn" onClick={handleCopy}>
+                {copied ? '✓ Copied' : 'Copy to Clipboard'}
+              </button>
+            </div>
+            <textarea
+              className="csv-preview-textarea"
+              value={csvPreview}
+              readOnly
+              spellCheck={false}
+              onFocus={e => e.target.select()}
+            />
+          </section>
+        )}
       </div>
     </div>
   )
