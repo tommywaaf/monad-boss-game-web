@@ -757,6 +757,11 @@ function TxResultCard({ result }) {
 function BtcSafeToFail() {
   const location    = useLocation()
 
+  useEffect(() => {
+    document.title = 'BTC Safe-to-Fail'
+    return () => { document.title = 'Monad Boss Game' }
+  }, [])
+
   // ── Detail mode state ──
   const [input,      setInput]      = useState('')
   const [results,    setResults]    = useState([])

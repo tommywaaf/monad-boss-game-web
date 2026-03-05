@@ -198,6 +198,11 @@ function formatRate(rate) {
 function TonBatchLookup() {
   const location = useLocation()
 
+  useEffect(() => {
+    document.title = 'TON Safe-to-Fail'
+    return () => { document.title = 'Monad Boss Game' }
+  }, [])
+
   // ── Input & settings ──
   const [input, setInput]               = useState('')
   const [concurrency, setConcurrency]   = useState(5)

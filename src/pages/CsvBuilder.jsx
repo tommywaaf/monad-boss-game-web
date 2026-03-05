@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import './CsvBuilder.css'
 
@@ -14,6 +14,12 @@ function escapeCsvCell(value) {
 
 function CsvBuilder() {
   const location = useLocation()
+
+  useEffect(() => {
+    document.title = 'CSV Builder'
+    return () => { document.title = 'Monad Boss Game' }
+  }, [])
+
   const [columns, setColumns] = useState(() => [makeColumn(), makeColumn(), makeColumn(), makeColumn()])
   const [includeHeader, setIncludeHeader] = useState(false)
 

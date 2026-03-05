@@ -276,6 +276,12 @@ async function rescanPlan(inputUrlOrHex) {
 
 function TonDetails() {
   const location = useLocation()
+
+  useEffect(() => {
+    document.title = 'TON Details'
+    return () => { document.title = 'Monad Boss Game' }
+  }, [])
+
   const [input, setInput] = useState('')
   const [results, setResults] = useState([])
   const [processing, setProcessing] = useState(false)

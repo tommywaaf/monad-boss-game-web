@@ -177,6 +177,11 @@ async function fetchAllPagesRich(chainId, address, action, startblock, endblock,
 }
 
 export default function TxFetcher() {
+  useEffect(() => {
+    document.title = 'TX Fetcher'
+    return () => { document.title = 'Monad Boss Game' }
+  }, [])
+
   const [networks, setNetworks] = useState(FALLBACK_NETWORKS)
   const [selectedNetwork, setSelectedNetwork] = useState(FALLBACK_NETWORKS[0])
   const [address, setAddress] = useState('')
