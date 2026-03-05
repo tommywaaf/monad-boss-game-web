@@ -184,6 +184,7 @@ export default function TxFetcher() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [directionFilter, setDirectionFilter] = useState('all')
+  const [nonceOnly, setNonceOnly] = useState(false)
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(null)
   const [hashes, setHashes] = useState([])
@@ -213,7 +214,7 @@ export default function TxFetcher() {
   }, [])
 
   const isValidAddress = address.match(/^0x[a-fA-F0-9]{40}$/)
-  const canFetch = isValidAddress && !loading && (fetchAll || (startDate && endDate))
+  const canFetch = isValidAddress && !loading && (nonceOnly || fetchAll || (startDate && endDate))
 
   const addLog = useCallback((msg) => {
     const ts = new Date().toLocaleTimeString()
@@ -250,87 +251,117 @@ export default function TxFetcher() {
 
     try {
       const { chainId } = selectedNetwork
-      let startblock = 0
-      let endblock = 999999999
 
-      addLog(`Starting fetch on ${selectedNetwork.name} (chainId ${chainId}) for ${address}`)
+      addLog(`Starting on ${selectedNetwork.name} (chainId ${chainId}) for ${address}`)
       addLog(`API: ${ETHERSCAN_V2}`)
       addLog(HAS_API_KEY ? `API key: active (${ETHERSCAN_API_KEY.slice(0, 4)}...${ETHERSCAN_API_KEY.slice(-4)}) — fast mode ~5 req/s` : 'No API key — slow mode ~1 req/5s')
-      addLog(`Direction filter: ${directionFilter}`)
 
-      if (!fetchAll && startDate && endDate) {
-        setProgress({ action: 'Resolving start block...', page: 0, found: 0 })
-        addLog(`Resolving date range: ${startDate} → ${endDate}`)
-        const startTs = Math.floor(new Date(startDate + 'T00:00:00Z').getTime() / 1000)
-        startblock = await getBlockByTimestamp(chainId, startTs, 'after', signal, addLog)
+      if (nonceOnly) {
+        addLog('Nonce-only mode — calling eth_getTransactionCount...')
+        setProgress({ action: 'Checking nonce...', page: 0, found: 0, step: 1, totalSteps: 1 })
 
-        setProgress({ action: 'Resolving end block...', page: 0, found: 0 })
-        const endTs = Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000)
-        endblock = await getBlockByTimestamp(chainId, endTs, 'before', signal, addLog)
+        const json = await apiCall(chainId, {
+          module: 'proxy',
+          action: 'eth_getTransactionCount',
+          address,
+          tag: 'latest',
+        }, signal, addLog)
 
-        addLog(`Block range: ${startblock} → ${endblock}`)
+        const txCount = parseInt(json.result, 16)
+        if (isNaN(txCount)) throw new Error(`Unexpected response: ${JSON.stringify(json)}`)
+
+        const maxNonce = txCount > 0 ? txCount - 1 : null
+        setHashes([])
+        setHashMeta({})
+        setHighestNonce(maxNonce)
+        setProgress(null)
+
+        if (maxNonce !== null) {
+          addLog(`Transaction count: ${txCount.toLocaleString()}`)
+          addLog(`=== Max confirmed nonce: ${maxNonce.toLocaleString()} ===`)
+        } else {
+          addLog('=== No transactions found for this address ===')
+        }
+
+        trackUsage('txfetcher', 0)
       } else {
-        addLog('Fetching ALL transactions (no date filter)')
-      }
+        addLog(`Direction filter: ${directionFilter}`)
 
-      // Master map: hash → { sources: Set, direction, nonce }
-      const master = new Map()
-      const actions = ['txlist', 'txlistinternal', 'tokentx', 'tokennfttx', 'token1155tx']
-      let maxNonce = -1
+        let startblock = 0
+        let endblock = 999999999
 
-      for (let i = 0; i < actions.length; i++) {
-        const action = actions[i]
-        const label = ACTION_LABELS[action]
-        addLog(`--- Starting ${label} Transactions (${action}) [${i + 1}/${actions.length}] ---`)
-        setProgress({ action: `${label} Transactions`, page: 0, found: master.size, step: i + 1, totalSteps: actions.length })
+        if (!fetchAll && startDate && endDate) {
+          setProgress({ action: 'Resolving start block...', page: 0, found: 0 })
+          addLog(`Resolving date range: ${startDate} → ${endDate}`)
+          const startTs = Math.floor(new Date(startDate + 'T00:00:00Z').getTime() / 1000)
+          startblock = await getBlockByTimestamp(chainId, startTs, 'after', signal, addLog)
 
-        const result = await fetchAllPagesRich(
-          chainId, address, action, startblock, endblock, signal,
-          ({ page, found }) => {
-            setProgress({
-              action: `${label} Transactions`,
-              page,
-              found: master.size + found,
-              step: i + 1,
-              totalSteps: actions.length,
-            })
-          },
-          addLog
-        )
+          setProgress({ action: 'Resolving end block...', page: 0, found: 0 })
+          const endTs = Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000)
+          endblock = await getBlockByTimestamp(chainId, endTs, 'before', signal, addLog)
 
-        const beforeSize = master.size
-        for (const [h, data] of result) {
-          if (!master.has(h)) {
-            master.set(h, { sources: new Set(), direction: data.direction, nonce: data.nonce })
+          addLog(`Block range: ${startblock} → ${endblock}`)
+        } else {
+          addLog('Fetching ALL transactions (no date filter)')
+        }
+
+        const master = new Map()
+        const actions = ['txlist', 'txlistinternal', 'tokentx', 'tokennfttx', 'token1155tx']
+        let maxNonce = -1
+
+        for (let i = 0; i < actions.length; i++) {
+          const action = actions[i]
+          const label = ACTION_LABELS[action]
+          addLog(`--- Starting ${label} Transactions (${action}) [${i + 1}/${actions.length}] ---`)
+          setProgress({ action: `${label} Transactions`, page: 0, found: master.size, step: i + 1, totalSteps: actions.length })
+
+          const result = await fetchAllPagesRich(
+            chainId, address, action, startblock, endblock, signal,
+            ({ page, found }) => {
+              setProgress({
+                action: `${label} Transactions`,
+                page,
+                found: master.size + found,
+                step: i + 1,
+                totalSteps: actions.length,
+              })
+            },
+            addLog
+          )
+
+          const beforeSize = master.size
+          for (const [h, data] of result) {
+            if (!master.has(h)) {
+              master.set(h, { sources: new Set(), direction: data.direction, nonce: data.nonce })
+            }
+            master.get(h).sources.add(label)
+
+            if (action === 'txlist' && (data.direction === 'outgoing' || data.direction === 'self') && data.nonce != null) {
+              const n = parseInt(data.nonce, 10)
+              if (!isNaN(n) && n > maxNonce) maxNonce = n
+            }
           }
-          master.get(h).sources.add(label)
+          addLog(`${label} Transactions: ${result.size} hashes (${master.size - beforeSize} new, ${master.size} total unique)`)
 
-          // Track highest nonce from outgoing normal txs
-          if (action === 'txlist' && (data.direction === 'outgoing' || data.direction === 'self') && data.nonce != null) {
-            const n = parseInt(data.nonce, 10)
-            if (!isNaN(n) && n > maxNonce) maxNonce = n
+          if (i < actions.length - 1) {
+            await sleep(DELAY_MS, signal)
           }
         }
-        addLog(`${label} Transactions: ${result.size} hashes (${master.size - beforeSize} new, ${master.size} total unique)`)
 
-        if (i < actions.length - 1) {
-          await sleep(DELAY_MS, signal)
+        const sorted = [...master.keys()].sort()
+        const meta = {}
+        for (const [h, d] of master) {
+          meta[h] = { sources: [...d.sources].sort().join('|'), direction: d.direction }
         }
-      }
+        setHashes(sorted)
+        setHashMeta(meta)
+        if (maxNonce >= 0) setHighestNonce(maxNonce)
+        setProgress(null)
+        addLog(`=== Done! ${sorted.length} unique transaction hashes found ===`)
+        if (maxNonce >= 0) addLog(`Highest confirmed outgoing nonce: ${maxNonce.toLocaleString()}`)
 
-      const sorted = [...master.keys()].sort()
-      const meta = {}
-      for (const [h, d] of master) {
-        meta[h] = { sources: [...d.sources].sort().join('|'), direction: d.direction }
+        trackUsage('txfetcher', sorted.length)
       }
-      setHashes(sorted)
-      setHashMeta(meta)
-      if (maxNonce >= 0) setHighestNonce(maxNonce)
-      setProgress(null)
-      addLog(`=== Done! ${sorted.length} unique transaction hashes found ===`)
-      if (maxNonce >= 0) addLog(`Highest confirmed outgoing nonce: ${maxNonce.toLocaleString()}`)
-
-      trackUsage('txfetcher', sorted.length)
     } catch (e) {
       if (e.name === 'AbortError') {
         addLog('Cancelled by user.')
@@ -344,7 +375,7 @@ export default function TxFetcher() {
       setLoading(false)
       abortRef.current = null
     }
-  }, [canFetch, selectedNetwork, address, fetchAll, startDate, endDate, directionFilter, addLog])
+  }, [canFetch, selectedNetwork, address, fetchAll, startDate, endDate, directionFilter, nonceOnly, addLog])
 
   const handleCancel = () => {
     if (abortRef.current) {
@@ -477,6 +508,22 @@ export default function TxFetcher() {
         </section>
 
         <section className="txfetcher-section">
+          <label className={`nonce-only-toggle ${nonceOnly ? 'active' : ''}`}>
+            <input
+              type="checkbox"
+              checked={nonceOnly}
+              onChange={(e) => setNonceOnly(e.target.checked)}
+            />
+            <span>Max Confirmed Nonce Only</span>
+          </label>
+          {nonceOnly && (
+            <div className="nonce-only-hint">
+              Only fetches normal transactions to determine the highest confirmed nonce for this address. All other options are disabled.
+            </div>
+          )}
+        </section>
+
+        <section className={`txfetcher-section ${nonceOnly ? 'section-disabled' : ''}`}>
           <label className="txfetcher-label">Direction Filter</label>
           <div className="direction-options">
             {['all', 'outgoing', 'incoming'].map(opt => (
@@ -487,6 +534,7 @@ export default function TxFetcher() {
                   value={opt}
                   checked={directionFilter === opt}
                   onChange={() => { setDirectionFilter(opt); setResultsPage(0) }}
+                  disabled={nonceOnly}
                 />
                 <span>{opt === 'all' ? 'All Transactions' : opt === 'outgoing' ? 'Outgoing Only (sent from address)' : 'Incoming Only (received by address)'}</span>
               </label>
@@ -494,7 +542,7 @@ export default function TxFetcher() {
           </div>
         </section>
 
-        <section className="txfetcher-section">
+        <section className={`txfetcher-section ${nonceOnly ? 'section-disabled' : ''}`}>
           <label className="txfetcher-label">Date Range</label>
           <div className="date-range-controls">
             <label className="date-range-toggle">
@@ -502,6 +550,7 @@ export default function TxFetcher() {
                 type="checkbox"
                 checked={fetchAll}
                 onChange={(e) => setFetchAll(e.target.checked)}
+                disabled={nonceOnly}
               />
               <span>Fetch ALL transactions (no date filter)</span>
             </label>
@@ -547,7 +596,7 @@ export default function TxFetcher() {
                   Fetching...
                 </>
               ) : (
-                <>Fetch TX Hashes</>
+                <>{nonceOnly ? 'Check Max Nonce' : 'Fetch TX Hashes'}</>
               )}
             </button>
             {loading && (
@@ -594,6 +643,16 @@ export default function TxFetcher() {
           <div className="error-box">
             {error}
           </div>
+        )}
+
+        {nonceOnly && !loading && highestNonce !== null && (
+          <section className="nonce-result-section">
+            <div className="nonce-result-card">
+              <div className="nonce-result-label">Max Confirmed Nonce</div>
+              <div className="nonce-result-value">{highestNonce.toLocaleString()}</div>
+              <div className="nonce-result-addr">{address}</div>
+            </div>
+          </section>
         )}
 
         {hashes.length > 0 && (() => {
