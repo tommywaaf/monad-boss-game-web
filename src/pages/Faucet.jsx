@@ -19,8 +19,8 @@ const NETWORKS = [
     addressType: 'EVM',
   },
   {
-    id: 'holesky',
-    name: 'Holesky',
+    id: 'hoodi',
+    name: 'Hoodi',
     icon: '🟣',
     assets: [
       { assetId: 'ETH_TEST_HOODI', symbol: 'ETH', amount: '0.2', icon: '⟠' },
