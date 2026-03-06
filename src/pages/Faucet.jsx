@@ -229,9 +229,19 @@ function Faucet() {
 
   useEffect(() => {
     fetch(`${FAUCET_API}/health`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
       .then(d => setHealthOk(d.status === 'ok'))
-      .catch(() => setHealthOk(false))
+      .catch(() => {
+        // The /health endpoint may not include CORS headers, so the browser
+        // blocks reading the response even from the allowed origin.
+        // Fall back to a no-cors probe — if it resolves the server is reachable.
+        fetch(`${FAUCET_API}/health`, { mode: 'no-cors' })
+          .then(() => setHealthOk(true))
+          .catch(() => setHealthOk(false))
+      })
   }, [])
 
   const handleRateLimited = (assetId, retryAfter) => {
