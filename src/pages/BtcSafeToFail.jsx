@@ -961,6 +961,13 @@ function BtcSafeToFail() {
             <span className="sidebar-icon">📊</span>
             <span className="sidebar-text">CSV Builder</span>
           </Link>
+          <Link 
+            to="/faucet" 
+            className={`sidebar-link ${location.pathname === '/faucet' ? 'active' : ''}`}
+          >
+            <span className="sidebar-icon">🚰</span>
+            <span className="sidebar-text">Faucet</span>
+          </Link>
         </div>
       </nav>
 
