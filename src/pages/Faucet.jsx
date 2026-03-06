@@ -260,7 +260,6 @@ function Faucet() {
           <h3>Navigation</h3>
         </div>
         <div className="sidebar-links">
-
           <Link to="/broadcaster" className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}>
             <span className="sidebar-icon">🚀</span>
             <span className="sidebar-text">Broadcaster</span>
