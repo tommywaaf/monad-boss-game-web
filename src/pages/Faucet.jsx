@@ -109,7 +109,7 @@ function formatCountdown(seconds) {
   return parts.join(' ')
 }
 
-function AssetCard({ asset, network, rateLimitUntil, onRateLimited, onSuccess }) {
+function AssetCard({ asset, network, rateLimitUntil, onRateLimited }) {
   const [address, setAddress] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
@@ -148,7 +148,8 @@ function AssetCard({ asset, network, rateLimitUntil, onRateLimited, onSuccess })
       }
 
       setResult(data)
-      onSuccess?.(data)
+      const cooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      onRateLimited(cooldownUntil)
     } catch (err) {
       setError(err.message || 'Network error')
     } finally {
@@ -330,7 +331,6 @@ function Faucet() {
                   network={network}
                   rateLimitUntil={rateLimits[asset.assetId]}
                   onRateLimited={(retryAfter) => handleRateLimited(asset.assetId, retryAfter)}
-                  onSuccess={() => {}}
                 />
               ))}
             </div>
