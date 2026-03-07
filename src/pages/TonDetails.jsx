@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import './TonDetails.css'
@@ -274,6 +274,38 @@ async function rescanPlan(inputUrlOrHex) {
   }
 }
 
+function CopyNumber({ value }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleClick = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(String(value))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = String(value)
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    }
+  }, [value])
+
+  return (
+    <span
+      className={`copy-number ${copied ? 'copied' : ''}`}
+      onClick={handleClick}
+      title="Click to copy"
+    >
+      {value}
+      {copied && <span className="copy-toast">Copied!</span>}
+    </span>
+  )
+}
+
 function TonDetails() {
   const location = useLocation()
 
@@ -500,7 +532,7 @@ function TonDetails() {
                     <div className="result-field">
                       <span className="field-label">Blocks to Rescan:</span>
                       <div className="field-value-wrapper">
-                        <span className="field-value">{result.data.blocks_start} - {result.data.blocks_end}</span>
+                        <span className="field-value"><CopyNumber value={result.data.blocks_start} /> - <CopyNumber value={result.data.blocks_end} /></span>
                         <span className="field-hint">use this!</span>
                       </div>
                     </div>

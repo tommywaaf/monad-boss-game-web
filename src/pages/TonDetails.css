@@ -376,6 +376,63 @@
   color: #fca5a5;
 }
 
+.copy-number {
+  cursor: pointer;
+  position: relative;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  transition: all 0.15s ease;
+}
+
+.copy-number:hover {
+  background: rgba(168, 85, 247, 0.25);
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+.copy-number:active {
+  transform: scale(0.95);
+}
+
+.copy-number.copied {
+  background: rgba(45, 212, 191, 0.2);
+  border-color: rgba(45, 212, 191, 0.5);
+}
+
+.copy-toast {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2dd4bf;
+  color: #0a0a0f;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: toastFade 1.2s ease forwards;
+}
+
+.copy-toast::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: #2dd4bf;
+}
+
+@keyframes toastFade {
+  0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 @media (max-width: 768px) {
   .ton-details-page {
     flex-direction: column;
