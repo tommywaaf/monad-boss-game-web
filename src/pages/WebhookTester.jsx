@@ -5,18 +5,10 @@ import './WebhookTester.css'
 const API_BASE = 'https://delicate-haze-2a16.tm8six.workers.dev'
 const WS_BASE = API_BASE.replace(/^http/, 'ws')
 
-const METHOD_COLORS = {
-  GET: '#3b82f6',
-  POST: '#22c55e',
-  PUT: '#f59e0b',
-  PATCH: '#a855f7',
-  DELETE: '#ef4444',
-  HEAD: '#6b7280',
-  OPTIONS: '#06b6d4',
-}
-
-function timeAgo(iso) {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000
+function timeAgo(ts) {
+  const ms = typeof ts === 'number' ? ts : new Date(ts).getTime()
+  if (isNaN(ms)) return ''
+  const diff = (Date.now() - ms) / 1000
   if (diff < 5) return 'just now'
   if (diff < 60) return `${Math.floor(diff)}s ago`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
@@ -24,25 +16,41 @@ function timeAgo(iso) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return '0 B'
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1048576).toFixed(1)} MB`
+function tryParseJson(str) {
+  if (!str) return null
+  try { return JSON.parse(str) } catch { return null }
 }
 
-function tryPrettyJson(str) {
+function prettyJson(str) {
   if (!str) return str
-  try {
-    return JSON.stringify(JSON.parse(str), null, 2)
-  } catch {
-    return str
+  try { return JSON.stringify(JSON.parse(str), null, 2) } catch { return str }
+}
+
+function extractEventInfo(event) {
+  const parsed = tryParseJson(event.body)
+  if (!parsed) return { eventType: event.method || 'Unknown', status: null, detail: null }
+  const eventType = parsed.eventType || parsed.event_type || parsed.type || event.method || 'Unknown'
+  const status = parsed.data?.status || parsed.status || null
+  let detail = null
+  if (parsed.data?.amount != null && parsed.data?.assetId) {
+    detail = `${parsed.data.amount} ${parsed.data.assetId}`
   }
+  if (parsed.data?.source?.name && parsed.data?.destination?.name) {
+    const flow = `${parsed.data.source.name} → ${parsed.data.destination.name}`
+    detail = detail ? `${detail} · ${flow}` : flow
+  }
+  return { eventType, status, detail }
+}
+
+const STATUS_STYLES = {
+  QUEUED: '#eab308', PENDING: '#eab308', SUBMITTED: '#3b82f6',
+  BROADCASTING: '#3b82f6', CONFIRMING: '#a855f7', COMPLETED: '#22c55e',
+  CONFIRMED: '#22c55e', FAILED: '#ef4444', REJECTED: '#ef4444',
+  CANCELLED: '#6b7280', BLOCKED: '#ef4444',
 }
 
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false)
-
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text)
@@ -50,7 +58,6 @@ function CopyButton({ text }) {
       setTimeout(() => setCopied(false), 1500)
     } catch { /* noop */ }
   }
-
   return (
     <button className={`wht-copy-btn ${copied ? 'copied' : ''}`} onClick={handleCopy}>
       {copied ? 'Copied!' : 'Copy'}
@@ -58,115 +65,96 @@ function CopyButton({ text }) {
   )
 }
 
-function CollapsibleSection({ title, children, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="wht-collapsible">
-      <button className="wht-collapsible-toggle" onClick={() => setOpen(o => !o)}>
-        <span className={`wht-chevron ${open ? 'open' : ''}`}>&#9654;</span>
-        {title}
-      </button>
-      {open && <div className="wht-collapsible-content">{children}</div>}
-    </div>
-  )
-}
-
-function EventCard({ event }) {
-  const [now, setNow] = useState(Date.now())
-
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 5000)
-    return () => clearInterval(id)
-  }, [])
-
-  const methodColor = METHOD_COLORS[event.method] || '#6b7280'
-  const isJson = (event.contentType || '').includes('json')
+function EventBubble({ event, isExpanded, onToggle }) {
+  const { eventType, status, detail } = extractEventInfo(event)
+  const statusColor = STATUS_STYLES[status] || null
+  const parsed = tryParseJson(event.body)
   const headerCount = event.headers ? Object.keys(event.headers).length : 0
+  const [headersOpen, setHeadersOpen] = useState(false)
 
   return (
-    <div className="wht-event-card">
-      <div className="wht-event-header">
-        <span className="wht-method-badge" style={{ background: methodColor }}>
-          {event.method}
-        </span>
-        <span className="wht-event-time" key={now}>{timeAgo(event.timestamp)}</span>
-        {event.contentType && (
-          <span className="wht-content-type">{event.contentType}</span>
+    <div className={`wht-bubble ${isExpanded ? 'expanded' : ''}`}>
+      <button className="wht-bubble-summary" onClick={onToggle}>
+        <span className="wht-bubble-dot" />
+        <span className="wht-bubble-type">{eventType}</span>
+        {status && (
+          <span className="wht-bubble-status" style={statusColor ? { color: statusColor } : undefined}>
+            {status}
+          </span>
         )}
-        <span className="wht-event-size">{formatBytes(event.size)}</span>
-      </div>
+        {detail && <span className="wht-bubble-detail">{detail}</span>}
+        <span className="wht-bubble-time">{timeAgo(event.timestamp)}</span>
+      </button>
 
-      {event.query && event.query !== '' && event.query !== '?' && (
-        <div className="wht-event-query">
-          <span className="wht-query-label">Query:</span>
-          <code>{event.query}</code>
-        </div>
-      )}
-
-      {headerCount > 0 && (
-        <CollapsibleSection title={`Headers (${headerCount})`}>
-          <div className="wht-headers-grid">
-            {Object.entries(event.headers).map(([k, v]) => (
-              <div key={k} className="wht-header-row">
-                <span className="wht-header-key">{k}</span>
-                <span className="wht-header-val">{v}</span>
+      {isExpanded && (
+        <div className="wht-bubble-body">
+          <div className="wht-detail-meta">
+            <div className="wht-detail-row">
+              <span className="wht-detail-label">Method</span>
+              <span className="wht-detail-value">{event.method}</span>
+            </div>
+            <div className="wht-detail-row">
+              <span className="wht-detail-label">Received</span>
+              <span className="wht-detail-value">
+                {event.timestamp ? new Date(event.timestamp).toLocaleString() : '—'}
+              </span>
+            </div>
+            {event.contentType && (
+              <div className="wht-detail-row">
+                <span className="wht-detail-label">Content-Type</span>
+                <span className="wht-detail-value">{event.contentType}</span>
               </div>
-            ))}
+            )}
+            {event.query && event.query !== '' && event.query !== '?' && (
+              <div className="wht-detail-row">
+                <span className="wht-detail-label">Query</span>
+                <code className="wht-detail-value">{event.query}</code>
+              </div>
+            )}
           </div>
-        </CollapsibleSection>
-      )}
 
-      {event.body && (
-        <CollapsibleSection title="Body" defaultOpen={true}>
-          <pre className={`wht-body-content ${isJson ? 'json' : ''}`}>
-            {isJson ? tryPrettyJson(event.body) : event.body}
-          </pre>
-        </CollapsibleSection>
-      )}
-    </div>
-  )
-}
+          {headerCount > 0 && (
+            <div className="wht-detail-section">
+              <button className="wht-detail-toggle" onClick={() => setHeadersOpen(o => !o)}>
+                <span className={`wht-chevron ${headersOpen ? 'open' : ''}`}>&#9654;</span>
+                Headers ({headerCount})
+              </button>
+              {headersOpen && (
+                <div className="wht-detail-headers">
+                  {Object.entries(event.headers).map(([k, v]) => (
+                    <div key={k} className="wht-detail-hrow">
+                      <span className="wht-detail-hkey">{k}</span>
+                      <span className="wht-detail-hval">{v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-function HookCard({ hookId, hookData, onDelete, onClear, wsRef }) {
-  const { events = [], status = 'disconnected', createdAt } = hookData
-  const hookUrl = `${API_BASE}/hook/${hookId}`
-
-  return (
-    <div className="wht-hook-card">
-      <div className="wht-hook-header">
-        <div className="wht-hook-url-row">
-          <span className={`wht-status-dot ${status}`} title={status} />
-          <code className="wht-hook-url">{hookUrl}</code>
-          <CopyButton text={hookUrl} />
-        </div>
-        <div className="wht-hook-actions">
-          <span className="wht-event-count">{events.length} event{events.length !== 1 ? 's' : ''}</span>
-          <button className="wht-action-btn clear" onClick={() => onClear(hookId)} disabled={events.length === 0}>
-            Clear
-          </button>
-          <button className="wht-action-btn delete" onClick={() => onDelete(hookId)}>
-            Delete
-          </button>
-        </div>
-      </div>
-
-      {events.length === 0 ? (
-        <div className="wht-no-events">
-          Waiting for webhooks&hellip; Send a request to the URL above.
-        </div>
-      ) : (
-        <div className="wht-event-list">
-          {events.map(evt => <EventCard key={evt.id} event={evt} />)}
+          {event.body && (
+            <div className="wht-detail-section">
+              <div className="wht-detail-body-label">
+                <span>Body</span>
+                <CopyButton text={parsed ? JSON.stringify(parsed, null, 2) : event.body} />
+              </div>
+              <pre className="wht-detail-body-pre">{prettyJson(event.body)}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
+
+// ─── Main Component ────────────────────────────────────────
 
 function WebhookTester() {
   const location = useLocation()
   const [hooks, setHooks] = useState({})
   const [hookOrder, setHookOrder] = useState([])
+  const [selectedHook, setSelectedHook] = useState(null)
+  const [expandedEvent, setExpandedEvent] = useState(null)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState(null)
@@ -178,6 +166,8 @@ function WebhookTester() {
     document.title = 'Webhook Tester'
     return () => { document.title = 'Monad Boss Game' }
   }, [])
+
+  // ─── WebSocket Logic (unchanged) ──────────────────────────
 
   const connectWebSocket = useCallback((hookId) => {
     if (!mountedRef.current) return
@@ -227,6 +217,7 @@ function WebhookTester() {
             return next
           })
           setHookOrder(prev => prev.filter(id => id !== hookId))
+          setSelectedHook(prev => prev === hookId ? null : prev)
         }
       } catch { /* ignore malformed messages */ }
     }
@@ -238,29 +229,21 @@ function WebhookTester() {
         if (!prev[hookId]) return prev
         return { ...prev, [hookId]: { ...prev[hookId], status: 'disconnected' } }
       })
-
       const attempt = (reconnectTimers.current.get(hookId) || 0) + 1
       const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000)
       const timer = setTimeout(() => {
         if (mountedRef.current) connectWebSocket(hookId)
       }, delay)
       reconnectTimers.current.set(hookId, attempt)
-      // store timer id for cleanup
       reconnectTimers.current.set(`timer_${hookId}`, timer)
     }
 
-    ws.onerror = () => {
-      ws.close()
-    }
+    ws.onerror = () => { ws.close() }
   }, [])
 
   const disconnectWebSocket = useCallback((hookId) => {
     const ws = wsRefs.current.get(hookId)
-    if (ws) {
-      ws.onclose = null
-      ws.close()
-      wsRefs.current.delete(hookId)
-    }
+    if (ws) { ws.onclose = null; ws.close(); wsRefs.current.delete(hookId) }
     clearTimeout(reconnectTimers.current.get(`timer_${hookId}`))
     reconnectTimers.current.delete(hookId)
     reconnectTimers.current.delete(`timer_${hookId}`)
@@ -271,10 +254,7 @@ function WebhookTester() {
     initSession()
     return () => {
       mountedRef.current = false
-      for (const [key, val] of wsRefs.current.entries()) {
-        val.onclose = null
-        val.close()
-      }
+      for (const [, val] of wsRefs.current.entries()) { val.onclose = null; val.close() }
       wsRefs.current.clear()
       for (const [key, val] of reconnectTimers.current.entries()) {
         if (key.startsWith('timer_')) clearTimeout(val)
@@ -282,6 +262,8 @@ function WebhookTester() {
       reconnectTimers.current.clear()
     }
   }, [])
+
+  // ─── API Calls ────────────────────────────────────────────
 
   async function initSession() {
     try {
@@ -293,22 +275,15 @@ function WebhookTester() {
       const order = []
       if (data.hooks && data.hooks.length > 0) {
         for (const hook of data.hooks) {
-          initialHooks[hook.id] = {
-            events: [],
-            status: 'connecting',
-            createdAt: hook.createdAt,
-          }
+          initialHooks[hook.id] = { events: [], status: 'connecting', createdAt: hook.createdAt }
           order.push(hook.id)
         }
       }
-
       setHooks(initialHooks)
       setHookOrder(order)
+      if (order.length > 0) setSelectedHook(order[0])
       setLoading(false)
-
-      for (const hookId of order) {
-        connectWebSocket(hookId)
-      }
+      for (const hookId of order) connectWebSocket(hookId)
     } catch (err) {
       setError(err.message)
       setLoading(false)
@@ -320,22 +295,20 @@ function WebhookTester() {
     setGenerating(true)
     setError(null)
     try {
-      const res = await fetch(`${API_BASE}/wht/generate`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      const res = await fetch(`${API_BASE}/wht/generate`, { method: 'POST', credentials: 'include' })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || `Generate failed (${res.status})`)
       }
       const data = await res.json()
       const hookId = data.hookId
-
       setHooks(prev => ({
         ...prev,
         [hookId]: { events: [], status: 'connecting', createdAt: new Date().toISOString() }
       }))
       setHookOrder(prev => [hookId, ...prev])
+      setSelectedHook(hookId)
+      setExpandedEvent(null)
       connectWebSocket(hookId)
     } catch (err) {
       setError(err.message)
@@ -346,37 +319,35 @@ function WebhookTester() {
 
   async function handleDelete(hookId) {
     disconnectWebSocket(hookId)
-    setHooks(prev => {
-      const next = { ...prev }
-      delete next[hookId]
+    setHooks(prev => { const next = { ...prev }; delete next[hookId]; return next })
+    setHookOrder(prev => {
+      const next = prev.filter(id => id !== hookId)
+      if (selectedHook === hookId) {
+        setSelectedHook(next.length > 0 ? next[0] : null)
+        setExpandedEvent(null)
+      }
       return next
     })
-    setHookOrder(prev => prev.filter(id => id !== hookId))
-
-    try {
-      await fetch(`${API_BASE}/wht/url/${hookId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-    } catch { /* best effort */ }
+    try { await fetch(`${API_BASE}/wht/url/${hookId}`, { method: 'DELETE', credentials: 'include' }) } catch { /* best effort */ }
   }
 
   async function handleClear(hookId) {
-    setHooks(prev => ({
-      ...prev,
-      [hookId]: { ...prev[hookId], events: [] }
-    }))
-
-    try {
-      await fetch(`${API_BASE}/wht/events/${hookId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-    } catch { /* best effort */ }
+    setHooks(prev => ({ ...prev, [hookId]: { ...prev[hookId], events: [] } }))
+    if (selectedHook === hookId) setExpandedEvent(null)
+    try { await fetch(`${API_BASE}/wht/events/${hookId}`, { method: 'DELETE', credentials: 'include' }) } catch { /* best effort */ }
   }
+
+  // ─── Derived ──────────────────────────────────────────────
+
+  const activeHookData = selectedHook ? (hooks[selectedHook] || { events: [], status: 'disconnected' }) : null
+  const activeEvents = activeHookData?.events || []
+  const hookUrl = selectedHook ? `${API_BASE}/hook/${selectedHook}` : ''
+
+  // ─── Render ───────────────────────────────────────────────
 
   return (
     <div className="wht-page">
+      {/* Nav sidebar */}
       <nav className="page-sidebar">
         <div className="sidebar-header">
           <h3>Navigation</h3>
@@ -421,64 +392,108 @@ function WebhookTester() {
         </div>
       </nav>
 
-      <div className="wht-container">
-        <header className="wht-header">
-          <h1>Webhook Tester</h1>
-          <p>Generate temporary URLs to receive and inspect webhook requests in real time.</p>
-        </header>
-
-        {error && (
-          <div className="wht-error-banner">
-            <span>{error}</span>
-            <button onClick={() => setError(null)}>&times;</button>
-          </div>
-        )}
-
-        <div className="wht-toolbar">
-          <button className="wht-generate-btn" onClick={handleGenerate} disabled={generating || loading}>
-            {generating ? (
-              <><span className="wht-spinner" /> Generating&hellip;</>
-            ) : (
-              '+ Generate URL'
-            )}
-          </button>
-          {hookOrder.length > 0 && (
-            <span className="wht-hook-count">{hookOrder.length} URL{hookOrder.length !== 1 ? 's' : ''} active</span>
-          )}
+      {/* Main content area */}
+      {loading ? (
+        <div className="wht-center-msg">
+          <span className="wht-spinner large" />
+          <span>Initializing session&hellip;</span>
         </div>
+      ) : hookOrder.length === 0 ? (
+        <div className="wht-center-msg">
+          <div className="wht-empty-icon">🔗</div>
+          <h2 className="wht-empty-title">Webhook Tester</h2>
+          <p className="wht-empty-text">
+            Generate a temporary URL, point any service at it, and watch requests arrive in real time.
+          </p>
+          <button className="wht-generate-btn" onClick={handleGenerate} disabled={generating}>
+            {generating ? <><span className="wht-spinner" /> Generating&hellip;</> : '+ Generate Your First URL'}
+          </button>
+          {error && <div className="wht-inline-error">{error}</div>}
+        </div>
+      ) : (
+        <div className="wht-split">
+          {/* Left panel: URL list */}
+          <div className="wht-urls">
+            <div className="wht-urls-header">
+              <span className="wht-urls-title">Endpoints</span>
+              <button className="wht-add-btn" onClick={handleGenerate} disabled={generating} title="Generate new URL">
+                {generating ? <span className="wht-spinner" /> : '+'}
+              </button>
+            </div>
+            <div className="wht-urls-list">
+              {hookOrder.map(hookId => {
+                const hk = hooks[hookId] || { events: [], status: 'disconnected' }
+                const count = hk.events.length
+                return (
+                  <button
+                    key={hookId}
+                    className={`wht-url-item ${selectedHook === hookId ? 'active' : ''}`}
+                    onClick={() => { setSelectedHook(hookId); setExpandedEvent(null) }}
+                  >
+                    <span className={`wht-dot ${hk.status}`} />
+                    <div className="wht-url-item-text">
+                      <span className="wht-url-item-id">{hookId}</span>
+                      <span className="wht-url-item-count">{count} event{count !== 1 ? 's' : ''}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-        {loading ? (
-          <div className="wht-loading">
-            <span className="wht-spinner large" />
-            <span>Initializing session&hellip;</span>
+          {/* Right panel: events for selected URL */}
+          <div className="wht-events">
+            {selectedHook ? (
+              <>
+                <div className="wht-events-bar">
+                  <div className="wht-events-bar-url">
+                    <code className="wht-url-display">{hookUrl}</code>
+                    <CopyButton text={hookUrl} />
+                  </div>
+                  <div className="wht-events-bar-actions">
+                    <button className="wht-act clear" onClick={() => handleClear(selectedHook)} disabled={activeEvents.length === 0}>
+                      Clear
+                    </button>
+                    <button className="wht-act delete" onClick={() => handleDelete(selectedHook)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {error && (
+                  <div className="wht-inline-error" style={{ margin: '0.5rem 1rem' }}>
+                    {error}
+                    <button className="wht-dismiss" onClick={() => setError(null)}>&times;</button>
+                  </div>
+                )}
+
+                <div className="wht-events-scroll">
+                  {activeEvents.length === 0 ? (
+                    <div className="wht-waiting">
+                      <span className="wht-waiting-icon">📡</span>
+                      <p>Waiting for incoming webhooks&hellip;</p>
+                      <p className="wht-waiting-sub">Send a request to the URL above to see it here.</p>
+                    </div>
+                  ) : (
+                    activeEvents.map(evt => (
+                      <EventBubble
+                        key={evt.id}
+                        event={evt}
+                        isExpanded={expandedEvent === evt.id}
+                        onToggle={() => setExpandedEvent(expandedEvent === evt.id ? null : evt.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="wht-waiting">
+                <p>Select a URL from the left to view events.</p>
+              </div>
+            )}
           </div>
-        ) : hookOrder.length === 0 ? (
-          <div className="wht-empty-state">
-            <div className="wht-empty-icon">🔗</div>
-            <h2>No Webhook URLs Yet</h2>
-            <p>
-              Generate a URL, then point any external service at it.
-              Incoming requests will appear here in real time.
-            </p>
-            <button className="wht-generate-btn" onClick={handleGenerate} disabled={generating}>
-              + Generate Your First URL
-            </button>
-          </div>
-        ) : (
-          <div className="wht-hooks-list">
-            {hookOrder.map(hookId => (
-              <HookCard
-                key={hookId}
-                hookId={hookId}
-                hookData={hooks[hookId] || { events: [], status: 'disconnected' }}
-                onDelete={handleDelete}
-                onClear={handleClear}
-                wsRef={wsRefs}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
