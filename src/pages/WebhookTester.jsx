@@ -158,6 +158,8 @@ function WebhookTester() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState(null)
+  const [secretInput, setSecretInput] = useState('')
+  const [showSecretInput, setShowSecretInput] = useState(false)
   const wsRefs = useRef(new Map())
   const reconnectTimers = useRef(new Map())
   const mountedRef = useRef(true)
@@ -294,8 +296,14 @@ function WebhookTester() {
     if (generating) return
     setGenerating(true)
     setError(null)
+    const secret = secretInput.trim() || null
     try {
-      const res = await fetch(`${API_BASE}/wht/generate`, { method: 'POST', credentials: 'include' })
+      const fetchOpts = { method: 'POST', credentials: 'include' }
+      if (secret) {
+        fetchOpts.headers = { 'Content-Type': 'application/json' }
+        fetchOpts.body = JSON.stringify({ secret })
+      }
+      const res = await fetch(`${API_BASE}/wht/generate`, fetchOpts)
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || `Generate failed (${res.status})`)
@@ -304,11 +312,13 @@ function WebhookTester() {
       const hookId = data.hookId
       setHooks(prev => ({
         ...prev,
-        [hookId]: { events: [], status: 'connecting', createdAt: new Date().toISOString() }
+        [hookId]: { events: [], status: 'connecting', createdAt: new Date().toISOString(), secret }
       }))
       setHookOrder(prev => [hookId, ...prev])
       setSelectedHook(hookId)
       setExpandedEvent(null)
+      setSecretInput('')
+      setShowSecretInput(false)
       connectWebSocket(hookId)
     } catch (err) {
       setError(err.message)
@@ -416,10 +426,38 @@ function WebhookTester() {
           <div className="wht-urls">
             <div className="wht-urls-header">
               <span className="wht-urls-title">Endpoints</span>
-              <button className="wht-add-btn" onClick={handleGenerate} disabled={generating} title="Generate new URL">
+              <button
+                className="wht-add-btn"
+                onClick={() => showSecretInput ? handleGenerate() : setShowSecretInput(true)}
+                disabled={generating}
+                title="Generate new URL"
+              >
                 {generating ? <span className="wht-spinner" /> : '+'}
               </button>
             </div>
+            {showSecretInput && (
+              <div className="wht-secret-form">
+                <input
+                  type="text"
+                  className="wht-secret-input"
+                  placeholder="Secret key (optional)"
+                  value={secretInput}
+                  onChange={e => setSecretInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleGenerate()}
+                />
+                <div className="wht-secret-actions">
+                  <button className="wht-secret-go" onClick={handleGenerate} disabled={generating}>
+                    {generating ? <span className="wht-spinner" /> : 'Create'}
+                  </button>
+                  <button className="wht-secret-cancel" onClick={() => { setShowSecretInput(false); setSecretInput('') }}>
+                    Cancel
+                  </button>
+                </div>
+                <span className="wht-secret-hint">
+                  For services like Fireblocks that sign payloads with a secret key (x-webhook-secret header).
+                </span>
+              </div>
+            )}
             <div className="wht-urls-list">
               {hookOrder.map(hookId => {
                 const hk = hooks[hookId] || { events: [], status: 'disconnected' }
@@ -432,7 +470,10 @@ function WebhookTester() {
                   >
                     <span className={`wht-dot ${hk.status}`} />
                     <div className="wht-url-item-text">
-                      <span className="wht-url-item-id">{hookId}</span>
+                      <span className="wht-url-item-id">
+                        {hk.secret && <span className="wht-lock" title="Has secret key">🔒 </span>}
+                        {hookId}
+                      </span>
                       <span className="wht-url-item-count">{count} event{count !== 1 ? 's' : ''}</span>
                     </div>
                   </button>
@@ -459,6 +500,13 @@ function WebhookTester() {
                     </button>
                   </div>
                 </div>
+                {activeHookData?.secret && (
+                  <div className="wht-secret-banner">
+                    <span className="wht-secret-banner-label">🔒 Secret Key:</span>
+                    <code className="wht-secret-banner-value">{activeHookData.secret}</code>
+                    <CopyButton text={activeHookData.secret} />
+                  </div>
+                )}
 
                 {error && (
                   <div className="wht-inline-error" style={{ margin: '0.5rem 1rem' }}>

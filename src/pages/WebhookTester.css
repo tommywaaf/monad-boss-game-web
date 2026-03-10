@@ -678,6 +678,125 @@
   line-height: 1.55;
 }
 
+/* ─────────────────────────────────────────
+   SECRET KEY FORM (in URL panel)
+   ───────────────────────────────────────── */
+
+.wht-secret-form {
+  padding: 0.6rem 0.65rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wht-secret-input {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.76rem;
+  font-family: inherit;
+  color: #e4e4e7;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.wht-secret-input:focus {
+  border-color: rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.1);
+}
+
+.wht-secret-input::placeholder {
+  color: #52525b;
+}
+
+.wht-secret-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.wht-secret-go {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #2dd4bf 0%, #a855f7 100%);
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  transition: opacity 0.15s;
+}
+
+.wht-secret-go:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wht-secret-cancel {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  font-family: inherit;
+  font-weight: 500;
+  color: #71717a;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.wht-secret-cancel:hover {
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wht-secret-hint {
+  font-size: 0.64rem;
+  color: #3f3f46;
+  line-height: 1.4;
+}
+
+.wht-lock {
+  font-size: 0.65rem;
+}
+
+/* Secret banner (in events bar) */
+
+.wht-secret-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1.25rem;
+  background: rgba(234, 179, 8, 0.06);
+  border-bottom: 1px solid rgba(234, 179, 8, 0.15);
+  font-size: 0.74rem;
+}
+
+.wht-secret-banner-label {
+  color: #fbbf24;
+  font-weight: 500;
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+.wht-secret-banner-value {
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+
 /* ═════════════════════════════════════════
    RESPONSIVE
    ═════════════════════════════════════════ */
