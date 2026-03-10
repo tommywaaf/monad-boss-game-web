@@ -454,7 +454,7 @@ function WebhookTester() {
                   </button>
                 </div>
                 <span className="wht-secret-hint">
-                  For services like Fireblocks that sign payloads with a secret key (x-webhook-secret header).
+                  For Fireblocks webhooks V1 that sign payloads with a secret key (x-webhook-secret header).
                 </span>
               </div>
             )}
