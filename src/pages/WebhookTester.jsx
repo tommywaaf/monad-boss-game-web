@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import './WebhookTester.css'
 
-const API_BASE = 'https://delicate-haze-2a16.tm8six.workers.dev'
+const API_BASE = 'https://killhitstudios.com'
 const WS_BASE = API_BASE.replace(/^http/, 'ws')
 
 function timeAgo(ts) {
