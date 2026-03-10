@@ -17,6 +17,7 @@ import BtcSafeToFail from './pages/BtcSafeToFail.jsx'
 import TxFetcher from './pages/TxFetcher.jsx'
 import CsvBuilder from './pages/CsvBuilder.jsx'
 import Faucet from './pages/Faucet.jsx'
+import WebhookTester from './pages/WebhookTester.jsx'
 
 // Get Dynamic Environment ID from environment variable
 const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
@@ -122,6 +123,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/tx-fetcher" element={<TxFetcher />} />
         <Route path="/csv-builder" element={<CsvBuilder />} />
         <Route path="/faucet" element={<Faucet />} />
+        <Route path="/webhook-tester" element={<WebhookTester />} />
         <Route path="/*" element={<MainApp />} />
       </Routes>
     </BrowserRouter>

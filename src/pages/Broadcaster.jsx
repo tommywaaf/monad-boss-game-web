@@ -1253,6 +1253,10 @@ function Broadcaster() {
             <span className="sidebar-icon">🚰</span>
             <span className="sidebar-text">Faucet</span>
           </Link>
+          <Link to="/webhook-tester" className={`sidebar-link ${location.pathname === '/webhook-tester' ? 'active' : ''}`}>
+            <span className="sidebar-icon">🔗</span>
+            <span className="sidebar-text">Webhook Tester</span>
+          </Link>
         </div>
       </nav>
       <div className="broadcaster-container">
