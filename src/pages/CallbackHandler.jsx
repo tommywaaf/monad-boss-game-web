@@ -16,6 +16,20 @@ function timeAgo(ts) {
   return `${Math.floor(diff / 86400)}d ago`
 }
 
+/** Decode JWT payload (middle segment) from raw JWT string. Returns parsed object or null. */
+function decodeJwtPayload(jwt) {
+  if (!jwt || typeof jwt !== 'string') return null
+  const parts = jwt.trim().split('.')
+  if (parts.length !== 3) return null
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const json = atob(base64)
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = async () => {
@@ -33,10 +47,12 @@ function CopyButton({ text }) {
 }
 
 function EventBubble({ event, isExpanded, onToggle }) {
-  const [rawOpen, setRawOpen] = useState(false)
+  const [decodedRequestOpen, setDecodedRequestOpen] = useState(false)
+  const [decodedResponseOpen, setDecodedResponseOpen] = useState(false)
   const [rawRequestOpen, setRawRequestOpen] = useState(false)
   const [rawResponseOpen, setRawResponseOpen] = useState(false)
   const actionLower = (event.action || '').toLowerCase()
+  const decodedResponse = event.rawResponseSent ? decodeJwtPayload(event.rawResponseSent) : null
   const detail = event.asset && event.amount != null
     ? `${event.amount} ${event.asset}`
     : null
@@ -131,6 +147,27 @@ function EventBubble({ event, isExpanded, onToggle }) {
             </div>
           )}
 
+          {/* Decoded request from Cosigner */}
+          {event.rawPayload && (
+            <div className="cbt-detail-section">
+              <button className="cbt-detail-toggle" onClick={() => setDecodedRequestOpen(o => !o)}>
+                <span className={`cbt-chevron ${decodedRequestOpen ? 'open' : ''}`}>&#9654;</span>
+                Decoded request from Cosigner
+              </button>
+              {decodedRequestOpen && (
+                <>
+                  <div className="cbt-detail-body-label">
+                    <span>Decoded request from Cosigner</span>
+                    <CopyButton text={JSON.stringify(event.rawPayload, null, 2)} />
+                  </div>
+                  <pre className="cbt-detail-body-pre">
+                    {JSON.stringify(event.rawPayload, null, 2)}
+                  </pre>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Response to Co-Signer */}
           <div className="cbt-detail-section-header response">Response to Co-Signer</div>
           <div className="cbt-detail-meta">
@@ -171,21 +208,25 @@ function EventBubble({ event, isExpanded, onToggle }) {
             </div>
           )}
 
-          {/* Full payload */}
-          {event.rawPayload && (
+          {/* Decoded response to Cosigner (decode rawResponseSent ourselves) */}
+          {(event.rawResponseSent != null && event.rawResponseSent !== '') && (
             <div className="cbt-detail-section">
-              <button className="cbt-detail-toggle" onClick={() => setRawOpen(o => !o)}>
-                <span className={`cbt-chevron ${rawOpen ? 'open' : ''}`}>&#9654;</span>
-                Full JWT Payload
+              <button className="cbt-detail-toggle" onClick={() => setDecodedResponseOpen(o => !o)}>
+                <span className={`cbt-chevron ${decodedResponseOpen ? 'open' : ''}`}>&#9654;</span>
+                Decoded response to Cosigner
               </button>
-              {rawOpen && (
+              {decodedResponseOpen && (
                 <>
                   <div className="cbt-detail-body-label">
-                    <span>Decoded Payload</span>
-                    <CopyButton text={JSON.stringify(event.rawPayload, null, 2)} />
+                    <span>Decoded response to Cosigner</span>
+                    {decodedResponse != null && (
+                      <CopyButton text={JSON.stringify(decodedResponse, null, 2)} />
+                    )}
                   </div>
                   <pre className="cbt-detail-body-pre">
-                    {JSON.stringify(event.rawPayload, null, 2)}
+                    {decodedResponse != null
+                      ? JSON.stringify(decodedResponse, null, 2)
+                      : 'Unable to decode JWT payload'}
                   </pre>
                 </>
               )}
