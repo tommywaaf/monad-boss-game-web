@@ -472,6 +472,10 @@ export default function TxFetcher() {
             <span className="sidebar-icon">🔗</span>
             <span className="sidebar-text">Webhook Tester</span>
           </Link>
+          <Link to="/callback-handler" className={`sidebar-link ${location.pathname === '/callback-handler' ? 'active' : ''}`}>
+            <span className="sidebar-icon">🛡️</span>
+            <span className="sidebar-text">Callback Handler</span>
+          </Link>
         </div>
       </nav>
 
