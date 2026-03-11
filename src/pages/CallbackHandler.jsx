@@ -34,6 +34,8 @@ function CopyButton({ text }) {
 
 function EventBubble({ event, isExpanded, onToggle }) {
   const [rawOpen, setRawOpen] = useState(false)
+  const [rawRequestOpen, setRawRequestOpen] = useState(false)
+  const [rawResponseOpen, setRawResponseOpen] = useState(false)
   const actionLower = (event.action || '').toLowerCase()
   const detail = event.asset && event.amount != null
     ? `${event.amount} ${event.asset}`
@@ -108,6 +110,27 @@ function EventBubble({ event, isExpanded, onToggle }) {
             </div>
           </div>
 
+          {/* Raw request from cosigner (opaque JWT) */}
+          {event.rawRequestReceived != null && event.rawRequestReceived !== '' && (
+            <div className="cbt-detail-section">
+              <button className="cbt-detail-toggle" onClick={() => setRawRequestOpen(o => !o)}>
+                <span className={`cbt-chevron ${rawRequestOpen ? 'open' : ''}`}>&#9654;</span>
+                Request from cosigner (raw JWT)
+              </button>
+              {rawRequestOpen && (
+                <>
+                  <div className="cbt-detail-body-label">
+                    <span>Request from cosigner</span>
+                    <CopyButton text={event.rawRequestReceived} />
+                  </div>
+                  <pre className="cbt-detail-body-pre cbt-raw-jwt">
+                    {event.rawRequestReceived}
+                  </pre>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Response to Co-Signer */}
           <div className="cbt-detail-section-header response">Response to Co-Signer</div>
           <div className="cbt-detail-meta">
@@ -126,6 +149,27 @@ function EventBubble({ event, isExpanded, onToggle }) {
               </div>
             )}
           </div>
+
+          {/* Raw response to cosigner (opaque JWT) */}
+          {event.rawResponseSent != null && event.rawResponseSent !== '' && (
+            <div className="cbt-detail-section">
+              <button className="cbt-detail-toggle" onClick={() => setRawResponseOpen(o => !o)}>
+                <span className={`cbt-chevron ${rawResponseOpen ? 'open' : ''}`}>&#9654;</span>
+                Response to cosigner (raw JWT)
+              </button>
+              {rawResponseOpen && (
+                <>
+                  <div className="cbt-detail-body-label">
+                    <span>Response to cosigner</span>
+                    <CopyButton text={event.rawResponseSent} />
+                  </div>
+                  <pre className="cbt-detail-body-pre cbt-raw-jwt">
+                    {event.rawResponseSent}
+                  </pre>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Full payload */}
           {event.rawPayload && (

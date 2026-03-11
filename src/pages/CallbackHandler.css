@@ -970,6 +970,13 @@
   line-height: 1.55;
 }
 
+/* Raw request/response JWT blocks (opaque strings) */
+.cbt-detail-body-pre.cbt-raw-jwt {
+  font-size: 0.7rem;
+  max-height: 220px;
+  color: #a1a1aa;
+}
+
 /* ═════════════════════════════════════════
    RESPONSIVE
    ═════════════════════════════════════════ */
