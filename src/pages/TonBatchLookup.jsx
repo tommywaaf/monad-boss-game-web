@@ -8,6 +8,42 @@ const TX_HEX_RE = /^[0-9a-fA-F]{64}$/
 const PAGE_SIZE = 100
 const UI_UPDATE_INTERVAL_MS = 150  // how often to push results to React state
 
+// ── URL / hash extraction (Tonscan, Tonviewer, or raw 64-hex) ───────────────
+
+function extractTxHexFromUrl(url) {
+  /**
+   * Supports:
+   *   - https://tonscan.org/tx/<64hex>
+   *   - https://tonviewer.com/transaction/<64hex>
+   *   - raw 64-hex string
+   */
+  url = url.trim()
+  if (TX_HEX_RE.test(url)) return url.toLowerCase()
+  try {
+    const urlObj = new URL(url)
+    const path = urlObj.pathname.trim().replace(/^\/|\/$/g, '')
+    let m = path.match(/^tx\/([0-9a-fA-F]{64})$/)
+    if (m) return m[1].toLowerCase()
+    m = path.match(/^transaction\/([0-9a-fA-F]{64})$/)
+    if (m) return m[1].toLowerCase()
+  } catch (_) {}
+  throw new Error(
+    'Unrecognized format. Expected: tonscan.org/tx/<64hex>, tonviewer.com/transaction/<64hex>, or raw 64-hex'
+  )
+}
+
+/** Given one token (line/word), return 64-hex hash or null if invalid/skip. */
+function tokenToHex(token) {
+  const t = token.trim()
+  if (!t) return null
+  if (TX_HEX_RE.test(t)) return t.toLowerCase()
+  try {
+    return extractTxHexFromUrl(t)
+  } catch {
+    return null
+  }
+}
+
 // ── Utilities ──────────────────────────────────────────────────────────────
 
 function sleep(ms) {
@@ -223,10 +259,10 @@ function TonBatchLookup() {
   const progressRef   = useRef({ completed: 0, total: 0, startTime: null })
   const uiTimerRef    = useRef(null)
 
-  // Debounced hash count from textarea
+  // Debounced hash count from textarea (raw 64-hex or Tonscan/Tonviewer URLs)
   const hashCount = useMemo(() => {
     if (!input.trim()) return 0
-    return input.trim().split(/[\s,\n]+/).filter(x => TX_HEX_RE.test(x.trim())).length
+    return input.trim().split(/[\s,\n]+/).filter(x => tokenToHex(x)).length
   }, [input])
 
   // ETA estimate pre-run (rough: 2 API calls per hash, delay + network)
@@ -258,10 +294,8 @@ function TonBatchLookup() {
   // ── Process ──────────────────────────────────────────────────────────────
 
   const handleProcess = useCallback(async () => {
-    const rawHashes = input.trim().split(/[\s,\n]+/).filter(x => TX_HEX_RE.test(x.trim()))
-    if (rawHashes.length === 0) return
-
-    const hashes = rawHashes.map(h => h.trim().toLowerCase())
+    const hashes = input.trim().split(/[\s,\n]+/).map(tokenToHex).filter(Boolean)
+    if (hashes.length === 0) return
 
     trackUsage('ton-batch', hashes.length)
 
@@ -544,7 +578,7 @@ function TonBatchLookup() {
         <div className="card input-card">
           <div className="form-group">
             <div className="label-row">
-              <label htmlFor="hash-input">Transaction hashes (64-hex, one per line or space-separated):</label>
+              <label htmlFor="hash-input">Transaction hashes or URLs (64-hex, Tonscan, or Tonviewer — one per line or space-separated):</label>
               {hashCount > 0 && (
                 <span className="hash-count-badge">
                   {hashCount.toLocaleString()} hash{hashCount !== 1 ? 'es' : ''} detected
@@ -558,14 +592,14 @@ function TonBatchLookup() {
               id="hash-input"
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder={`4840d62b0cee043f7272fe4cba0d92faaa48d8e4ab1ddde1ac9d16e6931fc265\nabc123...\n...`}
+              placeholder={`4840d62b0cee043f...\nhttps://tonscan.org/tx/abc123...\nhttps://tonviewer.com/transaction/...`}
               rows={8}
               disabled={processing}
               spellCheck={false}
             />
             <div className="form-hint">
-              Invalid / non-hex-64 lines are silently skipped. Each hash is looked up as both a
-              message hash and a transaction hash against the TON Center API.
+              Paste 64-hex hashes, or Tonscan (tonscan.org/tx/…) / Tonviewer (tonviewer.com/transaction/…) URLs.
+              Invalid lines are skipped. Each hash is looked up as message hash and transaction hash.
             </div>
           </div>
 
