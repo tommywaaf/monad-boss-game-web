@@ -203,7 +203,8 @@ async function lookupHash(session, hex64, signal, requestDelayMs) {
         requestDelayMs,
       )
       const actions = actData?.actions || []
-      const hasFailedAction = actions.some(a => a.status === 'failed')
+      // API returns success: true/false per action, not status: 'failed'
+      const hasFailedAction = actions.some(a => a.success === false || a.success === 'false')
       if (hasFailedAction) {
         return { found: true, mode, status: 'failed' }
       }
