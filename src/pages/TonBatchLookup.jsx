@@ -347,11 +347,28 @@ function TonBatchLookup() {
     // Run N concurrent workers
     await Promise.all(Array.from({ length: concurrency }, worker))
 
+    // Auto-retry API errors twice at the end (they usually succeed on retry)
+    const retryDelay = Math.max(requestDelay * 2, 800)
+    for (let pass = 0; pass < 2; pass++) {
+      if (signal.aborted) break
+      const arr = resultsRef.current
+      const hasErrors = arr.some(r => r?.error && r.error !== 'Aborted')
+      if (!hasErrors) break
+      await runRetryPass({
+        resultsRef,
+        progressRef,
+        session,
+        retryDelay,
+        signal,
+        concurrency,
+      })
+    }
+
     // Final flush
     setProgress({ ...progressRef.current, completed: progressRef.current.completed })
     setResults(resultsRef.current.filter(r => r !== null))
     setProcessing(false)
-  }, [input, concurrency, requestDelay])
+  }, [input, concurrency, requestDelay, runRetryPass])
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
@@ -360,6 +377,50 @@ function TonBatchLookup() {
   // ── Retry API errors ──────────────────────────────────────────────────────
   // Re-runs only the errored entries in-place with a doubled request delay
   // to back off from rate limits without re-processing the whole batch.
+
+  // Run one retry pass on errored entries. Mutates resultsRef and progressRef in place.
+  const runRetryPass = useCallback(async ({
+    resultsRef,
+    progressRef,
+    session,
+    retryDelay,
+    signal,
+    concurrency,
+  }) => {
+    const arr = resultsRef.current
+    const erroredEntries = arr
+      .map((r, i) => (r ? { r, i } : null))
+      .filter(x => x && x.r?.error && x.r.error !== 'Aborted')
+    if (erroredEntries.length === 0) return
+
+    progressRef.current = { completed: 0, total: erroredEntries.length, startTime: Date.now() }
+    let nextIdx = 0
+    let completed = 0
+
+    const worker = async () => {
+      while (true) {
+        if (signal?.aborted) break
+        const qi = nextIdx++
+        if (qi >= erroredEntries.length) break
+        const { r: prev, i: slot } = erroredEntries[qi]
+        try {
+          const data = await lookupHash(session, prev.hash, signal, retryDelay)
+          resultsRef.current[slot] = { hash: prev.hash, ...data, error: null }
+        } catch (e) {
+          resultsRef.current[slot] = {
+            ...prev,
+            error: e.name === 'AbortError' ? 'Aborted' : e.message,
+          }
+        }
+        completed++
+        progressRef.current = { ...progressRef.current, completed }
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, erroredEntries.length) }, worker)
+    )
+  }, [concurrency])
 
   const handleRetry = useCallback(async () => {
     const erroredEntries = results
@@ -371,49 +432,28 @@ function TonBatchLookup() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    // Seed the working ref with the current results so we patch in-place
     resultsRef.current = [...results]
     progressRef.current = { completed: 0, total: erroredEntries.length, startTime: Date.now() }
     setProcessing(true)
     setProgress({ completed: 0, total: erroredEntries.length, startTime: Date.now() })
 
-    const session     = getSession()
-    const retryDelay  = Math.max(requestDelay * 2, 800)  // back off to avoid repeat 429s
-    const signal      = controller.signal
-    let nextIdx  = 0
-    let completed = 0
+    const session = getSession()
+    const retryDelay = Math.max(requestDelay * 2, 800)
+    const signal = controller.signal
 
-    const worker = async () => {
-      while (true) {
-        if (signal.aborted) break
-        const qi = nextIdx++
-        if (qi >= erroredEntries.length) break
-
-        const { r: prev, i: slot } = erroredEntries[qi]
-
-        try {
-          const data = await lookupHash(session, prev.hash, signal, retryDelay)
-          resultsRef.current[slot] = { hash: prev.hash, ...data, error: null }
-        } catch (e) {
-          resultsRef.current[slot] = {
-            ...prev,
-            error: e.name === 'AbortError' ? 'Aborted' : e.message,
-          }
-        }
-
-        completed++
-        progressRef.current = { ...progressRef.current, completed }
-      }
-    }
-
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, erroredEntries.length) }, worker)
-    )
+    await runRetryPass({
+      resultsRef,
+      progressRef,
+      session,
+      retryDelay,
+      signal,
+      concurrency,
+    })
 
     setProgress({ ...progressRef.current })
     setResults([...resultsRef.current])
     setProcessing(false)
-  }, [results, concurrency, requestDelay])
+  }, [results, concurrency, requestDelay, runRetryPass])
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
