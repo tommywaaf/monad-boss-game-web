@@ -298,6 +298,50 @@ function TonBatchLookup() {
     }
   }, [processing])
 
+  // Run one retry pass on errored entries. Mutates resultsRef and progressRef in place.
+  const runRetryPass = useCallback(async ({
+    resultsRef,
+    progressRef,
+    session,
+    retryDelay,
+    signal,
+    concurrency,
+  }) => {
+    const arr = resultsRef.current
+    const erroredEntries = arr
+      .map((r, i) => (r ? { r, i } : null))
+      .filter(x => x && x.r?.error && x.r.error !== 'Aborted')
+    if (erroredEntries.length === 0) return
+
+    progressRef.current = { completed: 0, total: erroredEntries.length, startTime: Date.now() }
+    let nextIdx = 0
+    let completed = 0
+
+    const worker = async () => {
+      while (true) {
+        if (signal?.aborted) break
+        const qi = nextIdx++
+        if (qi >= erroredEntries.length) break
+        const { r: prev, i: slot } = erroredEntries[qi]
+        try {
+          const data = await lookupHash(session, prev.hash, signal, retryDelay)
+          resultsRef.current[slot] = { hash: prev.hash, ...data, error: null }
+        } catch (e) {
+          resultsRef.current[slot] = {
+            ...prev,
+            error: e.name === 'AbortError' ? 'Aborted' : e.message,
+          }
+        }
+        completed++
+        progressRef.current = { ...progressRef.current, completed }
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, erroredEntries.length) }, worker)
+    )
+  }, [concurrency])
+
   // ── Process ──────────────────────────────────────────────────────────────
 
   const handleProcess = useCallback(async () => {
@@ -377,50 +421,6 @@ function TonBatchLookup() {
   // ── Retry API errors ──────────────────────────────────────────────────────
   // Re-runs only the errored entries in-place with a doubled request delay
   // to back off from rate limits without re-processing the whole batch.
-
-  // Run one retry pass on errored entries. Mutates resultsRef and progressRef in place.
-  const runRetryPass = useCallback(async ({
-    resultsRef,
-    progressRef,
-    session,
-    retryDelay,
-    signal,
-    concurrency,
-  }) => {
-    const arr = resultsRef.current
-    const erroredEntries = arr
-      .map((r, i) => (r ? { r, i } : null))
-      .filter(x => x && x.r?.error && x.r.error !== 'Aborted')
-    if (erroredEntries.length === 0) return
-
-    progressRef.current = { completed: 0, total: erroredEntries.length, startTime: Date.now() }
-    let nextIdx = 0
-    let completed = 0
-
-    const worker = async () => {
-      while (true) {
-        if (signal?.aborted) break
-        const qi = nextIdx++
-        if (qi >= erroredEntries.length) break
-        const { r: prev, i: slot } = erroredEntries[qi]
-        try {
-          const data = await lookupHash(session, prev.hash, signal, retryDelay)
-          resultsRef.current[slot] = { hash: prev.hash, ...data, error: null }
-        } catch (e) {
-          resultsRef.current[slot] = {
-            ...prev,
-            error: e.name === 'AbortError' ? 'Aborted' : e.message,
-          }
-        }
-        completed++
-        progressRef.current = { ...progressRef.current, completed }
-      }
-    }
-
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, erroredEntries.length) }, worker)
-    )
-  }, [concurrency])
 
   const handleRetry = useCallback(async () => {
     const erroredEntries = results
