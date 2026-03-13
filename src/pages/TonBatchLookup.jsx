@@ -111,26 +111,32 @@ function getTxStatus(tx) {
 
   if (desc.aborted === true) return 'failed'
 
-  const cp = desc.compute_ph
+  // Support both TL-B shorthand and possible JSON variants
+  const cp = desc.compute_ph ?? desc.compute_phase
   if (cp) {
     if (cp.skipped) return 'skipped'
-    if (cp.success === false) return 'failed'
-    // TonCenter can report success:true even when the TVM exit code is non-zero
-    // (e.g. -14 = out of gas). Only exit codes 0 and 1 are genuine TVM successes.
-    if (cp.exit_code !== undefined && cp.exit_code !== null
-        && cp.exit_code !== 0 && cp.exit_code !== 1) return 'failed'
+    // Explicit failure: success is false (e.g. exit code 45)
+    if (cp.success === false || cp.success === 'false') return 'failed'
+    // TonCenter can report success:true even when the TVM exit code is non-zero.
+    // Only exit codes 0 and 1 are genuine TVM successes (e.g. 45 = contract error).
+    const code = cp.exit_code != null ? Number(cp.exit_code) : null
+    if (code !== null && code !== 0 && code !== 1) return 'failed'
   }
 
   const ap = desc.action
   if (ap) {
-    if (ap.success === false) return 'failed'
+    if (ap.success === false || ap.success === 'false') return 'failed'
     // All actions skipped → full failure
     if (ap.skipped_actions > 0 && ap.skipped_actions === ap.tot_actions) return 'failed'
     // Some (but not all) actions skipped → partial failure
     if (ap.skipped_actions > 0 && ap.skipped_actions < ap.tot_actions) return 'partial'
   }
 
-  if (cp?.success === true) return 'success'
+  // Only treat as success when compute phase explicitly succeeded AND exit code is 0 or 1
+  if (cp?.success === true) {
+    const code = cp.exit_code != null ? Number(cp.exit_code) : null
+    if (code === null || code === 0 || code === 1) return 'success'
+  }
 
   return 'unknown'
 }
