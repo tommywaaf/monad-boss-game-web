@@ -436,7 +436,7 @@ function WebhookTester() {
                 disabled={generating}
                 title="Generate new URL"
               >
-                {generating ? <span className="wht-spinner" /> : <>+ (Generate New)</>}
+                {generating ? <span className="wht-spinner" /> : '+ (New)'}
               </button>
             </div>
             {showSecretInput && (
