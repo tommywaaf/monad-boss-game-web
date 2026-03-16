@@ -36,4 +36,13 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
+  server: {
+    proxy: {
+      // Cortex RPC has no CORS headers; proxy in dev to avoid "Failed to fetch"
+      '/rpc/cortex': {
+        target: 'https://security.cortexlabs.ai:30088',
+        changeOrigin: true,
+      },
+    },
+  },
 })

@@ -149,6 +149,14 @@ const CHAIN_ID_MAP = {
   6342: { name: 'MegaETH', rpc: 'https://carrot.megaeth.com/rpc', explorer: 'https://mega.etherscan.io/tx/' },
 }
 
+// Cortex RPC does not send CORS headers; in dev we use Vite proxy to avoid "Failed to fetch"
+const CORTEX_RPC = 'https://security.cortexlabs.ai:30088'
+const effectiveRpcUrl = (url) => {
+  if (!url) return url
+  if (import.meta.env.DEV && url === CORTEX_RPC) return '/rpc/cortex'
+  return url
+}
+
 // Decode RLP to extract chain ID from EVM transaction
 const decodeRlpChainId = (rlpHex) => {
   try {
@@ -919,7 +927,7 @@ function Simulator() {
     try {
       // Get chain info (for auto mode, this decodes the tx)
       const chainInfo = getChainInfo(raw)
-      const rpcUrl = chainInfo.rpc || getRpcUrl()
+      const rpcUrl = effectiveRpcUrl(chainInfo.rpc || getRpcUrl())
 
       if (!rpcUrl) {
         throw new Error('No RPC URL available. Please select a network or ensure the transaction contains a valid chain ID.')

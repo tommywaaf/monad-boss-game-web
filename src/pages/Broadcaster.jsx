@@ -98,6 +98,14 @@ const CHAIN_ID_MAP = {
   1313161554: { name: 'Aurora', rpc: 'https://mainnet.aurora.dev', explorer: 'https://explorer.aurora.dev/tx/' },
 }
 
+// Cortex RPC does not send CORS headers; in dev we use Vite proxy to avoid "Failed to fetch"
+const CORTEX_RPC = 'https://security.cortexlabs.ai:30088'
+const effectiveRpcUrl = (url) => {
+  if (!url) return url
+  if (import.meta.env.DEV && url === CORTEX_RPC) return '/rpc/cortex'
+  return url
+}
+
 // Decode RLP to extract chain ID from EVM transaction for AUTO MODE
 const decodeRlpChainId = (rlpHex) => {
   try {
@@ -750,7 +758,7 @@ function Broadcaster() {
   }
 
   const broadcastTransaction = async (txPayload, signal, overrideRpc = null, networkTypeOverride = null) => {
-    const rpcUrl = overrideRpc || getRpcUrl()
+    const rpcUrl = effectiveRpcUrl(overrideRpc || getRpcUrl())
 
     // When a type is explicitly detected (auto mode), use it; otherwise fall back
     // to the currently selected network type.
