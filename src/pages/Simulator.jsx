@@ -149,11 +149,13 @@ const CHAIN_ID_MAP = {
   6342: { name: 'MegaETH', rpc: 'https://carrot.megaeth.com/rpc', explorer: 'https://mega.etherscan.io/tx/' },
 }
 
-// Cortex RPC does not send CORS headers; in dev we use Vite proxy to avoid "Failed to fetch"
+// Cortex RPC does not send CORS headers; use proxy so it works in browser (dev + production)
 const CORTEX_RPC = 'https://security.cortexlabs.ai:30088'
+const CORS_PROXY_PREFIX = 'https://corsproxy.io/?' // supports POST, no API key
 const effectiveRpcUrl = (url) => {
   if (!url) return url
   if (import.meta.env.DEV && url === CORTEX_RPC) return '/rpc/cortex'
+  if (!import.meta.env.DEV && url === CORTEX_RPC) return CORS_PROXY_PREFIX + encodeURIComponent(CORTEX_RPC)
   return url
 }
 
