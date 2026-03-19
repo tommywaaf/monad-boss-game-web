@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import './TonSeqnoCheck.css'
 
 const TONCENTER = "https://toncenter.com"
+const TX_PAGE_SIZE = 256
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -14,6 +15,24 @@ function getSession() {
   const headers = { 'User-Agent': 'ton-seqno-check/1.0' }
   if (apiKey) headers['X-API-Key'] = apiKey
   return { headers }
+}
+
+function normB64(s) {
+  s = s.trim().replace(/-/g, '+').replace(/_/g, '/')
+  const pad = (4 - (s.length % 4)) % 4
+  return s + '='.repeat(pad)
+}
+
+function b64ToHex(b64) {
+  const normalized = normB64(b64)
+  const binary = atob(normalized)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 async function fetchWithRetry(session, url, params, maxRetries = 4) {
@@ -49,6 +68,44 @@ async function fetchWithRetry(session, url, params, maxRetries = 4) {
 
   throw new Error('Max retries exceeded')
 }
+
+async function fetchAbortable(session, url, params, signal, maxRetries = 6) {
+  const queryString = new URLSearchParams(params).toString()
+  const fullUrl = `${url}?${queryString}`
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    await sleep(300 + Math.random() * 200)
+
+    try {
+      const response = await fetch(fullUrl, {
+        headers: session.headers,
+        signal,
+      })
+
+      if (response.status === 200) return await response.json()
+
+      if ([429, 500, 502, 503, 504].includes(response.status)) {
+        const waitMs = 2000 * Math.pow(2, attempt - 1) + Math.random() * 500
+        await sleep(waitMs)
+        continue
+      }
+
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    } catch (e) {
+      if (e.name === 'AbortError') throw e
+      if ((e.name === 'TimeoutError' || e.message?.includes('timeout')) && attempt < maxRetries) {
+        await sleep(3000)
+        continue
+      }
+      throw e
+    }
+  }
+
+  throw new Error('Max retries exceeded')
+}
+
+// ── Seqno lookup ────────────────────────────────────────────────────────────
 
 async function getWalletSeqno(address) {
   const session = getSession()
@@ -90,6 +147,146 @@ async function getWalletSeqno(address) {
   }
 }
 
+// ── Transaction export ──────────────────────────────────────────────────────
+
+async function fetchFbHashFromActions(session, traceId, signal) {
+  const data = await fetchAbortable(
+    session,
+    `${TONCENTER}/api/v3/actions`,
+    { trace_id: traceId, limit: 50, include_transactions: 'false' },
+    signal,
+  )
+  const actions = data?.actions || []
+  const te = actions.find(a => a.trace_external_hash)?.trace_external_hash
+  return te ? b64ToHex(te) : null
+}
+
+async function exportTransactions({ address, direction, startDate, endDate, signal, onLog, onProgress }) {
+  const session = getSession()
+  const rows = []
+  let offset = 0
+  let page = 1
+  let totalFetched = 0
+
+  const params = {
+    account: address,
+    limit: String(TX_PAGE_SIZE),
+    sort: 'asc',
+  }
+  if (startDate) {
+    params.start_utime = String(Math.floor(new Date(startDate + 'T00:00:00Z').getTime() / 1000))
+  }
+  if (endDate) {
+    params.end_utime = String(Math.floor(new Date(endDate + 'T23:59:59Z').getTime() / 1000))
+  }
+
+  const fbHashCache = new Map()
+  const pendingIncoming = []
+
+  onLog('Fetching transactions...')
+
+  // Phase 1: fetch all transactions
+  while (true) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+
+    onLog(`Page ${page} (offset ${offset})...`)
+    const data = await fetchAbortable(
+      session,
+      `${TONCENTER}/api/v3/transactions`,
+      { ...params, offset: String(offset) },
+      signal,
+    )
+
+    const txs = data?.transactions || []
+    if (txs.length === 0) {
+      onLog(`Page ${page}: no more transactions`)
+      break
+    }
+
+    for (const tx of txs) {
+      const inMsg = tx.in_msg || {}
+      const isOutgoing = !inMsg.source
+      const dir = isOutgoing ? 'outgoing' : 'incoming'
+
+      if (direction !== 'all' && dir !== direction) continue
+
+      const timestamp = tx.now
+      const date = timestamp ? new Date(timestamp * 1000).toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : ''
+
+      let fbHash = null
+      let seqno = ''
+
+      if (isOutgoing) {
+        // For outgoing: in_msg.hash IS the trace_external_hash (external message hash)
+        if (inMsg.hash) {
+          fbHash = b64ToHex(inMsg.hash)
+        }
+        const decoded = inMsg.message_content?.decoded
+        if (decoded?.msg_seqno != null) {
+          seqno = String(decoded.msg_seqno)
+        }
+      } else {
+        // For incoming: need to fetch trace_external_hash via actions API
+        const traceId = tx.trace_id
+        if (traceId && fbHashCache.has(traceId)) {
+          fbHash = fbHashCache.get(traceId)
+        } else if (traceId) {
+          pendingIncoming.push({ idx: rows.length, traceId })
+        }
+      }
+
+      rows.push({ date, fbHash, direction: dir, seqno })
+    }
+
+    totalFetched += txs.length
+    onProgress({ phase: 'fetch', fetched: totalFetched, matched: rows.length, page })
+    onLog(`Page ${page}: ${txs.length} txs fetched, ${rows.length} matched so far`)
+
+    if (txs.length < TX_PAGE_SIZE) break
+    offset += txs.length
+    page++
+  }
+
+  // Phase 2: resolve FB hashes for incoming transactions that need action lookups
+  if (pendingIncoming.length > 0) {
+    const uniqueTraces = [...new Set(pendingIncoming.map(p => p.traceId))]
+    onLog(`Resolving FB hashes for ${pendingIncoming.length} incoming txs (${uniqueTraces.length} unique traces)...`)
+
+    let resolved = 0
+    let failed = 0
+
+    for (let i = 0; i < uniqueTraces.length; i++) {
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+
+      const traceId = uniqueTraces[i]
+      try {
+        const hash = await fetchFbHashFromActions(session, traceId, signal)
+        fbHashCache.set(traceId, hash)
+        resolved++
+      } catch (e) {
+        if (e.name === 'AbortError') throw e
+        fbHashCache.set(traceId, null)
+        failed++
+        onLog(`Failed to resolve trace ${traceId.slice(0, 16)}...: ${e.message}`)
+      }
+
+      if ((i + 1) % 10 === 0 || i === uniqueTraces.length - 1) {
+        onProgress({ phase: 'resolve', resolved: i + 1, total: uniqueTraces.length, matched: rows.length })
+        onLog(`Resolved ${i + 1}/${uniqueTraces.length} traces (${failed} failed)`)
+      }
+    }
+
+    for (const { idx, traceId } of pendingIncoming) {
+      rows[idx].fbHash = fbHashCache.get(traceId) || ''
+    }
+  }
+
+  onLog(`Export complete: ${rows.length} transactions`)
+  return rows
+}
+
+// ── Utilities ───────────────────────────────────────────────────────────────
+
 function formatNano(nanoStr) {
   const n = BigInt(nanoStr)
   const whole = n / 1000000000n
@@ -130,6 +327,8 @@ function CopyValue({ value, mono }) {
   )
 }
 
+// ── Component ───────────────────────────────────────────────────────────────
+
 function TonSeqnoCheck() {
   const location = useLocation()
 
@@ -138,10 +337,34 @@ function TonSeqnoCheck() {
     return () => { document.title = 'Monad Boss Game' }
   }, [])
 
+  // Seqno check state
   const [input, setInput] = useState('')
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [processing, setProcessing] = useState(false)
+
+  // Export state
+  const [exportEnabled, setExportEnabled] = useState(false)
+  const [exportDirection, setExportDirection] = useState('all')
+  const [exportStartDate, setExportStartDate] = useState('')
+  const [exportEndDate, setExportEndDate] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState(null)
+  const [exportLogs, setExportLogs] = useState([])
+  const [exportError, setExportError] = useState(null)
+  const [exportRows, setExportRows] = useState(null)
+
+  const abortRef = useRef(null)
+  const logEndRef = useRef(null)
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [exportLogs])
+
+  const addLog = useCallback((msg) => {
+    const ts = new Date().toLocaleTimeString()
+    setExportLogs(prev => [...prev, `[${ts}] ${msg}`])
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -162,6 +385,88 @@ function TonSeqnoCheck() {
       setProcessing(false)
     }
   }
+
+  const handleExport = useCallback(async () => {
+    const address = input.trim()
+    if (!address) return
+
+    trackUsage('ton-seqno-export', 1)
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setExporting(true)
+    setExportError(null)
+    setExportLogs([])
+    setExportProgress(null)
+    setExportRows(null)
+
+    try {
+      const rows = await exportTransactions({
+        address,
+        direction: exportDirection,
+        startDate: exportStartDate || null,
+        endDate: exportEndDate || null,
+        signal: controller.signal,
+        onLog: addLog,
+        onProgress: setExportProgress,
+      })
+
+      setExportRows(rows)
+
+      // Auto-download CSV
+      const header = 'date,fbhash,direction,seqno'
+      const csvRows = rows.map(r =>
+        `"${r.date}","${r.fbHash || ''}","${r.direction}","${r.seqno}"`
+      )
+      const csv = [header, ...csvRows].join('\n')
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `ton_txs_${address.slice(0, 12)}_${exportDirection}_${Date.now()}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      addLog(`CSV downloaded: ${rows.length} rows`)
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        addLog('Export cancelled.')
+      } else {
+        addLog(`ERROR: ${e.message}`)
+        setExportError(e.message)
+      }
+    } finally {
+      setExporting(false)
+      abortRef.current = null
+      setExportProgress(null)
+    }
+  }, [input, exportDirection, exportStartDate, exportEndDate, addLog])
+
+  const handleCancelExport = useCallback(() => {
+    abortRef.current?.abort()
+  }, [])
+
+  const handleRedownloadCsv = useCallback(() => {
+    if (!exportRows) return
+    const address = input.trim()
+    const header = 'date,fbhash,direction,seqno'
+    const csvRows = exportRows.map(r =>
+      `"${r.date}","${r.fbHash || ''}","${r.direction}","${r.seqno}"`
+    )
+    const csv = [header, ...csvRows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ton_txs_${address.slice(0, 12)}_${exportDirection}_${Date.now()}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, [exportRows, input, exportDirection])
 
   return (
     <div className="ton-seqno-page">
@@ -232,7 +537,7 @@ function TonSeqnoCheck() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="EQC... or UQC... or 0:abc123..."
-              disabled={processing}
+              disabled={processing || exporting}
               autoComplete="off"
               spellCheck={false}
             />
@@ -244,7 +549,7 @@ function TonSeqnoCheck() {
           <button
             type="submit"
             className="submit-btn"
-            disabled={processing || !input.trim()}
+            disabled={processing || exporting || !input.trim()}
           >
             {processing ? 'Checking...' : 'Check Seqno'}
           </button>
@@ -319,6 +624,154 @@ function TonSeqnoCheck() {
             </div>
           </div>
         )}
+
+        {/* ── Transaction Export ─────────────────────────────────────── */}
+
+        <div className="export-section">
+          <button
+            className={`export-toggle ${exportEnabled ? 'active' : ''}`}
+            onClick={() => setExportEnabled(v => !v)}
+          >
+            <span className="toggle-arrow">{exportEnabled ? '▼' : '▶'}</span>
+            <span>Transaction Export (CSV)</span>
+          </button>
+
+          {exportEnabled && (
+            <div className="export-panel">
+              <div className="export-options">
+                <div className="export-option-group">
+                  <label className="export-label">Direction</label>
+                  <div className="direction-options">
+                    {['all', 'outgoing', 'incoming'].map(opt => (
+                      <label key={opt} className={`direction-option ${exportDirection === opt ? 'active' : ''}`}>
+                        <input
+                          type="radio"
+                          name="export-direction"
+                          value={opt}
+                          checked={exportDirection === opt}
+                          onChange={() => setExportDirection(opt)}
+                          disabled={exporting}
+                        />
+                        <span>
+                          {opt === 'all' ? 'All' : opt === 'outgoing' ? 'Outgoing' : 'Incoming'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="export-hint">
+                    {exportDirection === 'outgoing' && 'Wallet-initiated transactions (seqno included in CSV)'}
+                    {exportDirection === 'incoming' && 'Funds received — FB hash resolved via trace (slower)'}
+                    {exportDirection === 'all' && 'Both incoming and outgoing transactions'}
+                  </div>
+                </div>
+
+                <div className="export-option-group">
+                  <label className="export-label">Date Range (optional)</label>
+                  <div className="date-inputs">
+                    <div className="date-field">
+                      <label>Start</label>
+                      <input
+                        type="date"
+                        value={exportStartDate}
+                        onChange={(e) => setExportStartDate(e.target.value)}
+                        disabled={exporting}
+                      />
+                    </div>
+                    <span className="date-separator">→</span>
+                    <div className="date-field">
+                      <label>End</label>
+                      <input
+                        type="date"
+                        value={exportEndDate}
+                        onChange={(e) => setExportEndDate(e.target.value)}
+                        disabled={exporting}
+                      />
+                    </div>
+                    {(exportStartDate || exportEndDate) && (
+                      <button
+                        className="date-clear"
+                        onClick={() => { setExportStartDate(''); setExportEndDate('') }}
+                        disabled={exporting}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="export-hint">
+                    Leave empty to fetch all transactions. Dates are UTC.
+                  </div>
+                </div>
+              </div>
+
+              <div className="export-actions">
+                <button
+                  className="export-btn"
+                  onClick={handleExport}
+                  disabled={exporting || !input.trim()}
+                >
+                  {exporting ? (
+                    <>
+                      <span className="spinner-sm" />
+                      Exporting...
+                    </>
+                  ) : (
+                    'Export Transactions'
+                  )}
+                </button>
+                {exporting && (
+                  <button className="cancel-export-btn" onClick={handleCancelExport}>
+                    Cancel
+                  </button>
+                )}
+                {!exporting && exportRows && (
+                  <button className="redownload-btn" onClick={handleRedownloadCsv}>
+                    Re-download CSV ({exportRows.length} rows)
+                  </button>
+                )}
+              </div>
+
+              {exportProgress && (
+                <div className="export-progress">
+                  {exportProgress.phase === 'fetch' && (
+                    <span>Fetching page {exportProgress.page}... {exportProgress.matched.toLocaleString()} transactions matched</span>
+                  )}
+                  {exportProgress.phase === 'resolve' && (
+                    <span>Resolving FB hashes: {exportProgress.resolved}/{exportProgress.total} traces ({exportProgress.matched.toLocaleString()} total txs)</span>
+                  )}
+                </div>
+              )}
+
+              {exportError && (
+                <div className="export-error">{exportError}</div>
+              )}
+
+              {exportLogs.length > 0 && (
+                <div className="export-log">
+                  {exportLogs.map((log, i) => (
+                    <div
+                      key={i}
+                      className={`log-line${log.includes('ERROR') ? ' log-error' : log.includes('complete') || log.includes('downloaded') ? ' log-success' : ''}`}
+                    >
+                      {log}
+                    </div>
+                  ))}
+                  <div ref={logEndRef} />
+                </div>
+              )}
+
+              {!exporting && exportRows && (
+                <div className="export-summary">
+                  <span className="summary-count">{exportRows.length.toLocaleString()} transactions exported</span>
+                  {exportRows.length > 0 && (
+                    <span className="summary-breakdown">
+                      ({exportRows.filter(r => r.direction === 'outgoing').length} outgoing, {exportRows.filter(r => r.direction === 'incoming').length} incoming)
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

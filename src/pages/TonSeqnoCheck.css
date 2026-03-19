@@ -216,6 +216,323 @@
   100% { opacity: 0; }
 }
 
+/* ── Export section ─────────────────────────────────────────────────────── */
+
+.export-section {
+  margin-top: 2rem;
+}
+
+.export-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #a1a1aa;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-align: left;
+}
+
+.export-toggle:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e4e4e7;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.export-toggle.active {
+  background: rgba(168, 85, 247, 0.06);
+  border-color: rgba(168, 85, 247, 0.2);
+  color: #e4e4e7;
+  border-radius: 12px 12px 0 0;
+}
+
+.toggle-arrow {
+  font-size: 0.75rem;
+  color: #71717a;
+  transition: transform 0.2s ease;
+}
+
+.export-panel {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  padding: 1.5rem;
+}
+
+.export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.export-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.export-label {
+  font-size: 0.85rem;
+  color: #a1a1aa;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.direction-options {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.direction-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.direction-option:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e4e4e7;
+}
+
+.direction-option.active {
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+}
+
+.direction-option input[type="radio"] {
+  display: none;
+}
+
+.export-hint {
+  font-size: 0.8rem;
+  color: #52525b;
+}
+
+.date-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.date-field label {
+  font-size: 0.75rem;
+  color: #71717a;
+}
+
+.date-field input[type="date"] {
+  padding: 0.5rem 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e4e4e7;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.date-field input[type="date"]:focus {
+  outline: none;
+  border-color: #a855f7;
+}
+
+.date-field input[type="date"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date-separator {
+  color: #52525b;
+  font-size: 1.1rem;
+  margin-top: 1rem;
+}
+
+.date-clear {
+  margin-top: 1rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.date-clear:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #2dd4bf 0%, #a855f7 100%);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.export-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+.export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.cancel-export-btn {
+  padding: 0.75rem 1.25rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #f87171;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.cancel-export-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.redownload-btn {
+  padding: 0.75rem 1.25rem;
+  background: rgba(45, 212, 191, 0.1);
+  border: 1px solid rgba(45, 212, 191, 0.3);
+  border-radius: 8px;
+  color: #2dd4bf;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.redownload-btn:hover {
+  background: rgba(45, 212, 191, 0.2);
+}
+
+.export-progress {
+  padding: 0.75rem 1rem;
+  background: rgba(168, 85, 247, 0.06);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+  border-radius: 8px;
+  color: #c084fc;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.export-error {
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  color: #f87171;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.export-log {
+  max-height: 250px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: #71717a;
+  margin-bottom: 0.75rem;
+}
+
+.export-log .log-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.export-log .log-error {
+  color: #f87171;
+}
+
+.export-log .log-success {
+  color: #2dd4bf;
+  font-weight: 500;
+}
+
+.export-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(45, 212, 191, 0.06);
+  border: 1px solid rgba(45, 212, 191, 0.15);
+  border-radius: 8px;
+  color: #2dd4bf;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.summary-breakdown {
+  color: #71717a;
+  font-weight: 400;
+}
+
 @media (max-width: 768px) {
   .ton-seqno-page {
     flex-direction: column;
@@ -235,5 +552,29 @@
 
   .seqno-value {
     font-size: 1.5rem;
+  }
+
+  .date-inputs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .date-separator {
+    display: none;
+  }
+
+  .direction-options {
+    flex-direction: column;
+  }
+
+  .export-actions {
+    flex-direction: column;
+  }
+
+  .export-btn,
+  .cancel-export-btn,
+  .redownload-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
