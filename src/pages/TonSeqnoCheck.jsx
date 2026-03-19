@@ -171,7 +171,7 @@ async function exportTransactions({ address, direction, startDate, endDate, sign
   const params = {
     account: address,
     limit: String(TX_PAGE_SIZE),
-    sort: 'asc',
+    sort: 'desc',
   }
   if (startDate) {
     params.start_utime = String(Math.floor(new Date(startDate + 'T00:00:00Z').getTime() / 1000))
@@ -390,51 +390,48 @@ function TonSeqnoCheck() {
     } finally {
       setProcessing(false)
     }
-  }
 
-  const handleExport = useCallback(async () => {
-    const address = input.trim()
-    if (!address) return
+    if (exportEnabled) {
+      trackUsage('ton-seqno-export', 1)
 
-    trackUsage('ton-seqno-export', 1)
+      const controller = new AbortController()
+      abortRef.current = controller
 
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    setExporting(true)
-    setExportError(null)
-    setExportLogs([])
-    setExportProgress(null)
-    setExportRows(null)
-    setSearchQuery('')
-    setResultsPage(0)
-
-    try {
-      const rows = await exportTransactions({
-        address,
-        direction: exportDirection,
-        startDate: dateRangeEnabled ? (exportStartDate || null) : null,
-        endDate: dateRangeEnabled ? (exportEndDate || null) : null,
-        signal: controller.signal,
-        onLog: addLog,
-        onProgress: setExportProgress,
-      })
-
-      setExportRows(rows)
-      addLog(`Done: ${rows.length} transactions ready`)
-    } catch (e) {
-      if (e.name === 'AbortError') {
-        addLog('Export cancelled.')
-      } else {
-        addLog(`ERROR: ${e.message}`)
-        setExportError(e.message)
-      }
-    } finally {
-      setExporting(false)
-      abortRef.current = null
+      setExporting(true)
+      setExportError(null)
+      setExportLogs([])
       setExportProgress(null)
+      setExportRows(null)
+      setSearchQuery('')
+      setResultsPage(0)
+
+      try {
+        const rows = await exportTransactions({
+          address,
+          direction: exportDirection,
+          startDate: dateRangeEnabled ? (exportStartDate || null) : null,
+          endDate: dateRangeEnabled ? (exportEndDate || null) : null,
+          signal: controller.signal,
+          onLog: addLog,
+          onProgress: setExportProgress,
+        })
+
+        setExportRows(rows)
+        addLog(`Done: ${rows.length} transactions ready`)
+      } catch (ex) {
+        if (ex.name === 'AbortError') {
+          addLog('Export cancelled.')
+        } else {
+          addLog(`ERROR: ${ex.message}`)
+          setExportError(ex.message)
+        }
+      } finally {
+        setExporting(false)
+        abortRef.current = null
+        setExportProgress(null)
+      }
     }
-  }, [input, exportDirection, dateRangeEnabled, exportStartDate, exportEndDate, addLog])
+  }
 
   const handleCancelExport = useCallback(() => {
     abortRef.current?.abort()
@@ -555,13 +552,21 @@ function TonSeqnoCheck() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            className="submit-btn"
-            disabled={processing || exporting || !input.trim()}
-          >
-            {processing ? 'Checking...' : 'Check Seqno'}
-          </button>
+          <div className="submit-row">
+            <button
+              type="submit"
+              className="submit-btn"
+              disabled={processing || exporting || !input.trim()}
+            >
+              {processing ? 'Checking...' : exporting ? 'Fetching Transactions...' :
+                exportEnabled ? 'Check Seqno & Fetch TXs' : 'Check Seqno'}
+            </button>
+            {exporting && (
+              <button type="button" className="cancel-export-btn" onClick={handleCancelExport}>
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
 
         {processing && (
@@ -722,28 +727,6 @@ function TonSeqnoCheck() {
                     </div>
                   )}
                 </div>
-              </div>
-
-              <div className="export-actions">
-                <button
-                  className="export-btn"
-                  onClick={handleExport}
-                  disabled={exporting || !input.trim()}
-                >
-                  {exporting ? (
-                    <>
-                      <span className="spinner-sm" />
-                      Exporting...
-                    </>
-                  ) : (
-                    'Fetch Transactions'
-                  )}
-                </button>
-                {exporting && (
-                  <button className="cancel-export-btn" onClick={handleCancelExport}>
-                    Cancel
-                  </button>
-                )}
               </div>
 
               {exportProgress && (

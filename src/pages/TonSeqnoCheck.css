@@ -66,6 +66,20 @@
   cursor: not-allowed;
 }
 
+.submit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.submit-row .submit-btn {
+  flex: 1;
+}
+
+.submit-row .cancel-export-btn {
+  flex-shrink: 0;
+}
+
 .ton-seqno-page .loading-container {
   display: flex;
   align-items: center;
