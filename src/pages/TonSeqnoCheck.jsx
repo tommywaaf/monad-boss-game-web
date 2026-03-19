@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import './TonSeqnoCheck.css'
@@ -346,6 +346,7 @@ function TonSeqnoCheck() {
   // Export state
   const [exportEnabled, setExportEnabled] = useState(false)
   const [exportDirection, setExportDirection] = useState('all')
+  const [dateRangeEnabled, setDateRangeEnabled] = useState(false)
   const [exportStartDate, setExportStartDate] = useState('')
   const [exportEndDate, setExportEndDate] = useState('')
   const [exporting, setExporting] = useState(false)
@@ -353,6 +354,11 @@ function TonSeqnoCheck() {
   const [exportLogs, setExportLogs] = useState([])
   const [exportError, setExportError] = useState(null)
   const [exportRows, setExportRows] = useState(null)
+
+  // Results table state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [resultsPage, setResultsPage] = useState(0)
+  const RESULTS_PAGE_SIZE = 100
 
   const abortRef = useRef(null)
   const logEndRef = useRef(null)
@@ -400,37 +406,22 @@ function TonSeqnoCheck() {
     setExportLogs([])
     setExportProgress(null)
     setExportRows(null)
+    setSearchQuery('')
+    setResultsPage(0)
 
     try {
       const rows = await exportTransactions({
         address,
         direction: exportDirection,
-        startDate: exportStartDate || null,
-        endDate: exportEndDate || null,
+        startDate: dateRangeEnabled ? (exportStartDate || null) : null,
+        endDate: dateRangeEnabled ? (exportEndDate || null) : null,
         signal: controller.signal,
         onLog: addLog,
         onProgress: setExportProgress,
       })
 
       setExportRows(rows)
-
-      // Auto-download CSV
-      const header = 'date,fbhash,direction,seqno'
-      const csvRows = rows.map(r =>
-        `"${r.date}","${r.fbHash || ''}","${r.direction}","${r.seqno}"`
-      )
-      const csv = [header, ...csvRows].join('\n')
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `ton_txs_${address.slice(0, 12)}_${exportDirection}_${Date.now()}.csv`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-
-      addLog(`CSV downloaded: ${rows.length} rows`)
+      addLog(`Done: ${rows.length} transactions ready`)
     } catch (e) {
       if (e.name === 'AbortError') {
         addLog('Export cancelled.')
@@ -443,14 +434,32 @@ function TonSeqnoCheck() {
       abortRef.current = null
       setExportProgress(null)
     }
-  }, [input, exportDirection, exportStartDate, exportEndDate, addLog])
+  }, [input, exportDirection, dateRangeEnabled, exportStartDate, exportEndDate, addLog])
 
   const handleCancelExport = useCallback(() => {
     abortRef.current?.abort()
   }, [])
 
-  const handleRedownloadCsv = useCallback(() => {
-    if (!exportRows) return
+  const filteredExportRows = useMemo(() => {
+    if (!exportRows) return []
+    if (!searchQuery.trim()) return exportRows
+    const q = searchQuery.trim().toLowerCase()
+    return exportRows.filter(r =>
+      (r.fbHash && r.fbHash.toLowerCase().includes(q)) ||
+      r.date.toLowerCase().includes(q) ||
+      r.direction.includes(q) ||
+      r.seqno.includes(q)
+    )
+  }, [exportRows, searchQuery])
+
+  const exportPageCount = Math.max(1, Math.ceil(filteredExportRows.length / RESULTS_PAGE_SIZE))
+  const pagedExportRows = useMemo(
+    () => filteredExportRows.slice(resultsPage * RESULTS_PAGE_SIZE, (resultsPage + 1) * RESULTS_PAGE_SIZE),
+    [filteredExportRows, resultsPage]
+  )
+
+  const handleDownloadCsv = useCallback(() => {
+    if (!exportRows || exportRows.length === 0) return
     const address = input.trim()
     const header = 'date,fbhash,direction,seqno'
     const csvRows = exportRows.map(r =>
@@ -666,40 +675,52 @@ function TonSeqnoCheck() {
                 </div>
 
                 <div className="export-option-group">
-                  <label className="export-label">Date Range (optional)</label>
-                  <div className="date-inputs">
-                    <div className="date-field">
-                      <label>Start</label>
-                      <input
-                        type="date"
-                        value={exportStartDate}
-                        onChange={(e) => setExportStartDate(e.target.value)}
-                        disabled={exporting}
-                      />
+                  <button
+                    className={`date-range-toggle ${dateRangeEnabled ? 'active' : ''}`}
+                    onClick={() => setDateRangeEnabled(v => !v)}
+                    disabled={exporting}
+                  >
+                    <span className="toggle-arrow">{dateRangeEnabled ? '▼' : '▶'}</span>
+                    <span>Date Range Filter</span>
+                    {!dateRangeEnabled && <span className="date-range-hint-inline">all time</span>}
+                  </button>
+                  {dateRangeEnabled && (
+                    <div className="date-range-body">
+                      <div className="date-inputs">
+                        <div className="date-field">
+                          <label>Start</label>
+                          <input
+                            type="date"
+                            value={exportStartDate}
+                            onChange={(e) => setExportStartDate(e.target.value)}
+                            disabled={exporting}
+                          />
+                        </div>
+                        <span className="date-separator">→</span>
+                        <div className="date-field">
+                          <label>End</label>
+                          <input
+                            type="date"
+                            value={exportEndDate}
+                            onChange={(e) => setExportEndDate(e.target.value)}
+                            disabled={exporting}
+                          />
+                        </div>
+                        {(exportStartDate || exportEndDate) && (
+                          <button
+                            className="date-clear"
+                            onClick={() => { setExportStartDate(''); setExportEndDate('') }}
+                            disabled={exporting}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="export-hint">
+                        Both dates are inclusive (UTC). Leave empty for open-ended.
+                      </div>
                     </div>
-                    <span className="date-separator">→</span>
-                    <div className="date-field">
-                      <label>End</label>
-                      <input
-                        type="date"
-                        value={exportEndDate}
-                        onChange={(e) => setExportEndDate(e.target.value)}
-                        disabled={exporting}
-                      />
-                    </div>
-                    {(exportStartDate || exportEndDate) && (
-                      <button
-                        className="date-clear"
-                        onClick={() => { setExportStartDate(''); setExportEndDate('') }}
-                        disabled={exporting}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <div className="export-hint">
-                    Leave empty to fetch all transactions. Dates are UTC.
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -715,17 +736,12 @@ function TonSeqnoCheck() {
                       Exporting...
                     </>
                   ) : (
-                    'Export Transactions'
+                    'Fetch Transactions'
                   )}
                 </button>
                 {exporting && (
                   <button className="cancel-export-btn" onClick={handleCancelExport}>
                     Cancel
-                  </button>
-                )}
-                {!exporting && exportRows && (
-                  <button className="redownload-btn" onClick={handleRedownloadCsv}>
-                    Re-download CSV ({exportRows.length} rows)
                   </button>
                 )}
               </div>
@@ -750,7 +766,7 @@ function TonSeqnoCheck() {
                   {exportLogs.map((log, i) => (
                     <div
                       key={i}
-                      className={`log-line${log.includes('ERROR') ? ' log-error' : log.includes('complete') || log.includes('downloaded') ? ' log-success' : ''}`}
+                      className={`log-line${log.includes('ERROR') ? ' log-error' : log.includes('Done:') || log.includes('complete') ? ' log-success' : ''}`}
                     >
                       {log}
                     </div>
@@ -759,14 +775,115 @@ function TonSeqnoCheck() {
                 </div>
               )}
 
-              {!exporting && exportRows && (
-                <div className="export-summary">
-                  <span className="summary-count">{exportRows.length.toLocaleString()} transactions exported</span>
-                  {exportRows.length > 0 && (
-                    <span className="summary-breakdown">
-                      ({exportRows.filter(r => r.direction === 'outgoing').length} outgoing, {exportRows.filter(r => r.direction === 'incoming').length} incoming)
-                    </span>
+              {!exporting && exportRows && exportRows.length > 0 && (
+                <div className="export-results">
+                  <div className="export-results-toolbar">
+                    <div className="export-results-info">
+                      <span className="summary-count">{exportRows.length.toLocaleString()} transactions</span>
+                      <span className="summary-breakdown">
+                        ({exportRows.filter(r => r.direction === 'outgoing').length} out, {exportRows.filter(r => r.direction === 'incoming').length} in)
+                      </span>
+                    </div>
+                    <div className="export-results-actions">
+                      <input
+                        type="text"
+                        className="results-search"
+                        placeholder="Search hash, date, seqno..."
+                        value={searchQuery}
+                        onChange={(e) => { setSearchQuery(e.target.value); setResultsPage(0) }}
+                        spellCheck={false}
+                      />
+                      <button className="download-csv-btn" onClick={handleDownloadCsv}>
+                        Download CSV
+                      </button>
+                    </div>
+                  </div>
+
+                  {searchQuery && filteredExportRows.length !== exportRows.length && (
+                    <div className="search-match-info">
+                      {filteredExportRows.length.toLocaleString()} match{filteredExportRows.length !== 1 ? 'es' : ''}
+                    </div>
                   )}
+
+                  <div className="export-table-wrap">
+                    <table className="export-table">
+                      <thead>
+                        <tr>
+                          <th className="col-num">#</th>
+                          <th className="col-date">Date</th>
+                          <th className="col-hash">FB Hash</th>
+                          <th className="col-dir">Dir</th>
+                          <th className="col-seq">Seqno</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedExportRows.map((r, i) => {
+                          const rowNum = resultsPage * RESULTS_PAGE_SIZE + i + 1
+                          return (
+                            <tr key={i} className={`export-row dir-${r.direction}`}>
+                              <td className="col-num">{rowNum}</td>
+                              <td className="col-date">{r.date}</td>
+                              <td className="col-hash">
+                                {r.fbHash ? (
+                                  <span className="hash-text" title={r.fbHash}>
+                                    {r.fbHash.slice(0, 16)}…{r.fbHash.slice(-8)}
+                                  </span>
+                                ) : (
+                                  <span className="hash-empty">—</span>
+                                )}
+                              </td>
+                              <td className="col-dir">
+                                <span className={`dir-badge dir-badge-${r.direction}`}>{r.direction}</span>
+                              </td>
+                              <td className="col-seq">{r.seqno || '—'}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {exportPageCount > 1 && (
+                    <div className="export-pagination">
+                      <button
+                        className="page-btn"
+                        onClick={() => setResultsPage(0)}
+                        disabled={resultsPage === 0}
+                      >
+                        «
+                      </button>
+                      <button
+                        className="page-btn"
+                        onClick={() => setResultsPage(p => Math.max(0, p - 1))}
+                        disabled={resultsPage === 0}
+                      >
+                        ‹
+                      </button>
+                      <span className="page-info">
+                        Page {resultsPage + 1} of {exportPageCount.toLocaleString()}
+                      </span>
+                      <button
+                        className="page-btn"
+                        onClick={() => setResultsPage(p => Math.min(exportPageCount - 1, p + 1))}
+                        disabled={resultsPage >= exportPageCount - 1}
+                      >
+                        ›
+                      </button>
+                      <button
+                        className="page-btn"
+                        onClick={() => setResultsPage(exportPageCount - 1)}
+                        disabled={resultsPage >= exportPageCount - 1}
+                      >
+                        »
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!exporting && exportRows && exportRows.length === 0 && (
+                <div className="export-summary">
+                  No transactions found for the given filters.
                 </div>
               )}
             </div>
