@@ -71,17 +71,20 @@ async function getWalletSeqno(address) {
       address: result.address?.bounceable || address,
       rawAddress: result.address?.raw || null,
       status: result.account_state || 'uninitialized',
-      seqno: null,
+      nextSeqno: null,
+      highestConfirmedSeqno: null,
       balance: result.balance || '0',
       walletType: result.wallet_type || null,
     }
   }
 
+  const nextSeqno = result.seqno ?? null
   return {
     address: result.address?.bounceable || address,
     rawAddress: result.address?.raw || null,
     status: result.account_state || 'unknown',
-    seqno: result.seqno ?? null,
+    nextSeqno,
+    highestConfirmedSeqno: nextSeqno !== null && nextSeqno > 0 ? nextSeqno - 1 : null,
     balance: result.balance || '0',
     walletType: result.wallet_type || null,
   }
@@ -296,11 +299,17 @@ function TonSeqnoCheck() {
               <div className="seqno-highlight">
                 <span className="seqno-label">Highest Confirmed Seqno</span>
                 <span className="seqno-value">
-                  {result.seqno !== null ? (
-                    <CopyValue value={result.seqno} />
+                  {result.highestConfirmedSeqno !== null ? (
+                    <CopyValue value={result.highestConfirmedSeqno} />
                   ) : (
-                    <span className="seqno-na">N/A (wallet not initialized)</span>
+                    <span className="seqno-na">N/A {result.nextSeqno === 0 ? '(no outgoing txs yet)' : '(wallet not initialized)'}</span>
                   )}
+                </span>
+              </div>
+              <div className="result-field">
+                <span className="field-label">Next Seqno (to use)</span>
+                <span className="field-value">
+                  {result.nextSeqno !== null ? result.nextSeqno : 'N/A'}
                 </span>
               </div>
               <div className="result-field">
