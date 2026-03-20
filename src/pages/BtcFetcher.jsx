@@ -25,7 +25,9 @@ const NETWORKS = [
   },
 ]
 
-const DELAY_MS = HAS_TOKEN ? 350 : 6000
+// BlockCypher free tier: 200 req/hr (~1 per 18s). Token plans vary.
+// Stay well under the limit to avoid cascading rate-limit failures.
+const DELAY_MS = HAS_TOKEN ? 2000 : 10000
 const TXREF_LIMIT = 200
 
 function sleep(ms, signal) {
@@ -71,6 +73,34 @@ function getDirection(txref) {
   return 'incoming'
 }
 
+async function fetchWithRetry(url, signal, onLog, label) {
+  let attempt = 0
+  while (true) {
+    const result = await safeFetch(url, signal)
+    if (result.ok) return result
+
+    if (result.rateLimited) {
+      attempt++
+      const wait = Math.min(15000 + attempt * 15000, 90000)
+      onLog?.(`[${label}] Rate limited, backing off ${Math.round(wait / 1000)}s (attempt ${attempt})...`)
+      await sleep(wait, signal)
+      continue
+    }
+
+    if (result.status === 404) {
+      return { ok: false, notFound: true }
+    }
+
+    attempt++
+    if (attempt > 10) {
+      return { ok: false, hardFail: true, detail: result.status || result.error }
+    }
+    const wait = Math.min(5000 + attempt * 3000, 30000)
+    onLog?.(`[${label}] Error (${result.status || result.error}), retry in ${Math.round(wait / 1000)}s (attempt ${attempt}/10)...`)
+    await sleep(wait, signal)
+  }
+}
+
 async function fetchBlockCypherTxRefs(baseUrl, address, signal, onProgress, onLog) {
   const txMap = new Map()
   let beforeBlock = null
@@ -81,26 +111,17 @@ async function fetchBlockCypherTxRefs(baseUrl, address, signal, onProgress, onLo
     if (HAS_TOKEN) url += `&token=${BLOCKCYPHER_TOKEN}`
     if (beforeBlock !== null) url += `&before=${beforeBlock}`
 
-    onLog?.(`[BlockCypher] Page ${page}, fetching${beforeBlock ? ` before block ${beforeBlock}` : ''}...`)
+    onLog?.(`Page ${page}, fetching${beforeBlock ? ` before block ${beforeBlock}` : ''}...`)
 
-    let retries = 5
-    let result = null
-    for (let attempt = 0; attempt < retries; attempt++) {
-      result = await safeFetch(url, signal)
-      if (result.ok) break
-      if (result.rateLimited) {
-        const wait = DELAY_MS * 2 + attempt * 2000
-        onLog?.(`[BlockCypher] Rate limited, waiting ${Math.round(wait / 1000)}s (attempt ${attempt + 1}/${retries})...`)
-        await sleep(wait, signal)
-        continue
+    const result = await fetchWithRetry(url, signal, onLog, 'BlockCypher')
+
+    if (!result.ok) {
+      if (result.notFound) {
+        onLog?.(`Address not found on BlockCypher (may be unused): ${address}`)
+        return { txMap, failed: false }
       }
-      onLog?.(`[BlockCypher] Error (${result.status || result.error}), retry ${attempt + 1}/${retries}...`)
-      await sleep(2000 + attempt * 1000, signal)
-    }
-
-    if (!result?.ok) {
-      onLog?.(`[BlockCypher] Failed after ${retries} retries for ${address}`)
-      break
+      onLog?.(`Hard failure after retries for ${address}: ${result.detail}`)
+      return { txMap, failed: true }
     }
 
     const data = result.data
@@ -110,7 +131,7 @@ async function fetchBlockCypherTxRefs(baseUrl, address, signal, onProgress, onLo
     ]
 
     if (refs.length === 0) {
-      onLog?.(`[BlockCypher] Page ${page}: no txrefs — done`)
+      onLog?.(`Page ${page}: no txrefs — done`)
       break
     }
 
@@ -126,7 +147,7 @@ async function fetchBlockCypherTxRefs(baseUrl, address, signal, onProgress, onLo
       }
     }
 
-    onLog?.(`[BlockCypher] Page ${page}: ${refs.length} refs, ${txMap.size} unique hashes`)
+    onLog?.(`Page ${page}: ${refs.length} refs, ${txMap.size} unique hashes`)
     onProgress?.({ page, found: txMap.size })
 
     if (!data.hasMore) break
@@ -138,7 +159,7 @@ async function fetchBlockCypherTxRefs(baseUrl, address, signal, onProgress, onLo
     await sleep(DELAY_MS, signal)
   }
 
-  return txMap
+  return { txMap, failed: false }
 }
 
 function parseAddresses(text) {
@@ -233,45 +254,72 @@ export default function BtcFetcher() {
       addLog(`Starting BTC Fetcher on ${network.name}`)
       addLog(`${validAddresses.length} address${validAddresses.length > 1 ? 'es' : ''} to process`)
       addLog(HAS_TOKEN
-        ? `BlockCypher token active — faster rate (~3 req/s)`
-        : `No BlockCypher token — throttled (~1 req/6s). Set VITE_BLOCKCYPHER_TOKEN to speed up.`
+        ? `BlockCypher token active — ~1 req every ${DELAY_MS / 1000}s`
+        : `No BlockCypher token — throttled to ~1 req every ${DELAY_MS / 1000}s. Set VITE_BLOCKCYPHER_TOKEN to speed up.`
       )
 
-      for (let i = 0; i < validAddresses.length; i++) {
-        const addr = validAddresses[i]
-        addLog(`\n--- Address ${i + 1}/${validAddresses.length}: ${addr} ---`)
-        setProgress({ addrIndex: i, totalAddrs: validAddresses.length, page: 0, found: 0 })
+      let pending = validAddresses.map((addr, i) => ({ addr, originalIndex: i }))
+      let pass = 0
 
-        let txMap = new Map()
-
-        txMap = await fetchBlockCypherTxRefs(
-          network.blockcypher,
-          addr,
-          signal,
-          ({ page, found }) => {
-            setProgress({ addrIndex: i, totalAddrs: validAddresses.length, page, found })
-          },
-          addLog
-        )
-
-        addLog(`${txMap.size} unique hashes found`)
-
-        const newRows = [...txMap.entries()].map(([hash, meta]) => ({
-          address: addr,
-          hash,
-          direction: meta.direction || 'incoming',
-          blockHeight: meta.blockHeight,
-          confirmed: meta.confirmed,
-        }))
-
-        grandTotal += newRows.length
-        setFlatRows(prev => [...prev, ...newRows])
-        setAddressStats(prev => [...prev, { address: addr, count: newRows.length }])
-        addLog(`Address ${i + 1} done: ${newRows.length} transaction hashes`)
-
-        if (i < validAddresses.length - 1) {
-          await sleep(DELAY_MS, signal)
+      while (pending.length > 0) {
+        pass++
+        if (pass > 1) {
+          const backoff = Math.min(30000 * pass, 120000)
+          addLog(`\n=== RETRY PASS ${pass}: ${pending.length} failed address${pending.length > 1 ? 'es' : ''} to retry (waiting ${Math.round(backoff / 1000)}s before retrying) ===`)
+          await sleep(backoff, signal)
         }
+
+        const stillFailed = []
+
+        for (let i = 0; i < pending.length; i++) {
+          const { addr, originalIndex } = pending[i]
+          const label = pass > 1
+            ? `[retry ${pass}] Address ${originalIndex + 1}/${validAddresses.length}: ${addr}`
+            : `Address ${originalIndex + 1}/${validAddresses.length}: ${addr}`
+          addLog(`\n--- ${label} ---`)
+          setProgress({ addrIndex: originalIndex, totalAddrs: validAddresses.length, page: 0, found: 0 })
+
+          const { txMap, failed } = await fetchBlockCypherTxRefs(
+            network.blockcypher,
+            addr,
+            signal,
+            ({ page, found }) => {
+              setProgress({ addrIndex: originalIndex, totalAddrs: validAddresses.length, page, found })
+            },
+            addLog
+          )
+
+          if (failed) {
+            const partial = txMap.size
+            addLog(`Address FAILED — ${partial} partial hashes collected, will retry`)
+            stillFailed.push({ addr, originalIndex })
+            if (i < pending.length - 1) {
+              await sleep(DELAY_MS * 3, signal)
+            }
+            continue
+          }
+
+          addLog(`${txMap.size} unique hashes found`)
+
+          const newRows = [...txMap.entries()].map(([hash, meta]) => ({
+            address: addr,
+            hash,
+            direction: meta.direction || 'incoming',
+            blockHeight: meta.blockHeight,
+            confirmed: meta.confirmed,
+          }))
+
+          grandTotal += newRows.length
+          setFlatRows(prev => [...prev, ...newRows])
+          setAddressStats(prev => [...prev, { address: addr, count: newRows.length }])
+          addLog(`Address done: ${newRows.length} transaction hashes`)
+
+          if (i < pending.length - 1) {
+            await sleep(DELAY_MS, signal)
+          }
+        }
+
+        pending = stillFailed
       }
 
       setProgress(null)
