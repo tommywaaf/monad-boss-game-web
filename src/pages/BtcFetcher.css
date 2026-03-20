@@ -665,6 +665,180 @@
   font-weight: 600;
 }
 
+.btcfetcher-filter-bar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.btcfetcher-search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.625rem 1rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #e4e4e7;
+  transition: all 0.2s ease;
+}
+
+.btcfetcher-search-input:focus {
+  outline: none;
+  border-color: #f7931a;
+  box-shadow: 0 0 0 3px rgba(247, 147, 26, 0.15);
+}
+
+.btcfetcher-search-input::placeholder {
+  color: #52525b;
+}
+
+.btcfetcher-direction-filter {
+  display: flex;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.btcfetcher-dir-filter-btn {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.02);
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: #71717a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-transform: capitalize;
+}
+
+.btcfetcher-dir-filter-btn:last-child {
+  border-right: none;
+}
+
+.btcfetcher-dir-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #a1a1aa;
+}
+
+.btcfetcher-dir-filter-btn.active {
+  background: rgba(247, 147, 26, 0.15);
+  color: #f7931a;
+}
+
+.btcfetcher-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+}
+
+.btcfetcher-pagination-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btcfetcher-pagination-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e4e4e7;
+}
+
+.btcfetcher-pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btcfetcher-pagination-info {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a1a1aa;
+  padding: 0 0.75rem;
+}
+
+.btcfetcher-hash-addr {
+  font-size: 0.6rem;
+  color: #52525b;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+
+.btcfetcher-addr-summary {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btcfetcher-addr-summary-list {
+  max-height: 300px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 0.5rem;
+}
+
+.btcfetcher-addr-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btcfetcher-addr-summary-row:hover {
+  background: rgba(247, 147, 26, 0.08);
+}
+
+.btcfetcher-addr-summary-idx {
+  font-size: 0.7rem;
+  color: #52525b;
+  min-width: 2.5rem;
+  text-align: right;
+  font-weight: 600;
+}
+
+.btcfetcher-addr-summary-addr {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  flex: 1;
+  word-break: break-all;
+  font-family: inherit;
+}
+
+.btcfetcher-addr-summary-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #f7931a;
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .btcfetcher-page {
     flex-direction: column;
@@ -711,5 +885,26 @@
   .btcfetcher-download-btn {
     flex: 1;
     justify-content: center;
+  }
+
+  .btcfetcher-filter-bar {
+    flex-direction: column;
+  }
+
+  .btcfetcher-search-input {
+    width: 100%;
+  }
+
+  .btcfetcher-direction-filter {
+    width: 100%;
+  }
+
+  .btcfetcher-dir-filter-btn {
+    flex: 1;
+    text-align: center;
+  }
+
+  .btcfetcher-hash-addr {
+    display: none;
   }
 }

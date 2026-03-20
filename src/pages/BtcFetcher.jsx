@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import './BtcFetcher.css'
@@ -236,11 +236,16 @@ export default function BtcFetcher() {
   const [addressText, setAddressText] = useState('')
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(null)
-  const [results, setResults] = useState([])
+  const [flatRows, setFlatRows] = useState([])
+  const [addressStats, setAddressStats] = useState([])
   const [error, setError] = useState(null)
   const [copyFeedback, setCopyFeedback] = useState('')
   const [logs, setLogs] = useState([])
-  const [expandedAddrs, setExpandedAddrs] = useState(new Set())
+
+  const [searchTerm, setSearchTerm] = useState('')
+  const [directionFilter, setDirectionFilter] = useState('all')
+  const [resultsPage, setResultsPage] = useState(0)
+  const [pageSize, setPageSize] = useState(200)
 
   const abortRef = useRef(null)
   const logEndRef = useRef(null)
@@ -260,6 +265,29 @@ export default function BtcFetcher() {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
+  const filteredRows = useMemo(() => {
+    let rows = flatRows
+    if (directionFilter !== 'all') {
+      rows = rows.filter(r => r.direction === directionFilter || r.direction === 'both')
+    }
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      rows = rows.filter(r =>
+        r.hash.includes(term) || r.address.toLowerCase().includes(term)
+      )
+    }
+    return rows
+  }, [flatRows, directionFilter, searchTerm])
+
+  const totalPages = Math.ceil(filteredRows.length / pageSize)
+  const startIdx = resultsPage * pageSize
+  const endIdx = Math.min(startIdx + pageSize, filteredRows.length)
+  const pageRows = filteredRows.slice(startIdx, endIdx)
+
+  useEffect(() => {
+    setResultsPage(0)
+  }, [searchTerm, directionFilter, pageSize])
+
   const handleFetch = useCallback(async () => {
     if (!canFetch) return
 
@@ -269,13 +297,15 @@ export default function BtcFetcher() {
 
     setLoading(true)
     setError(null)
-    setResults([])
+    setFlatRows([])
+    setAddressStats([])
     setLogs([])
-    setExpandedAddrs(new Set())
+    setSearchTerm('')
+    setDirectionFilter('all')
+    setResultsPage(0)
     setProgress({ addrIndex: 0, totalAddrs: validAddresses.length, page: 0, found: 0 })
 
-    const allResults = []
-    let totalHashes = 0
+    let grandTotal = 0
 
     try {
       addLog(`Starting BTC Fetcher on ${network.name}`)
@@ -292,7 +322,6 @@ export default function BtcFetcher() {
 
         let txMap = new Map()
 
-        // Primary: BlockCypher
         addLog(`Fetching via BlockCypher...`)
         txMap = await fetchBlockCypherTxRefs(
           network.blockcypher,
@@ -307,7 +336,6 @@ export default function BtcFetcher() {
         const bcCount = txMap.size
         addLog(`BlockCypher: ${bcCount} unique hashes`)
 
-        // Fallback: mempool.space (BTC only)
         if (network.mempool) {
           addLog(`Cross-checking with mempool.space...`)
           await sleep(DELAY_MS, signal)
@@ -336,24 +364,28 @@ export default function BtcFetcher() {
           }
         }
 
-        const sorted = [...txMap.entries()]
-          .sort((a, b) => (b[1].blockHeight || 0) - (a[1].blockHeight || 0))
+        const newRows = [...txMap.entries()].map(([hash, meta]) => ({
+          address: addr,
+          hash,
+          direction: meta.direction || 'incoming',
+          blockHeight: meta.blockHeight,
+          confirmed: meta.confirmed,
+        }))
 
-        allResults.push({ address: addr, hashes: sorted })
-        totalHashes += sorted.length
-        addLog(`Address ${i + 1} done: ${sorted.length} transaction hashes`)
+        grandTotal += newRows.length
+        setFlatRows(prev => [...prev, ...newRows])
+        setAddressStats(prev => [...prev, { address: addr, count: newRows.length }])
+        addLog(`Address ${i + 1} done: ${newRows.length} transaction hashes`)
 
         if (i < validAddresses.length - 1) {
           await sleep(DELAY_MS, signal)
         }
       }
 
-      setResults(allResults)
       setProgress(null)
-      setExpandedAddrs(new Set(allResults.map(r => r.address)))
-      addLog(`\n=== Done! ${totalHashes} total hashes across ${allResults.length} address${allResults.length > 1 ? 'es' : ''} ===`)
+      addLog(`\n=== Done! ${grandTotal.toLocaleString()} total hashes across ${validAddresses.length} address${validAddresses.length > 1 ? 'es' : ''} ===`)
 
-      trackUsage('btcfetcher', totalHashes)
+      trackUsage('btcfetcher', grandTotal)
     } catch (e) {
       if (e.name === 'AbortError') {
         addLog('Cancelled by user.')
@@ -373,36 +405,15 @@ export default function BtcFetcher() {
     abortRef.current?.abort()
   }
 
-  const toggleAddress = (addr) => {
-    setExpandedAddrs(prev => {
-      const next = new Set(prev)
-      if (next.has(addr)) next.delete(addr)
-      else next.add(addr)
-      return next
-    })
-  }
-
-  const getAllHashes = () => results.flatMap(r => r.hashes.map(([h]) => h))
-
-  const handleCopyAll = async () => {
+  const handleCopyFiltered = async () => {
     try {
-      await navigator.clipboard.writeText(getAllHashes().join('\n'))
+      await navigator.clipboard.writeText(filteredRows.map(r => r.hash).join('\n'))
       setCopyFeedback('Copied!')
       setTimeout(() => setCopyFeedback(''), 2000)
     } catch {
       setCopyFeedback('Failed')
       setTimeout(() => setCopyFeedback(''), 2000)
     }
-  }
-
-  const handleCopyAddress = async (addr) => {
-    const group = results.find(r => r.address === addr)
-    if (!group) return
-    try {
-      await navigator.clipboard.writeText(group.hashes.map(([h]) => h).join('\n'))
-      setCopyFeedback(`Copied ${group.hashes.length} hashes`)
-      setTimeout(() => setCopyFeedback(''), 2000)
-    } catch { /* ignore */ }
   }
 
   const handleCopyOne = async (hash) => {
@@ -414,22 +425,20 @@ export default function BtcFetcher() {
   }
 
   const handleDownloadCSV = () => {
-    const rows = results.flatMap(r =>
-      r.hashes.map(([h, m]) =>
-        `${r.address},${h},"${m.direction || ''}",${m.blockHeight || ''},${m.confirmed || ''}`
-      )
+    const target = filteredRows.length < flatRows.length ? filteredRows : flatRows
+    const rows = target.map(r =>
+      `${r.address},${r.hash},"${r.direction}",${r.blockHeight || ''},${r.confirmed || ''}`
     )
     const csv = 'address,txHash,direction,blockHeight,confirmed\n' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `btc_tx_hashes_${network.id}_${validAddresses.length}addrs.csv`
+    a.download = `btc_tx_hashes_${network.id}_${addressStats.length}addrs.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const totalHashes = results.reduce((sum, r) => sum + r.hashes.length, 0)
   const progressPercent = progress
     ? Math.round((progress.addrIndex / progress.totalAddrs) * 100)
     : 0
@@ -612,22 +621,31 @@ export default function BtcFetcher() {
           <div className="btcfetcher-error-box">{error}</div>
         )}
 
-        {results.length > 0 && (
+        {flatRows.length > 0 && (
           <section className="btcfetcher-results-section">
             <div className="btcfetcher-summary-bar">
               <div className="btcfetcher-summary-stat">
                 <span className="btcfetcher-summary-stat-label">Addresses</span>
-                <span className="btcfetcher-summary-stat-value">{results.length}</span>
+                <span className="btcfetcher-summary-stat-value">{addressStats.length}</span>
               </div>
               <div className="btcfetcher-summary-divider" />
               <div className="btcfetcher-summary-stat">
                 <span className="btcfetcher-summary-stat-label">Total Hashes</span>
-                <span className="btcfetcher-summary-stat-value">{totalHashes.toLocaleString()}</span>
+                <span className="btcfetcher-summary-stat-value">{flatRows.length.toLocaleString()}</span>
               </div>
+              {filteredRows.length !== flatRows.length && (
+                <>
+                  <div className="btcfetcher-summary-divider" />
+                  <div className="btcfetcher-summary-stat">
+                    <span className="btcfetcher-summary-stat-label">Filtered</span>
+                    <span className="btcfetcher-summary-stat-value">{filteredRows.length.toLocaleString()}</span>
+                  </div>
+                </>
+              )}
               <div style={{ marginLeft: 'auto' }}>
                 <div className="btcfetcher-results-actions">
-                  <button className="btcfetcher-copy-btn" onClick={handleCopyAll}>
-                    {copyFeedback || `Copy All ${totalHashes.toLocaleString()}`}
+                  <button className="btcfetcher-copy-btn" onClick={handleCopyFiltered}>
+                    {copyFeedback || `Copy ${filteredRows.length === flatRows.length ? 'All' : 'Filtered'} ${filteredRows.length.toLocaleString()}`}
                   </button>
                   <button className="btcfetcher-download-btn" onClick={handleDownloadCSV}>
                     Download CSV
@@ -636,69 +654,119 @@ export default function BtcFetcher() {
               </div>
             </div>
 
-            {results.map((group) => {
-              const isOpen = expandedAddrs.has(group.address)
-              return (
-                <div className="btcfetcher-address-group" key={group.address}>
-                  <div
-                    className="btcfetcher-address-group-header"
-                    onClick={() => toggleAddress(group.address)}
+            <div className="btcfetcher-filter-bar">
+              <input
+                className="btcfetcher-search-input"
+                type="text"
+                placeholder="Search by tx hash or address..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                spellCheck={false}
+              />
+              <div className="btcfetcher-direction-filter">
+                {['all', 'incoming', 'outgoing', 'both'].map(opt => (
+                  <button
+                    key={opt}
+                    className={`btcfetcher-dir-filter-btn ${directionFilter === opt ? 'active' : ''}`}
+                    onClick={() => setDirectionFilter(opt)}
                   >
-                    <span className={`btcfetcher-address-group-toggle ${isOpen ? 'open' : ''}`}>
-                      ▶
-                    </span>
-                    <span className="btcfetcher-address-group-addr">{group.address}</span>
-                    <span className="btcfetcher-address-group-count">
-                      {group.hashes.length.toLocaleString()} tx{group.hashes.length !== 1 ? 's' : ''}
-                    </span>
-                    <button
-                      className="btcfetcher-address-group-copy"
-                      onClick={(e) => { e.stopPropagation(); handleCopyAddress(group.address) }}
-                    >
-                      Copy hashes
-                    </button>
-                  </div>
+                    {opt === 'all' ? 'All' : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                  {isOpen && (
-                    <div className="btcfetcher-hash-list">
-                      {group.hashes.map(([hash, meta], i) => (
-                        <div className="btcfetcher-hash-item" key={hash}>
-                          <span className="btcfetcher-hash-index">{(i + 1).toLocaleString()}</span>
-                          <a
-                            className="btcfetcher-hash-value"
-                            href={`${network.explorer}${hash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            {hash}
-                          </a>
-                          {meta.direction && (
-                            <span className={`btcfetcher-hash-direction btcfetcher-dir-${meta.direction}`}>
-                              {meta.direction}
-                            </span>
-                          )}
-                          {meta.blockHeight && (
-                            <span className="btcfetcher-hash-block">
-                              #{meta.blockHeight.toLocaleString()}
-                            </span>
-                          )}
-                          <button
-                            className="btcfetcher-hash-copy-btn"
-                            onClick={() => handleCopyOne(hash)}
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+            <div className="btcfetcher-pagination-bar">
+              <div className="btcfetcher-page-size-control">
+                <span>Show</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="btcfetcher-page-size-select"
+                >
+                  <option value={100}>100</option>
+                  <option value={200}>200</option>
+                  <option value={500}>500</option>
+                  <option value={1000}>1,000</option>
+                </select>
+                <span>per page</span>
+              </div>
+              <div className="btcfetcher-page-range-info">
+                {filteredRows.length > 0
+                  ? `Showing ${(startIdx + 1).toLocaleString()}–${endIdx.toLocaleString()} of ${filteredRows.length.toLocaleString()}`
+                  : 'No results match filters'
+                }
+              </div>
+            </div>
+
+            <div className="btcfetcher-hash-list">
+              {pageRows.map((row, i) => (
+                <div className="btcfetcher-hash-item" key={`${row.address}-${row.hash}-${startIdx + i}`}>
+                  <span className="btcfetcher-hash-index">{(startIdx + i + 1).toLocaleString()}</span>
+                  <a
+                    className="btcfetcher-hash-value"
+                    href={`${network.explorer}${row.hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {row.hash}
+                  </a>
+                  <span className={`btcfetcher-hash-direction btcfetcher-dir-${row.direction}`}>
+                    {row.direction}
+                  </span>
+                  {row.blockHeight && (
+                    <span className="btcfetcher-hash-block">
+                      #{row.blockHeight.toLocaleString()}
+                    </span>
                   )}
+                  <span className="btcfetcher-hash-addr" title={row.address}>
+                    {row.address.slice(0, 8)}...{row.address.slice(-6)}
+                  </span>
+                  <button
+                    className="btcfetcher-hash-copy-btn"
+                    onClick={() => handleCopyOne(row.hash)}
+                  >
+                    Copy
+                  </button>
                 </div>
-              )
-            })}
+              ))}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="btcfetcher-pagination">
+                <button className="btcfetcher-pagination-btn" disabled={resultsPage === 0} onClick={() => setResultsPage(0)}>First</button>
+                <button className="btcfetcher-pagination-btn" disabled={resultsPage === 0} onClick={() => setResultsPage(p => p - 1)}>Prev</button>
+                <span className="btcfetcher-pagination-info">Page {resultsPage + 1} of {totalPages.toLocaleString()}</span>
+                <button className="btcfetcher-pagination-btn" disabled={resultsPage >= totalPages - 1} onClick={() => setResultsPage(p => p + 1)}>Next</button>
+                <button className="btcfetcher-pagination-btn" disabled={resultsPage >= totalPages - 1} onClick={() => setResultsPage(totalPages - 1)}>Last</button>
+              </div>
+            )}
+
+            {addressStats.length > 1 && (
+              <div className="btcfetcher-addr-summary">
+                <label className="btcfetcher-label">Per-Address Breakdown</label>
+                <div className="btcfetcher-addr-summary-list">
+                  {addressStats.map((s, i) => (
+                    <div
+                      className="btcfetcher-addr-summary-row"
+                      key={s.address}
+                      onClick={() => {
+                        setSearchTerm(s.address)
+                        setResultsPage(0)
+                      }}
+                    >
+                      <span className="btcfetcher-addr-summary-idx">{i + 1}</span>
+                      <span className="btcfetcher-addr-summary-addr">{s.address}</span>
+                      <span className="btcfetcher-addr-summary-count">{s.count.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
-        {!loading && !error && results.length === 0 && addresses.length === 0 && (
+        {!loading && !error && flatRows.length === 0 && addresses.length === 0 && (
           <div className="btcfetcher-empty">
             <p>Paste addresses above and click Fetch to retrieve all transaction hashes.</p>
           </div>
