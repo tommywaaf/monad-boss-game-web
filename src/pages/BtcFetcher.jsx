@@ -3,32 +3,32 @@ import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import './BtcFetcher.css'
 
-const BLOCKCYPHER_TOKEN = import.meta.env.VITE_BLOCKCYPHER_TOKEN || ''
-const HAS_TOKEN = BLOCKCYPHER_TOKEN.length > 0
-
 const NETWORKS = [
   {
     id: 'btc',
     name: 'Bitcoin (BTC)',
-    blockcypher: 'https://api.blockcypher.com/v1/btc/main',
+    apiType: 'esplora',
+    apiBase: 'https://blockstream.info/api',
+    apiLabel: 'Blockstream Esplora',
+    delayMs: 400,
     explorer: 'https://mempool.space/tx/',
     addressRegex: /^(1[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{25,90})$/,
     addressHint: 'Starts with 1, 3, or bc1',
+    rateInfo: 'Blockstream Esplora — ~4 req/s, no hard bans',
   },
   {
     id: 'ltc',
     name: 'Litecoin (LTC)',
-    blockcypher: 'https://api.blockcypher.com/v1/ltc/main',
+    apiType: 'blockchair',
+    apiBase: 'https://api.blockchair.com/litecoin',
+    apiLabel: 'Blockchair',
+    delayMs: 2500,
     explorer: 'https://blockchair.com/litecoin/transaction/',
     addressRegex: /^(L[a-km-zA-HJ-NP-Z1-9]{25,34}|M[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|ltc1[a-zA-HJ-NP-Z0-9]{25,90})$/,
     addressHint: 'Starts with L, M, 3, or ltc1',
+    rateInfo: 'Blockchair — ~30 req/min free, no hard bans',
   },
 ]
-
-// BlockCypher free tier: 200 req/hr (~1 per 18s). Token plans vary.
-// Stay well under the limit to avoid cascading rate-limit failures.
-const DELAY_MS = HAS_TOKEN ? 2000 : 10000
-const TXREF_LIMIT = 200
 
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -44,7 +44,7 @@ function sleep(ms, signal) {
   })
 }
 
-async function safeFetch(url, signal, timeoutMs = 20000) {
+async function safeFetch(url, signal, timeoutMs = 25000) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   if (signal) {
@@ -54,6 +54,7 @@ async function safeFetch(url, signal, timeoutMs = 20000) {
     const res = await fetch(url, { signal: ctrl.signal })
     clearTimeout(timer)
     if (res.status === 429) return { ok: false, rateLimited: true }
+    if (res.status === 404) return { ok: false, notFound: true }
     if (!res.ok) return { ok: false, status: res.status }
     const data = await res.json()
     return { ok: true, data }
@@ -64,31 +65,19 @@ async function safeFetch(url, signal, timeoutMs = 20000) {
   }
 }
 
-function getDirection(txref) {
-  const isInput = txref.tx_input_n >= 0
-  const isOutput = txref.tx_output_n >= 0
-  if (isInput && isOutput) return 'both'
-  if (isInput) return 'outgoing'
-  if (isOutput) return 'incoming'
-  return 'incoming'
-}
-
 async function fetchWithRetry(url, signal, onLog, label) {
   let attempt = 0
   while (true) {
     const result = await safeFetch(url, signal)
     if (result.ok) return result
+    if (result.notFound) return result
 
     if (result.rateLimited) {
       attempt++
-      const wait = Math.min(15000 + attempt * 15000, 90000)
+      const wait = Math.min(20000 + attempt * 20000, 120000)
       onLog?.(`[${label}] Rate limited, backing off ${Math.round(wait / 1000)}s (attempt ${attempt})...`)
       await sleep(wait, signal)
       continue
-    }
-
-    if (result.status === 404) {
-      return { ok: false, notFound: true }
     }
 
     attempt++
@@ -101,65 +90,140 @@ async function fetchWithRetry(url, signal, onLog, label) {
   }
 }
 
-async function fetchBlockCypherTxRefs(baseUrl, address, signal, onProgress, onLog) {
+// Blockstream Esplora: 25 txs/page, full tx objects with vin/vout for direction
+async function fetchEsploraTxHashes(apiBase, address, signal, onProgress, onLog) {
   const txMap = new Map()
-  let beforeBlock = null
+  let lastTxid = null
   let page = 1
 
   while (true) {
-    let url = `${baseUrl}/addrs/${address}?limit=${TXREF_LIMIT}`
-    if (HAS_TOKEN) url += `&token=${BLOCKCYPHER_TOKEN}`
-    if (beforeBlock !== null) url += `&before=${beforeBlock}`
+    const url = lastTxid
+      ? `${apiBase}/address/${address}/txs/chain/${lastTxid}`
+      : `${apiBase}/address/${address}/txs`
 
-    onLog?.(`Page ${page}, fetching${beforeBlock ? ` before block ${beforeBlock}` : ''}...`)
+    onLog?.(`Page ${page}...`)
+    const result = await fetchWithRetry(url, signal, onLog, 'Esplora')
 
-    const result = await fetchWithRetry(url, signal, onLog, 'BlockCypher')
-
+    if (result.notFound) {
+      onLog?.(`Address not found (may be unused): ${address}`)
+      return { txMap, failed: false }
+    }
     if (!result.ok) {
-      if (result.notFound) {
-        onLog?.(`Address not found on BlockCypher (may be unused): ${address}`)
-        return { txMap, failed: false }
-      }
-      onLog?.(`Hard failure after retries for ${address}: ${result.detail}`)
+      onLog?.(`Hard failure for ${address}: ${result.detail || 'unknown'}`)
       return { txMap, failed: true }
     }
 
-    const data = result.data
-    const refs = [
-      ...(data.txrefs || []),
-      ...(data.unconfirmed_txrefs || []),
-    ]
-
-    if (refs.length === 0) {
-      onLog?.(`Page ${page}: no txrefs — done`)
+    const txs = result.data
+    if (!Array.isArray(txs) || txs.length === 0) {
+      if (page === 1) onLog?.(`No transactions found`)
       break
     }
 
-    for (const ref of refs) {
-      const hash = (ref.tx_hash || '').toLowerCase()
-      if (!hash) continue
-      if (!txMap.has(hash)) {
-        txMap.set(hash, {
-          direction: getDirection(ref),
-          blockHeight: ref.block_height || null,
-          confirmed: ref.confirmed || null,
-        })
+    const addrLower = address.toLowerCase()
+    for (const tx of txs) {
+      const hash = (tx.txid || '').toLowerCase()
+      if (!hash || txMap.has(hash)) continue
+
+      const isInput = (tx.vin || []).some(v =>
+        v.prevout?.scriptpubkey_address?.toLowerCase() === addrLower
+      )
+      const isOutput = (tx.vout || []).some(v =>
+        v.scriptpubkey_address?.toLowerCase() === addrLower
+      )
+      let direction = 'incoming'
+      if (isInput && isOutput) direction = 'both'
+      else if (isInput) direction = 'outgoing'
+
+      txMap.set(hash, {
+        direction,
+        blockHeight: tx.status?.block_height || null,
+        confirmed: tx.status?.confirmed ? tx.status.block_time : null,
+      })
+    }
+
+    onLog?.(`Page ${page}: ${txs.length} txs, ${txMap.size} unique`)
+    onProgress?.({ page, found: txMap.size })
+
+    if (txs.length < 25) break
+    lastTxid = txs[txs.length - 1].txid
+    page++
+    await sleep(NETWORKS[0].delayMs, signal)
+  }
+
+  // Unconfirmed mempool txs
+  try {
+    const mres = await safeFetch(`${apiBase}/address/${address}/txs/mempool`, signal)
+    if (mres.ok && Array.isArray(mres.data) && mres.data.length > 0) {
+      for (const tx of mres.data) {
+        const hash = (tx.txid || '').toLowerCase()
+        if (!hash || txMap.has(hash)) continue
+        txMap.set(hash, { direction: 'incoming', blockHeight: null, confirmed: null })
+      }
+      onLog?.(`${mres.data.length} unconfirmed txs added`)
+    }
+  } catch { /* ignore */ }
+
+  return { txMap, failed: false }
+}
+
+// Blockchair: returns tx hashes in dashboard endpoint, paginated via offset
+async function fetchBlockchairTxHashes(apiBase, address, signal, onProgress, onLog) {
+  const txMap = new Map()
+  let offset = 0
+  const limit = 10000
+  let page = 1
+
+  while (true) {
+    const url = `${apiBase}/dashboards/address/${address}?limit=${limit}&offset=${offset}`
+    onLog?.(`Page ${page} (offset ${offset})...`)
+
+    const result = await fetchWithRetry(url, signal, onLog, 'Blockchair')
+
+    if (result.notFound) {
+      onLog?.(`Address not found: ${address}`)
+      return { txMap, failed: false }
+    }
+    if (!result.ok) {
+      onLog?.(`Hard failure for ${address}: ${result.detail || 'unknown'}`)
+      return { txMap, failed: true }
+    }
+
+    const addrData = result.data?.data?.[address]
+    if (!addrData) {
+      onLog?.(`No data returned for ${address}`)
+      return { txMap, failed: false }
+    }
+
+    const hashes = addrData.transactions || []
+    if (hashes.length === 0) {
+      if (page === 1) onLog?.(`No transactions found`)
+      break
+    }
+
+    for (const hash of hashes) {
+      const h = (hash || '').toLowerCase()
+      if (h && !txMap.has(h)) {
+        txMap.set(h, { direction: 'unknown', blockHeight: null, confirmed: null })
       }
     }
 
-    onLog?.(`Page ${page}: ${refs.length} refs, ${txMap.size} unique hashes`)
+    onLog?.(`Page ${page}: ${hashes.length} hashes, ${txMap.size} unique`)
     onProgress?.({ page, found: txMap.size })
 
-    if (!data.hasMore) break
-
-    const lastBlock = refs[refs.length - 1]?.block_height
-    if (lastBlock == null || lastBlock <= 0) break
-    beforeBlock = lastBlock
+    if (hashes.length < limit) break
+    offset += limit
     page++
-    await sleep(DELAY_MS, signal)
+    await sleep(NETWORKS[1].delayMs, signal)
   }
 
   return { txMap, failed: false }
+}
+
+async function fetchAddressTxHashes(network, address, signal, onProgress, onLog) {
+  if (network.apiType === 'esplora') {
+    return fetchEsploraTxHashes(network.apiBase, address, signal, onProgress, onLog)
+  }
+  return fetchBlockchairTxHashes(network.apiBase, address, signal, onProgress, onLog)
 }
 
 function parseAddresses(text) {
@@ -251,12 +315,10 @@ export default function BtcFetcher() {
     let grandTotal = 0
 
     try {
+      const delay = network.delayMs
       addLog(`Starting BTC Fetcher on ${network.name}`)
+      addLog(`API: ${network.apiLabel} (~1 req every ${delay / 1000}s)`)
       addLog(`${validAddresses.length} address${validAddresses.length > 1 ? 'es' : ''} to process`)
-      addLog(HAS_TOKEN
-        ? `BlockCypher token active — ~1 req every ${DELAY_MS / 1000}s`
-        : `No BlockCypher token — throttled to ~1 req every ${DELAY_MS / 1000}s. Set VITE_BLOCKCYPHER_TOKEN to speed up.`
-      )
 
       let pending = validAddresses.map((addr, i) => ({ addr, originalIndex: i }))
       let pass = 0
@@ -265,7 +327,7 @@ export default function BtcFetcher() {
         pass++
         if (pass > 1) {
           const backoff = Math.min(30000 * pass, 120000)
-          addLog(`\n=== RETRY PASS ${pass}: ${pending.length} failed address${pending.length > 1 ? 'es' : ''} to retry (waiting ${Math.round(backoff / 1000)}s before retrying) ===`)
+          addLog(`\n=== RETRY PASS ${pass}: ${pending.length} failed address${pending.length > 1 ? 'es' : ''} to retry (waiting ${Math.round(backoff / 1000)}s) ===`)
           await sleep(backoff, signal)
         }
 
@@ -279,8 +341,8 @@ export default function BtcFetcher() {
           addLog(`\n--- ${label} ---`)
           setProgress({ addrIndex: originalIndex, totalAddrs: validAddresses.length, page: 0, found: 0 })
 
-          const { txMap, failed } = await fetchBlockCypherTxRefs(
-            network.blockcypher,
+          const { txMap, failed } = await fetchAddressTxHashes(
+            network,
             addr,
             signal,
             ({ page, found }) => {
@@ -290,11 +352,10 @@ export default function BtcFetcher() {
           )
 
           if (failed) {
-            const partial = txMap.size
-            addLog(`Address FAILED — ${partial} partial hashes collected, will retry`)
+            addLog(`Address FAILED — ${txMap.size} partial hashes collected, will retry`)
             stillFailed.push({ addr, originalIndex })
             if (i < pending.length - 1) {
-              await sleep(DELAY_MS * 3, signal)
+              await sleep(delay * 3, signal)
             }
             continue
           }
@@ -304,7 +365,7 @@ export default function BtcFetcher() {
           const newRows = [...txMap.entries()].map(([hash, meta]) => ({
             address: addr,
             hash,
-            direction: meta.direction || 'incoming',
+            direction: meta.direction || 'unknown',
             blockHeight: meta.blockHeight,
             confirmed: meta.confirmed,
           }))
@@ -315,7 +376,7 @@ export default function BtcFetcher() {
           addLog(`Address done: ${newRows.length} transaction hashes`)
 
           if (i < pending.length - 1) {
-            await sleep(DELAY_MS, signal)
+            await sleep(delay, signal)
           }
         }
 
@@ -461,15 +522,9 @@ export default function BtcFetcher() {
               <option key={n.id} value={n.id}>{n.name}</option>
             ))}
           </select>
-          {HAS_TOKEN ? (
-            <div className="btcfetcher-api-info api-ok">
-              BlockCypher token active — faster rate (~3 requests/sec)
-            </div>
-          ) : (
-            <div className="btcfetcher-api-info">
-              No BlockCypher token — throttled to ~1 request per 6 seconds. Set VITE_BLOCKCYPHER_TOKEN to speed up.
-            </div>
-          )}
+          <div className="btcfetcher-api-info api-ok">
+            {network.rateInfo}
+          </div>
         </section>
 
         <section className="btcfetcher-section">
@@ -604,7 +659,7 @@ export default function BtcFetcher() {
                 spellCheck={false}
               />
               <div className="btcfetcher-direction-filter">
-                {['all', 'incoming', 'outgoing', 'both'].map(opt => (
+                {['all', 'incoming', 'outgoing', 'both', 'unknown'].map(opt => (
                   <button
                     key={opt}
                     className={`btcfetcher-dir-filter-btn ${directionFilter === opt ? 'active' : ''}`}
