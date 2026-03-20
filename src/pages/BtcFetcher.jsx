@@ -11,7 +11,6 @@ const NETWORKS = [
     id: 'btc',
     name: 'Bitcoin (BTC)',
     blockcypher: 'https://api.blockcypher.com/v1/btc/main',
-    mempool: 'https://mempool.space/api',
     explorer: 'https://mempool.space/tx/',
     addressRegex: /^(1[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{25,90})$/,
     addressHint: 'Starts with 1, 3, or bc1',
@@ -20,7 +19,6 @@ const NETWORKS = [
     id: 'ltc',
     name: 'Litecoin (LTC)',
     blockcypher: 'https://api.blockcypher.com/v1/ltc/main',
-    mempool: null,
     explorer: 'https://blockchair.com/litecoin/transaction/',
     addressRegex: /^(L[a-km-zA-HJ-NP-Z1-9]{25,34}|M[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|ltc1[a-zA-HJ-NP-Z0-9]{25,90})$/,
     addressHint: 'Starts with L, M, 3, or ltc1',
@@ -143,82 +141,6 @@ async function fetchBlockCypherTxRefs(baseUrl, address, signal, onProgress, onLo
   return txMap
 }
 
-async function fetchMempoolTxs(baseUrl, address, signal, onProgress, onLog) {
-  const txMap = new Map()
-  let lastTxid = null
-  let page = 1
-
-  while (true) {
-    const url = lastTxid
-      ? `${baseUrl}/address/${address}/txs/chain/${lastTxid}`
-      : `${baseUrl}/address/${address}/txs`
-
-    onLog?.(`[mempool.space] Page ${page}...`)
-    const result = await safeFetch(url, signal)
-
-    if (!result.ok) {
-      onLog?.(`[mempool.space] Error: ${result.status || result.error}`)
-      break
-    }
-
-    const txs = result.data
-    if (!Array.isArray(txs) || txs.length === 0) {
-      onLog?.(`[mempool.space] Page ${page}: no more transactions`)
-      break
-    }
-
-    for (const tx of txs) {
-      const hash = (tx.txid || '').toLowerCase()
-      if (!hash) continue
-      if (txMap.has(hash)) continue
-
-      const addrLower = address.toLowerCase()
-      const isInput = (tx.vin || []).some(v =>
-        v.prevout?.scriptpubkey_address?.toLowerCase() === addrLower
-      )
-      const isOutput = (tx.vout || []).some(v =>
-        v.scriptpubkey_address?.toLowerCase() === addrLower
-      )
-
-      let direction = 'incoming'
-      if (isInput && isOutput) direction = 'both'
-      else if (isInput) direction = 'outgoing'
-
-      txMap.set(hash, {
-        direction,
-        blockHeight: tx.status?.block_height || null,
-        confirmed: tx.status?.confirmed ? tx.status.block_time : null,
-      })
-    }
-
-    onLog?.(`[mempool.space] Page ${page}: ${txs.length} txs, ${txMap.size} unique`)
-    onProgress?.({ page, found: txMap.size })
-
-    if (txs.length < 25) break
-
-    lastTxid = txs[txs.length - 1].txid
-    page++
-    await sleep(500, signal)
-  }
-
-  // Also grab mempool (unconfirmed)
-  try {
-    const mres = await safeFetch(`${baseUrl}/address/${address}/txs/mempool`, signal)
-    if (mres.ok && Array.isArray(mres.data)) {
-      for (const tx of mres.data) {
-        const hash = (tx.txid || '').toLowerCase()
-        if (!hash || txMap.has(hash)) continue
-        txMap.set(hash, { direction: 'incoming', blockHeight: null, confirmed: null })
-      }
-      if (mres.data.length > 0) {
-        onLog?.(`[mempool.space] ${mres.data.length} unconfirmed txs added`)
-      }
-    }
-  } catch { /* ignore unconfirmed errors */ }
-
-  return txMap
-}
-
 function parseAddresses(text) {
   return text
     .split(/[\n,]+/)
@@ -322,7 +244,6 @@ export default function BtcFetcher() {
 
         let txMap = new Map()
 
-        addLog(`Fetching via BlockCypher...`)
         txMap = await fetchBlockCypherTxRefs(
           network.blockcypher,
           addr,
@@ -333,36 +254,7 @@ export default function BtcFetcher() {
           addLog
         )
 
-        const bcCount = txMap.size
-        addLog(`BlockCypher: ${bcCount} unique hashes`)
-
-        if (network.mempool) {
-          addLog(`Cross-checking with mempool.space...`)
-          await sleep(DELAY_MS, signal)
-
-          const mempoolMap = await fetchMempoolTxs(
-            network.mempool,
-            addr,
-            signal,
-            ({ page, found }) => {
-              setProgress({ addrIndex: i, totalAddrs: validAddresses.length, page, found: txMap.size + found })
-            },
-            addLog
-          )
-
-          let newFromMempool = 0
-          for (const [hash, meta] of mempoolMap) {
-            if (!txMap.has(hash)) {
-              txMap.set(hash, meta)
-              newFromMempool++
-            }
-          }
-          if (newFromMempool > 0) {
-            addLog(`mempool.space added ${newFromMempool} new hashes (${txMap.size} total)`)
-          } else {
-            addLog(`mempool.space: no additional hashes (${txMap.size} total)`)
-          }
-        }
+        addLog(`${txMap.size} unique hashes found`)
 
         const newRows = [...txMap.entries()].map(([hash, meta]) => ({
           address: addr,
