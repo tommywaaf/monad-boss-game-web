@@ -288,6 +288,10 @@ function Faucet() {
             <span className="sidebar-icon">₿</span>
             <span className="sidebar-text">BTC Safe-to-Fail</span>
           </Link>
+          <Link to="/btc-fetcher" className={`sidebar-link ${location.pathname === '/btc-fetcher' ? 'active' : ''}`}>
+            <span className="sidebar-icon">🔗</span>
+            <span className="sidebar-text">BTC Fetcher</span>
+          </Link>
           <Link to="/csv-builder" className={`sidebar-link ${location.pathname === '/csv-builder' ? 'active' : ''}`}>
             <span className="sidebar-icon">📊</span>
             <span className="sidebar-text">CSV Builder</span>
