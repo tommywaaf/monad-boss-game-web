@@ -7,14 +7,14 @@ const NETWORKS = [
   {
     id: 'btc',
     name: 'Bitcoin (BTC)',
-    apiType: 'blockchair',
-    apiBase: 'https://api.blockchair.com/bitcoin',
-    apiLabel: 'Blockchair',
-    delayMs: 2500,
+    apiType: 'esplora',
+    apiBase: 'https://mempool.space/api',
+    apiLabel: 'mempool.space',
+    delayMs: 350,
     explorer: 'https://mempool.space/tx/',
     addressRegex: /^(1[a-km-zA-HJ-NP-Z1-9]{25,34}|3[a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{25,90})$/,
     addressHint: 'Starts with 1, 3, or bc1',
-    rateInfo: 'Blockchair — ~30 req/min free, 1000 calls/day without key',
+    rateInfo: 'mempool.space — ~10 req/s soft limit, no hard bans, no daily cap',
   },
   {
     id: 'ltc',
@@ -90,6 +90,82 @@ async function fetchWithRetry(url, signal, onLog, label) {
   }
 }
 
+// mempool.space / Esplora: 25 txs/page, full tx objects with direction info
+async function fetchEsploraTxHashes(apiBase, address, delayMs, signal, onProgress, onLog) {
+  const txMap = new Map()
+  let lastTxid = null
+  let page = 1
+
+  while (true) {
+    const url = lastTxid
+      ? `${apiBase}/address/${address}/txs/chain/${lastTxid}`
+      : `${apiBase}/address/${address}/txs`
+
+    onLog?.(`Page ${page}...`)
+    const result = await fetchWithRetry(url, signal, onLog, 'mempool.space')
+
+    if (result.notFound) {
+      onLog?.(`Address not found (may be unused): ${address}`)
+      return { txMap, failed: false }
+    }
+    if (!result.ok) {
+      onLog?.(`Hard failure for ${address}: ${result.detail || 'unknown'}`)
+      return { txMap, failed: true }
+    }
+
+    const txs = result.data
+    if (!Array.isArray(txs) || txs.length === 0) {
+      if (page === 1) onLog?.(`No transactions found`)
+      break
+    }
+
+    const addrLower = address.toLowerCase()
+    for (const tx of txs) {
+      const hash = (tx.txid || '').toLowerCase()
+      if (!hash || txMap.has(hash)) continue
+
+      const isInput = (tx.vin || []).some(v =>
+        v.prevout?.scriptpubkey_address?.toLowerCase() === addrLower
+      )
+      const isOutput = (tx.vout || []).some(v =>
+        v.scriptpubkey_address?.toLowerCase() === addrLower
+      )
+      let direction = 'incoming'
+      if (isInput && isOutput) direction = 'both'
+      else if (isInput) direction = 'outgoing'
+
+      txMap.set(hash, {
+        direction,
+        blockHeight: tx.status?.block_height || null,
+        confirmed: tx.status?.confirmed ? tx.status.block_time : null,
+      })
+    }
+
+    onLog?.(`Page ${page}: ${txs.length} txs, ${txMap.size} unique`)
+    onProgress?.({ page, found: txMap.size })
+
+    if (txs.length < 25) break
+    lastTxid = txs[txs.length - 1].txid
+    page++
+    await sleep(delayMs, signal)
+  }
+
+  // Unconfirmed mempool txs
+  try {
+    const mres = await safeFetch(`${apiBase}/address/${address}/txs/mempool`, signal)
+    if (mres.ok && Array.isArray(mres.data) && mres.data.length > 0) {
+      for (const tx of mres.data) {
+        const hash = (tx.txid || '').toLowerCase()
+        if (!hash || txMap.has(hash)) continue
+        txMap.set(hash, { direction: 'incoming', blockHeight: null, confirmed: null })
+      }
+      onLog?.(`${mres.data.length} unconfirmed txs added`)
+    }
+  } catch { /* ignore */ }
+
+  return { txMap, failed: false }
+}
+
 // Blockchair: returns tx hashes in dashboard endpoint, paginated via offset
 async function fetchBlockchairTxHashes(apiBase, address, signal, onProgress, onLog) {
   const txMap = new Map()
@@ -144,6 +220,9 @@ async function fetchBlockchairTxHashes(apiBase, address, signal, onProgress, onL
 }
 
 async function fetchAddressTxHashes(network, address, signal, onProgress, onLog) {
+  if (network.apiType === 'esplora') {
+    return fetchEsploraTxHashes(network.apiBase, address, network.delayMs, signal, onProgress, onLog)
+  }
   return fetchBlockchairTxHashes(network.apiBase, address, signal, onProgress, onLog)
 }
 
