@@ -53,8 +53,9 @@ const NETWORKS = [
   { id: 'stellar', name: 'Stellar Mainnet', rpc: 'https://horizon.stellar.org', type: 'stellar', explorer: 'https://stellar.expert/explorer/public/tx/' },
   // Bitcoin-style chains
   { id: 'bitcoin', name: 'Bitcoin (BTC)', rpc: 'https://mempool.space/api', type: 'bitcoin', explorer: 'https://mempool.space/tx/' },
-  { id: 'litecoin', name: 'Litecoin (LTC)', rpc: 'https://api.blockcypher.com/v1/ltc/main', type: 'bitcoin', explorer: 'https://blockchair.com/litecoin/transaction/' },
+  { id: 'litecoin', name: 'Litecoin (LTC)', rpc: 'https://litecoinspace.org/api', type: 'bitcoin', explorer: 'https://litecoinspace.org/tx/' },
   { id: 'bitcoincash', name: 'Bitcoin Cash (BCH)', rpc: 'https://rest.bitcoin.com/v2/rawtransactions', type: 'bitcoincash', explorer: 'https://blockchair.com/bitcoin-cash/transaction/' },
+  { id: 'custom-bitcoin', name: 'Custom Bitcoin RPC...', rpc: '', type: 'bitcoin' },
 ]
 
 // Chain ID to network mapping for auto-detection
@@ -1349,7 +1350,7 @@ function Broadcaster() {
               </optgroup>
             </select>
             
-            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp') ? (
+            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp' || selectedNetwork.id === 'custom-bitcoin') ? (
               <input
                 type="text"
                 value={customRpc}
