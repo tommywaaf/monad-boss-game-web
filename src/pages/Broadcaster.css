@@ -1009,7 +1009,7 @@ section {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.85rem;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .results-table th {
@@ -1114,25 +1114,10 @@ section {
 /* Result column - column 6 when auto mode, column 5 when not */
 .results-table th:nth-child(6),
 .results-table td:nth-child(6) {
-  width: 500px;
-  min-width: 350px;
-  max-width: 600px;
+  min-width: 200px;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  word-break: normal;
-  hyphens: auto;
-}
-
-/* Result column when auto mode is off (column 5) */
-.results-table:not(:has(th:nth-child(2))) th:nth-child(5),
-.results-table:not(:has(th:nth-child(2))) td:nth-child(5) {
-  width: 500px;
-  min-width: 350px;
-  max-width: 600px;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  word-break: normal;
-  hyphens: auto;
+  word-break: break-all;
 }
 
 /* Explorer column - last column */
@@ -1213,14 +1198,10 @@ section {
 }
 
 .result-cell {
-  width: 500px;
-  min-width: 350px;
-  max-width: 600px;
+  min-width: 200px;
   word-wrap: break-word;
   overflow-wrap: break-word;
-  word-break: normal;
-  hyphens: auto;
-  overflow: hidden;
+  word-break: break-all;
 }
 
 .tx-hash {
@@ -1238,6 +1219,8 @@ section {
   transition: all 0.15s ease;
   display: inline-block;
   position: relative;
+  word-break: break-all;
+  white-space: normal;
 }
 
 .tx-hash.clickable:hover {
@@ -1481,8 +1464,7 @@ section {
   }
 
   .result-cell {
-    max-width: 250px;
-    min-width: 200px;
+    min-width: 150px;
     width: auto;
   }
   

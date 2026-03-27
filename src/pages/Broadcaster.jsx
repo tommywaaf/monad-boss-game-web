@@ -1681,7 +1681,7 @@ function Broadcaster() {
                   <tr>
                     <th>#</th>
                     <th>Chain</th>
-                    <th>TX (truncated)</th>
+                    <th>TX</th>
                     <th>Status</th>
                     <th>Tries</th>
                     <th>Result</th>
@@ -1728,7 +1728,7 @@ function Broadcaster() {
                         {result.success ? (
                           <code 
                             className="tx-hash clickable" 
-                            title="Click to copy"
+                            title={result.txHash || 'Click to copy'}
                             onClick={() => copyToClipboard(result.txHash, `hash-${result.index}`)}
                           >
                             {result.txHash}
@@ -1737,10 +1737,10 @@ function Broadcaster() {
                         ) : (
                           <span 
                             className="error-msg clickable" 
-                            title={result.error ? `Full error: ${result.error}\n\nClick to copy` : 'Click to copy'}
+                            title={result.error || 'Click to copy'}
                             onClick={() => copyToClipboard(result.error || '', `error-${result.index}`)}
                           >
-                            {result.error?.slice(0, 40)}{result.error?.length > 40 ? '...' : ''}
+                            {result.error}
                             {copiedId === `error-${result.index}` && <span className="copied-badge">Copied!</span>}
                           </span>
                         )}
