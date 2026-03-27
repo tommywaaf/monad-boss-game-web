@@ -394,9 +394,16 @@ const detectAutoNetworkType = (txPayload) => {
 
     const b0 = parseInt(hex.slice(0, 2), 16)
 
-    // EVM: typed transactions (0x01–0x03) or legacy RLP list (0xc0–0xff)
-    if (b0 === 0x01 || b0 === 0x02 || b0 === 0x03 || b0 >= 0xc0) {
-      return { type: 'evm' }
+    // Bitcoin-style (BTC / LTC / BCH): version field is 4 bytes LE
+    // Version 1 → 01000000, Version 2 → 02000000
+    // Must check before EVM since 0x01/0x02 overlap with EIP-2930/EIP-1559 type bytes.
+    // Bitcoin versions have 3 zero bytes after; EVM typed txs have an RLP list (0xc0+).
+    if (hex.startsWith('01000000') || hex.startsWith('02000000')) {
+      return {
+        type: 'bitcoin',
+        needsUtxoLookup: true,
+        rawHex: hex,
+      }
     }
 
     // XRP: binary-serialized ledger objects always start with the
@@ -410,15 +417,9 @@ const detectAutoNetworkType = (txPayload) => {
       }
     }
 
-    // Bitcoin-style (BTC / LTC / BCH): version field is 4 bytes LE
-    // Version 1 → 01000000, Version 2 → 02000000
-    // Exact chain (BTC vs LTC) determined via UTXO lookup at broadcast time
-    if (hex.startsWith('01000000') || hex.startsWith('02000000')) {
-      return {
-        type: 'bitcoin',
-        needsUtxoLookup: true,
-        rawHex: hex,
-      }
+    // EVM: typed transactions (0x01–0x03) or legacy RLP list (0xc0–0xff)
+    if (b0 === 0x01 || b0 === 0x02 || b0 === 0x03 || b0 >= 0xc0) {
+      return { type: 'evm' }
     }
 
     return null
