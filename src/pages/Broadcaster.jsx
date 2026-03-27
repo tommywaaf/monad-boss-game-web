@@ -326,6 +326,60 @@ const detectSolanaEncoding = (input) => {
   }
 }
 
+// UTXO chain candidates for auto-detection of bitcoin-style transactions
+const UTXO_CHAINS = [
+  { rpc: 'https://mempool.space/api', chainName: 'Bitcoin (BTC)', explorer: 'https://mempool.space/tx/' },
+  { rpc: 'https://litecoinspace.org/api', chainName: 'Litecoin (LTC)', explorer: 'https://litecoinspace.org/tx/' },
+]
+
+// Extract the first input's prev txid from a raw bitcoin-style transaction
+const extractBitcoinPrevTxid = (hex) => {
+  try {
+    let offset = 8 // skip version (4 bytes = 8 hex chars)
+
+    // Check for segwit marker (0x00) + flag (0x01)
+    if (hex.slice(offset, offset + 4) === '0001') {
+      offset += 4
+    }
+
+    // Read varint for input count (just need ≥1 input)
+    const firstByte = parseInt(hex.slice(offset, offset + 2), 16)
+    if (firstByte < 0xfd) {
+      offset += 2
+    } else if (firstByte === 0xfd) {
+      offset += 6
+    } else if (firstByte === 0xfe) {
+      offset += 10
+    } else {
+      offset += 18
+    }
+
+    // Next 32 bytes (64 hex chars) = prev txid in internal byte order
+    const prevTxidInternal = hex.slice(offset, offset + 64)
+    if (prevTxidInternal.length !== 64) return null
+
+    // Reverse byte order to get display txid
+    const prevTxid = prevTxidInternal.match(/.{2}/g).reverse().join('')
+    return prevTxid
+  } catch {
+    return null
+  }
+}
+
+// Look up which UTXO chain a txid exists on
+const detectUtxoChain = async (prevTxid) => {
+  for (const chain of UTXO_CHAINS) {
+    try {
+      const resp = await fetch(`${chain.rpc}/tx/${prevTxid}`, { method: 'GET' })
+      if (resp.ok) {
+        return { type: 'bitcoin', ...chain }
+      }
+    } catch { /* try next chain */ }
+  }
+  // Default to BTC if lookup fails
+  return { type: 'bitcoin', ...UTXO_CHAINS[0] }
+}
+
 // Auto-detect network type from a raw transaction payload
 // Returns { type, rpc, chainName, explorer } or null if unknown
 const detectAutoNetworkType = (txPayload) => {
@@ -358,12 +412,12 @@ const detectAutoNetworkType = (txPayload) => {
 
     // Bitcoin-style (BTC / LTC / BCH): version field is 4 bytes LE
     // Version 1 → 01000000, Version 2 → 02000000
+    // Exact chain (BTC vs LTC) determined via UTXO lookup at broadcast time
     if (hex.startsWith('01000000') || hex.startsWith('02000000')) {
       return {
         type: 'bitcoin',
-        rpc: 'https://mempool.space/api',
-        chainName: 'Bitcoin (BTC)',
-        explorer: 'https://mempool.space/tx/',
+        needsUtxoLookup: true,
+        rawHex: hex,
       }
     }
 
@@ -1097,6 +1151,9 @@ function Broadcaster() {
     const newResults = []
     const delay = getDelay()
 
+    // Cache for UTXO chain detection (lookup first bitcoin-style tx, reuse for rest)
+    let cachedUtxoChain = null
+
     // Process transactions one at a time with rate limiting
     for (let i = 0; i < transactions.length; i++) {
       if (signal.aborted) break
@@ -1105,7 +1162,20 @@ function Broadcaster() {
       const txStartTime = Date.now()
 
       // Get chain info (for auto mode, this decodes the tx)
-      const chainInfo = getChainInfo(tx)
+      let chainInfo = getChainInfo(tx)
+
+      // For bitcoin-style txs in auto mode, detect chain via UTXO lookup (first tx only)
+      if (chainInfo.needsUtxoLookup) {
+        if (!cachedUtxoChain) {
+          const prevTxid = extractBitcoinPrevTxid(chainInfo.rawHex)
+          if (prevTxid) {
+            cachedUtxoChain = await detectUtxoChain(prevTxid)
+          } else {
+            cachedUtxoChain = { type: 'bitcoin', ...UTXO_CHAINS[0] }
+          }
+        }
+        chainInfo = { ...chainInfo, ...cachedUtxoChain }
+      }
 
       // Broadcast with retry support, using chain-specific RPC and type for auto mode
       const result = await broadcastWithRetry(tx, signal, null, chainInfo.rpc, chainInfo.type || null)
