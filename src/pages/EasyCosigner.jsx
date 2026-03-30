@@ -149,7 +149,7 @@ function EasyCosigner() {
       setCallbackPublicKey('')
       setAdvancedOpen(false)
       setSuccessMsg(
-        'Pairing token submitted! In about 30\u2013120 seconds, the workspace owner should receive MPC key approval notifications in the Fireblocks console.'
+        'Pairing token submitted! In about 30\u2013120 seconds, the workspace owner should receive MPC key approval notifications in their mobile app.'
       )
 
       const interval = pollStatus(data.id)
