@@ -985,6 +985,10 @@ function BtcSafeToFail() {
             <span className="sidebar-icon">🛡️</span>
             <span className="sidebar-text">Callback Handler</span>
           </Link>
+          <Link to="/easy-cosigner" className={`sidebar-link ${location.pathname === '/easy-cosigner' ? 'active' : ''}`}>
+            <span className="sidebar-icon">🔐</span>
+            <span className="sidebar-text">Easy Cosigner</span>
+          </Link>
         </div>
       </nav>
 

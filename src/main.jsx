@@ -21,6 +21,7 @@ import CsvBuilder from './pages/CsvBuilder.jsx'
 import Faucet from './pages/Faucet.jsx'
 import WebhookTester from './pages/WebhookTester.jsx'
 import CallbackHandler from './pages/CallbackHandler.jsx'
+import EasyCosigner from './pages/EasyCosigner.jsx'
 
 // Get Dynamic Environment ID from environment variable
 const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
@@ -130,6 +131,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/faucet" element={<Faucet />} />
         <Route path="/webhook-tester" element={<WebhookTester />} />
         <Route path="/callback-handler" element={<CallbackHandler />} />
+        <Route path="/easy-cosigner" element={<EasyCosigner />} />
         <Route path="/*" element={<MainApp />} />
       </Routes>
     </BrowserRouter>
