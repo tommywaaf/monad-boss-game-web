@@ -50,10 +50,21 @@ function EasyCosigner() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
-  const [submissions, setSubmissions] = useState([])
+  const [submissions, setSubmissions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ecs_submissions')
+      return saved ? JSON.parse(saved) : []
+    } catch { return [] }
+  })
   const [pubKeyVisible, setPubKeyVisible] = useState(false)
   const pollRef = useRef(null)
   const mountedRef = useRef(true)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ecs_submissions', JSON.stringify(submissions))
+    } catch { /* noop */ }
+  }, [submissions])
 
   useEffect(() => {
     document.title = 'Easy Cosigner'
@@ -86,6 +97,12 @@ function EasyCosigner() {
   const pollIntervals = useRef(new Map())
 
   useEffect(() => {
+    for (const sub of submissions) {
+      if ((sub.status === 'pending' || sub.status === 'picked_up') && !pollIntervals.current.has(sub.id)) {
+        const interval = pollStatus(sub.id)
+        pollIntervals.current.set(sub.id, interval)
+      }
+    }
     return () => {
       for (const interval of pollIntervals.current.values()) {
         clearInterval(interval)
@@ -218,6 +235,23 @@ function EasyCosigner() {
             Paste a pairing token from the Fireblocks console to pair a new API user with the co-signer.
             The token will be picked up automatically by the cosigner agent.
           </p>
+          <div className="ecs-setup-form">
+            <div className="ecs-info-banner">
+              <div className="ecs-info-row">
+                <span className="ecs-info-label">Cosigner Public Key</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <button className="ecs-pubkey-toggle" onClick={() => setPubKeyVisible(v => !v)}>
+                    <span className={`ecs-chevron ${pubKeyVisible ? 'open' : ''}`}>&#9654;</span>
+                    {pubKeyVisible ? 'Hide' : 'Show'} Public Key
+                  </button>
+                  {pubKeyVisible && (
+                    <pre className="ecs-pubkey-pre">{COSIGNER_PUBLIC_KEY}</pre>
+                  )}
+                </div>
+                <CopyButton text={COSIGNER_PUBLIC_KEY} />
+              </div>
+            </div>
+          </div>
           <div className="ecs-setup-form">
             <label className="ecs-setup-label">Pairing Token</label>
             <textarea
