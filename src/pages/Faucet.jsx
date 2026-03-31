@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './Faucet.css'
 
 const FAUCET_API = 'https://delicate-haze-2a16.tm8six.workers.dev'
@@ -353,6 +354,7 @@ function Faucet() {
           </section>
         ))}
       </div>
+      <ToolInfoPanel toolId="faucet" />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './CallbackHandler.css'
 
 const API_BASE = 'https://delicate-haze-2a16.tm8six.workers.dev'
@@ -731,6 +732,7 @@ function CallbackHandler() {
           </div>
         </div>
       )}
+      <ToolInfoPanel toolId="callback-handler" />
     </div>
   )
 

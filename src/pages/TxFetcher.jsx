@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './TxFetcher.css'
 
 const ETHERSCAN_API_KEY = import.meta.env.VITE_ETHERSCAN_API_KEY || ''
@@ -784,6 +785,7 @@ export default function TxFetcher() {
           </div>
         )}
       </div>
+      <ToolInfoPanel toolId="tx-fetcher" />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './Broadcaster.css'
 
 const NETWORKS = [
@@ -1904,6 +1905,7 @@ function Broadcaster() {
           </section>
         )}
       </div>
+      <ToolInfoPanel toolId="broadcaster" />
     </div>
   )
 }

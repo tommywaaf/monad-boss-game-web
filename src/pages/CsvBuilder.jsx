@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './CsvBuilder.css'
 
 const makeColumn = () => ({ id: crypto.randomUUID(), label: '', staticValue: '', lines: '' })
@@ -322,6 +323,7 @@ function CsvBuilder() {
           </section>
         )}
       </div>
+      <ToolInfoPanel toolId="csv-builder" />
     </div>
   )
 }

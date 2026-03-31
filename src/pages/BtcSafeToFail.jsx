@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './BtcSafeToFail.css'
 
 // ─── API endpoints ────────────────────────────────────────────────────────────
@@ -1212,6 +1213,7 @@ function BtcSafeToFail() {
           </div>
         )}
       </div>
+      <ToolInfoPanel toolId="btc-safe-to-fail" />
     </div>
   )
 }

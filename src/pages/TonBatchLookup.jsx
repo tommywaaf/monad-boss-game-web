@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './TonBatchLookup.css'
 
 const TONCENTER = "https://toncenter.com"
@@ -906,6 +907,7 @@ function TonBatchLookup() {
           </div>
         )}
       </div>
+      <ToolInfoPanel toolId="ton-batch-lookup" />
     </div>
   )
 }

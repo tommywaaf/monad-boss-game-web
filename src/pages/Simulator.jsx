@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { createPublicClient, http, recoverTransactionAddress, parseTransaction, formatEther, formatGwei, isAddress, decodeErrorResult } from 'viem'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './Simulator.css'
 
 // Standard Solidity error ABIs
@@ -1796,6 +1797,7 @@ function Simulator() {
           </section>
         )}
       </div>
+      <ToolInfoPanel toolId="simulator" />
     </div>
   )
 }

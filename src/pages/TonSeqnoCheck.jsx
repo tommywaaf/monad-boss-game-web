@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './TonSeqnoCheck.css'
 
 const TONCENTER = "https://toncenter.com"
@@ -881,6 +882,7 @@ function TonSeqnoCheck() {
           )}
         </div>
       </div>
+      <ToolInfoPanel toolId="ton-seqno-check" />
     </div>
   )
 }

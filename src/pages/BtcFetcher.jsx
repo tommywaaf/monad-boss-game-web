@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './BtcFetcher.css'
 
 const NETWORKS = [
@@ -771,6 +772,7 @@ export default function BtcFetcher() {
           </div>
         )}
       </div>
+      <ToolInfoPanel toolId="btc-fetcher" />
     </div>
   )
 }

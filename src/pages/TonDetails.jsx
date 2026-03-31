@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
+import ToolInfoPanel from '../components/ToolInfoPanel'
 import './TonDetails.css'
 
 const TONCENTER = "https://toncenter.com"
@@ -579,6 +580,7 @@ function TonDetails() {
           </div>
         )}
       </div>
+      <ToolInfoPanel toolId="ton-details" />
     </div>
   )
 }
