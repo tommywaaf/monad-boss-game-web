@@ -46,7 +46,7 @@ const NETWORKS = [
   { id: 'xdc', name: 'XDC Network', rpc: 'https://rpc.xinfin.network', type: 'evm', chainId: 50, explorer: 'https://xdcscan.io/tx/' },
   { id: 'zkevm', name: 'Polygon zkEVM', rpc: 'https://zkevm-rpc.com', type: 'evm', chainId: 1101, explorer: 'https://zkevm.polygonscan.com/tx/' },
   // Solana Networks
-  { id: 'solana', name: 'Solana Mainnet (QuickNode)', rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/', type: 'solana', explorer: 'https://solscan.io/tx/' },
+  { id: 'solana', name: 'Solana Mainnet', rpc: 'https://api.mainnet-beta.solana.com', type: 'solana', explorer: 'https://solscan.io/tx/' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
   // XRP Ledger
   { id: 'xrp', name: 'XRP Mainnet', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
@@ -430,7 +430,7 @@ const detectAutoNetworkType = (txPayload) => {
   if (/^[1-9A-HJ-NP-Za-km-z]{87,}$/.test(trimmed)) {
     return {
       type: 'solana',
-      rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/',
+      rpc: 'https://api.mainnet-beta.solana.com',
       chainName: 'Solana Mainnet',
       explorer: 'https://solscan.io/tx/',
     }
@@ -443,7 +443,7 @@ const detectAutoNetworkType = (txPayload) => {
       if (decoded.length >= 64) {
         return {
           type: 'solana',
-          rpc: 'https://delicate-misty-flower.solana-mainnet.quiknode.pro/9428bcea652ef50dc68b571c3cda0f9221534b40/',
+          rpc: 'https://api.mainnet-beta.solana.com',
           chainName: 'Solana Mainnet',
           explorer: 'https://solscan.io/tx/',
         }
