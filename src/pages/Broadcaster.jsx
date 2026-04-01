@@ -46,7 +46,7 @@ const NETWORKS = [
   { id: 'xdc', name: 'XDC Network', rpc: 'https://rpc.xinfin.network', type: 'evm', chainId: 50, explorer: 'https://xdcscan.io/tx/' },
   { id: 'zkevm', name: 'Polygon zkEVM', rpc: 'https://zkevm-rpc.com', type: 'evm', chainId: 1101, explorer: 'https://zkevm.polygonscan.com/tx/' },
   // Solana Networks
-  { id: 'solana', name: 'Solana Mainnet', rpc: 'https://solana-rpc.publicnode.com', type: 'solana', explorer: 'https://solscan.io/tx/' },
+  { id: 'solana', name: 'Solana Mainnet', rpc: 'https://api.mainnet-beta.solana.com', type: 'solana', explorer: 'https://solscan.io/tx/' },
   { id: 'custom-solana', name: 'Custom Solana RPC...', rpc: '', type: 'solana' },
   // XRP Ledger
   { id: 'xrp', name: 'XRP Mainnet', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
@@ -102,10 +102,14 @@ const CHAIN_ID_MAP = {
 
 // Cortex RPC has no CORS; we proxy on our server (same as curl from server)
 const CORTEX_RPC = 'https://security.cortexlabs.ai:30088'
+// Solana public RPC blocks sendTransaction from browsers; proxy via server
+const SOLANA_RPC = 'https://api.mainnet-beta.solana.com'
 const effectiveRpcUrl = (url) => {
   if (!url) return url
   if (import.meta.env.DEV && url === CORTEX_RPC) return '/rpc/cortex'
   if (!import.meta.env.DEV && url === CORTEX_RPC) return '/api/cortex-rpc'
+  if (import.meta.env.DEV && url === SOLANA_RPC) return '/rpc/solana'
+  if (!import.meta.env.DEV && url === SOLANA_RPC) return '/api/solana-rpc'
   return url
 }
 
@@ -430,7 +434,7 @@ const detectAutoNetworkType = (txPayload) => {
   if (/^[1-9A-HJ-NP-Za-km-z]{87,}$/.test(trimmed)) {
     return {
       type: 'solana',
-      rpc: 'https://solana-rpc.publicnode.com',
+      rpc: 'https://api.mainnet-beta.solana.com',
       chainName: 'Solana Mainnet',
       explorer: 'https://solscan.io/tx/',
     }
@@ -443,7 +447,7 @@ const detectAutoNetworkType = (txPayload) => {
       if (decoded.length >= 64) {
         return {
           type: 'solana',
-          rpc: 'https://solana-rpc.publicnode.com',
+          rpc: 'https://api.mainnet-beta.solana.com',
           chainName: 'Solana Mainnet',
           explorer: 'https://solscan.io/tx/',
         }

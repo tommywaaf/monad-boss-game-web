@@ -43,6 +43,12 @@ export default defineConfig({
         target: 'https://security.cortexlabs.ai:30088',
         changeOrigin: true,
       },
+      // Solana public RPC blocks sendTransaction from browsers; proxy in dev
+      '/rpc/solana': {
+        target: 'https://api.mainnet-beta.solana.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/rpc\/solana/, ''),
+      },
     },
   },
 })
