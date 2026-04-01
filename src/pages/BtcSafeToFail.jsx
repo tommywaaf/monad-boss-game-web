@@ -17,6 +17,7 @@ const CHAINS = {
     mempoolSite:           'https://mempool.space',
     mempoolLabel:          'mempool',
     sochain:               'https://sochain.com/api/v2/get_tx/BTC',
+    hasSochain:            true,
     blockchainCom:         'https://blockchain.info',
     hasBlockchainCom:      true,
     blockcypherExplorer:   'https://live.blockcypher.com/btc',
@@ -32,7 +33,8 @@ const CHAINS = {
     mempoolApi:            'https://litecoinspace.org/api',
     mempoolSite:           'https://litecoinspace.org',
     mempoolLabel:          'ltcspace',
-    sochain:               'https://sochain.com/api/v2/get_tx/LTC',
+    sochain:               null,
+    hasSochain:            false,
     blockchainCom:         null,
     hasBlockchainCom:      false,
     blockcypherExplorer:   'https://live.blockcypher.com/ltc',
@@ -181,7 +183,9 @@ async function analyzeTx(txid, chainCfg) {
       ? safeFetch(`${chainCfg.blockchainCom}/rawtx/${txid}?cors=true`)
       : Promise.resolve({ ok: false, skipped: true }),
     safeFetch(`${chainCfg.mempoolApi}/tx/${txid}`),
-    safeFetch(`${chainCfg.sochain}/${txid}`, 10000),
+    chainCfg.hasSochain
+      ? safeFetch(`${chainCfg.sochain}/${txid}`, 10000)
+      : Promise.resolve({ ok: false, skipped: true }),
   ])
 
   const cyData = cyRes.ok ? cyRes.data : null
@@ -193,7 +197,9 @@ async function analyzeTx(txid, chainCfg) {
     const providers = {
       blockcypher:  cyRes.notFound ? 'not found' : `error (${cyRes.error || cyRes.httpStatus})`,
       mempoolSpace: msRes.notFound ? 'not found' : `error (${msRes.error || msRes.httpStatus})`,
-      sochain:      scRes.notFound ? 'not found' : `error (${scRes.error || scRes.httpStatus})`,
+    }
+    if (chainCfg.hasSochain) {
+      providers.sochain = scRes.notFound ? 'not found' : `error (${scRes.error || scRes.httpStatus})`
     }
     if (chainCfg.hasBlockchainCom) {
       providers.blockchainCom = bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`
@@ -446,7 +452,9 @@ async function analyzeTx(txid, chainCfg) {
   const providers = {
     blockcypher:  cyData ? 'ok' : (cyRes.notFound  ? 'not found' : `error (${cyRes.error  || cyRes.httpStatus})`),
     mempoolSpace: msData ? 'ok' : (msRes.notFound  ? 'not found' : `error (${msRes.error  || msRes.httpStatus})`),
-    sochain:      scData ? 'ok' : (scRes.notFound  ? 'not found' : `error (${scRes.error  || scRes.httpStatus})`),
+  }
+  if (chainCfg.hasSochain) {
+    providers.sochain = scData ? 'ok' : (scRes.notFound ? 'not found' : `error (${scRes.error || scRes.httpStatus})`)
   }
   if (chainCfg.hasBlockchainCom) {
     providers.blockchainCom = bcData ? 'ok' : (bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`)
