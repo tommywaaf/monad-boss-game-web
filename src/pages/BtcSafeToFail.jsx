@@ -4,28 +4,57 @@ import { trackUsage } from '../utils/counter'
 import ToolInfoPanel from '../components/ToolInfoPanel'
 import './BtcSafeToFail.css'
 
-// ─── API endpoints ────────────────────────────────────────────────────────────
-const BLOCKCYPHER    = 'https://api.blockcypher.com/v1/btc/main'
-const BLOCKCHAIN_COM = 'https://blockchain.info'
-const SOCHAIN        = 'https://sochain.com/api/v2/get_tx/BTC'
+// ─── Chain configurations ────────────────────────────────────────────────────
+const CHAINS = {
+  btc: {
+    id: 'btc',
+    label: 'BTC',
+    name: 'Bitcoin',
+    symbol: 'BTC',
+    icon: '₿',
+    blockcypher:           'https://api.blockcypher.com/v1/btc/main',
+    mempoolApi:            'https://mempool.space/api',
+    mempoolSite:           'https://mempool.space',
+    mempoolLabel:          'mempool',
+    sochain:               'https://sochain.com/api/v2/get_tx/BTC',
+    blockchainCom:         'https://blockchain.info',
+    hasBlockchainCom:      true,
+    blockcypherExplorer:   'https://live.blockcypher.com/btc',
+    blockchainComExplorer: 'https://www.blockchain.com/explorer/transactions/btc',
+  },
+  ltc: {
+    id: 'ltc',
+    label: 'LTC',
+    name: 'Litecoin',
+    symbol: 'LTC',
+    icon: 'Ł',
+    blockcypher:           'https://api.blockcypher.com/v1/ltc/main',
+    mempoolApi:            'https://litecoinspace.org/api',
+    mempoolSite:           'https://litecoinspace.org',
+    mempoolLabel:          'ltcspace',
+    sochain:               'https://sochain.com/api/v2/get_tx/LTC',
+    blockchainCom:         null,
+    hasBlockchainCom:      false,
+    blockcypherExplorer:   'https://live.blockcypher.com/ltc',
+    blockchainComExplorer: null,
+  },
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const TXID_RE = /^[0-9a-fA-F]{64}$/
 
-function extractTxid(raw) {
+function extractTxid(raw, chainCfg) {
   raw = raw.trim()
   if (TXID_RE.test(raw)) return raw.toLowerCase()
   try {
     const url = new URL(raw)
     const path = url.pathname.replace(/^\/+|\/+$/g, '')
-    // mempool.space/tx/{txid}  |  blockchain.com/explorer/transactions/btc/{txid}
-    // blockcypher.com/btc/main/txs/{txid}  |  blockstream.info/tx/{txid}
-    const m = path.match(/(?:btc\/)?txs?\/([0-9a-fA-F]{64})$/)
+    const m = path.match(/(?:(?:btc|ltc)\/)?txs?\/([0-9a-fA-F]{64})$/)
     if (m) return m[1].toLowerCase()
   } catch { /* not a URL */ }
   throw new Error(
-    `Cannot extract a valid BTC txid from: "${raw.slice(0, 80)}"\n` +
-    'Expected a 64-hex string or a URL from blockchain.com / blockcypher.com / mempool.space.'
+    `Cannot extract a valid ${chainCfg.label} txid from: "${raw.slice(0, 80)}"\n` +
+    `Expected a 64-hex string or a URL from ${chainCfg.mempoolSite} / blockcypher.com.`
   )
 }
 
@@ -60,11 +89,8 @@ function copyToClipboard(text) {
 }
 
 // ─── Address balance fetch ────────────────────────────────────────────────────
-// Returns { addr, finalBalance (sats), confirmedBalance, unconfirmedBalance,
-//           totalReceived, totalSent, nTx, source, error }
-async function fetchAddressBalance(addr) {
-  // Primary: BlockCypher /addrs/{addr}/balance  (clean JSON, good CORS)
-  const cyRes = await safeFetch(`${BLOCKCYPHER}/addrs/${addr}/balance`)
+async function fetchAddressBalance(addr, chainCfg) {
+  const cyRes = await safeFetch(`${chainCfg.blockcypher}/addrs/${addr}/balance`)
   if (cyRes.ok) {
     const d = cyRes.data
     return {
@@ -80,34 +106,35 @@ async function fetchAddressBalance(addr) {
     }
   }
 
-  // Fallback: Blockchain.com /balance?active={addr}&cors=true
-  const bcRes = await safeFetch(`${BLOCKCHAIN_COM}/balance?active=${addr}&cors=true`)
-  if (bcRes.ok && bcRes.data?.[addr]) {
-    const d = bcRes.data[addr]
-    return {
-      addr,
-      finalBalance:       d.final_balance  ?? null,
-      confirmedBalance:   d.final_balance  ?? null,
-      unconfirmedBalance: 0,
-      totalReceived:      d.total_received ?? null,
-      totalSent:          d.total_sent     ?? null,
-      nTx:                d.n_tx          ?? null,
-      source: 'Blockchain.com',
-      error:  false,
+  if (chainCfg.hasBlockchainCom) {
+    const bcRes = await safeFetch(`${chainCfg.blockchainCom}/balance?active=${addr}&cors=true`)
+    if (bcRes.ok && bcRes.data?.[addr]) {
+      const d = bcRes.data[addr]
+      return {
+        addr,
+        finalBalance:       d.final_balance  ?? null,
+        confirmedBalance:   d.final_balance  ?? null,
+        unconfirmedBalance: 0,
+        totalReceived:      d.total_received ?? null,
+        totalSent:          d.total_sent     ?? null,
+        nTx:                d.n_tx          ?? null,
+        source: 'Blockchain.com',
+        error:  false,
+      }
     }
   }
 
   return { addr, finalBalance: null, error: true, source: null }
 }
 
-// ─── Helper: parse SoChain input value (BTC string) → satoshis ────────────────
+// ─── Helper: parse SoChain input value (coin string) → satoshis ──────────────
 function scSats(btcStr) {
   if (btcStr == null) return null
   const n = parseFloat(btcStr)
   return isNaN(n) ? null : Math.round(n * 1e8)
 }
 
-// ─── Helper: build a replacingTx object from BlockCypher or mempool.space data ─
+// ─── Helper: build a replacingTx object from BlockCypher or mempool-style data
 function buildReplacingTx(cyData, msData) {
   if (cyData) {
     return {
@@ -146,36 +173,32 @@ function buildReplacingTx(cyData, msData) {
 }
 
 // ─── Core analysis ────────────────────────────────────────────────────────────
-async function analyzeTx(txid) {
-  // ── Step 1: Parallel-fetch four providers ─────────────────────────────────
-  // SoChain v2 is the key addition over the original three:
-  //   • Returns inputs[].from_output.txid — actual prevTxid hashes that
-  //     blockchain.com withholds (it only exposes internal integer tx_index IDs)
-  //   • Caches dropped/replaced transactions much longer than mempool.space
+async function analyzeTx(txid, chainCfg) {
+  // ── Step 1: Parallel-fetch providers ──────────────────────────────────────
   const [cyRes, bcRes, msRes, scRes] = await Promise.all([
-    safeFetch(`${BLOCKCYPHER}/txs/${txid}?limit=50&includeHex=false`),
-    safeFetch(`${BLOCKCHAIN_COM}/rawtx/${txid}?cors=true`),
-    safeFetch(`https://mempool.space/api/tx/${txid}`),
-    safeFetch(`${SOCHAIN}/${txid}`, 10000),
+    safeFetch(`${chainCfg.blockcypher}/txs/${txid}?limit=50&includeHex=false`),
+    chainCfg.hasBlockchainCom
+      ? safeFetch(`${chainCfg.blockchainCom}/rawtx/${txid}?cors=true`)
+      : Promise.resolve({ ok: false, skipped: true }),
+    safeFetch(`${chainCfg.mempoolApi}/tx/${txid}`),
+    safeFetch(`${chainCfg.sochain}/${txid}`, 10000),
   ])
 
   const cyData = cyRes.ok ? cyRes.data : null
   const bcData = bcRes.ok ? bcRes.data : null
   const msData = msRes.ok ? msRes.data : null
-  // SoChain wraps the payload inside a "data" key
   const scData = (scRes.ok && scRes.data?.status === 'success') ? scRes.data.data : null
 
   if (!cyData && !bcData && !msData && !scData) {
-    return {
-      status: 'NOT_FOUND',
-      txid,
-      providers: {
-        blockcypher:   cyRes.notFound ? 'not found' : `error (${cyRes.error || cyRes.httpStatus})`,
-        blockchainCom: bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`,
-        mempoolSpace:  msRes.notFound ? 'not found' : `error (${msRes.error || msRes.httpStatus})`,
-        sochain:       scRes.notFound ? 'not found' : `error (${scRes.error || scRes.httpStatus})`,
-      },
+    const providers = {
+      blockcypher:  cyRes.notFound ? 'not found' : `error (${cyRes.error || cyRes.httpStatus})`,
+      mempoolSpace: msRes.notFound ? 'not found' : `error (${msRes.error || msRes.httpStatus})`,
+      sochain:      scRes.notFound ? 'not found' : `error (${scRes.error || scRes.httpStatus})`,
     }
+    if (chainCfg.hasBlockchainCom) {
+      providers.blockchainCom = bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`
+    }
+    return { status: 'NOT_FOUND', txid, providers }
   }
 
   // ── Step 2: Confirmation / block info ─────────────────────────────────────
@@ -205,8 +228,6 @@ async function analyzeTx(txid) {
   }
 
   // ── Step 4: Build inputs ──────────────────────────────────────────────────
-  // prevTxid priority: BlockCypher → mempool.space → SoChain → (bc.com has none)
-  // SoChain provides from_output.txid — the crucial field bc.com doesn't expose.
   let inputs = []
   const maxLen = Math.max(
     cyData?.inputs?.length  ?? 0,
@@ -218,11 +239,11 @@ async function analyzeTx(txid) {
     const cy = cyData?.inputs?.[i]
     const ms = msData?.vin?.[i]
     const bc = bcData?.inputs?.[i]
-    const sc = scData?.inputs?.[i]   // SoChain: { from_output: { txid, output_no }, address, value }
+    const sc = scData?.inputs?.[i]
     const isCoinbase =
       cy?.prev_hash === '0000000000000000000000000000000000000000000000000000000000000000' ||
       ms?.is_coinbase === true ||
-      sc?.from_output == null && sc != null  // SoChain coinbase has no from_output
+      sc?.from_output == null && sc != null
     inputs.push({
       prevTxid:    cy?.prev_hash
                 || (isCoinbase ? null : ms?.txid)
@@ -276,24 +297,17 @@ async function analyzeTx(txid) {
   const rbf      = isRbfSignaled(inputs) || !!bcData?.rbf
 
   // ── Step 6: Early replacing-TX fetch + input enrichment ───────────────────
-  // KEY INSIGHT: An RBF replacement MUST reuse the exact same input UTXOs.
-  // So if BlockCypher already tells us the replacing TX hash, we can fetch it
-  // NOW (before UTXO checks) and cross-reference its inputs — which DO have
-  // prevTxid hashes from BlockCypher/mempool — to fill gaps in our inputs.
-  // This makes the UTXO outspend checks actually work for bc.com-only TXs.
   let replacingTx = null
   if (replacedBy) {
     const [repCyRes, repMsRes] = await Promise.all([
-      safeFetch(`${BLOCKCYPHER}/txs/${replacedBy}?limit=50&includeHex=false`),
-      safeFetch(`https://mempool.space/api/tx/${replacedBy}`),
+      safeFetch(`${chainCfg.blockcypher}/txs/${replacedBy}?limit=50&includeHex=false`),
+      safeFetch(`${chainCfg.mempoolApi}/tx/${replacedBy}`),
     ])
     replacingTx = buildReplacingTx(
       repCyRes.ok ? repCyRes.data : null,
       repMsRes.ok ? repMsRes.data : null,
     )
 
-    // Enrich inputs that are missing prevTxid by matching against replacing TX inputs.
-    // Match priority: same address, then same outputIndex as fallback.
     if (replacingTx?.inputs?.length > 0) {
       inputs = inputs.map(inp => {
         if (inp.prevTxid != null || inp.isCoinbase) return inp
@@ -308,7 +322,6 @@ async function analyzeTx(txid) {
           ...inp,
           prevTxid:    match.prevTxid,
           outputIndex: inp.outputIndex ?? match.outputIndex,
-          // fill address/value from replacing TX if still missing
           address:     inp.address    ?? match.address,
           valueSats:   inp.valueSats  ?? match.valueSats,
           enrichedFromReplacingTx: true,
@@ -318,19 +331,16 @@ async function analyzeTx(txid) {
   }
 
   // ── Step 7: UTXO-level outspend checks ────────────────────────────────────
-  // Inputs are now enriched with prevTxids from SoChain (Step 4) or the
-  // replacing TX (Step 6), so Method 1 (mempool.space /outspend) should
-  // succeed in cases that previously fell through to "status unavailable".
   const checkableInputs = inputs.filter(
     i => !i.isCoinbase && (i.prevTxid || i.bcTxIndex != null) && i.outputIndex != null
   )
   const utxoSpendChecks = checkableInputs.length > 0
     ? await Promise.all(checkableInputs.map(async inp => {
 
-        // ── Method 1: mempool.space /outspend ──
+        // ── Method 1: mempool-style /outspend ──
         if (inp.prevTxid) {
           const msRes = await safeFetch(
-            `https://mempool.space/api/tx/${inp.prevTxid}/outspend/${inp.outputIndex}`
+            `${chainCfg.mempoolApi}/tx/${inp.prevTxid}/outspend/${inp.outputIndex}`
           )
           if (msRes.ok) {
             const d = msRes.data
@@ -345,15 +355,15 @@ async function analyzeTx(txid) {
               spentByThisTx:    msTxid === txid,
               spentConfirmed:   d.status?.confirmed    || false,
               spentBlockHeight: d.status?.block_height || null,
-              method:           'mempool.space',
+              method:           chainCfg.mempoolLabel,
             }
           }
         }
 
-        // ── Method 2: blockchain.com prev-tx by tx_index ──
-        if (inp.bcTxIndex != null) {
+        // ── Method 2: blockchain.com prev-tx by tx_index (BTC only) ──
+        if (chainCfg.hasBlockchainCom && inp.bcTxIndex != null) {
           const bcPrevRes = await safeFetch(
-            `${BLOCKCHAIN_COM}/rawtx/${inp.bcTxIndex}?cors=true`
+            `${chainCfg.blockchainCom}/rawtx/${inp.bcTxIndex}?cors=true`
           )
           if (bcPrevRes.ok) {
             const prevTx       = bcPrevRes.data
@@ -369,7 +379,7 @@ async function analyzeTx(txid) {
               if (spent && outEntry.spending_outpoints?.length > 0) {
                 const spendIdx = outEntry.spending_outpoints[0].tx_index
                 const spendRes = await safeFetch(
-                  `${BLOCKCHAIN_COM}/rawtx/${spendIdx}?cors=true`
+                  `${chainCfg.blockchainCom}/rawtx/${spendIdx}?cors=true`
                 )
                 if (spendRes.ok) {
                   spentByTxid      = spendRes.data.hash?.toLowerCase() || null
@@ -407,13 +417,11 @@ async function analyzeTx(txid) {
   if (spentElsewhere && !confirmedByAnyProvider) {
     status = 'REPLACED'
     if (spentElsewhere.spentByTxid) {
-      // If UTXO checks found a different replacedBy than the early fetch used,
-      // we need to re-fetch the replacingTx with the authoritative txid.
       if (spentElsewhere.spentByTxid !== replacedBy) {
         replacedBy = spentElsewhere.spentByTxid
         const [repCyRes2, repMsRes2] = await Promise.all([
-          safeFetch(`${BLOCKCYPHER}/txs/${replacedBy}?limit=50&includeHex=false`),
-          safeFetch(`https://mempool.space/api/tx/${replacedBy}`),
+          safeFetch(`${chainCfg.blockcypher}/txs/${replacedBy}?limit=50&includeHex=false`),
+          safeFetch(`${chainCfg.mempoolApi}/tx/${replacedBy}`),
         ])
         replacingTx = buildReplacingTx(
           repCyRes2.ok ? repCyRes2.data : null,
@@ -432,8 +440,17 @@ async function analyzeTx(txid) {
     ...new Set(inputs.filter(i => !i.isCoinbase && i.address).map(i => i.address))
   ].slice(0, 5)
   const sourceBalances = uniqueInputAddrs.length > 0
-    ? await Promise.all(uniqueInputAddrs.map(fetchAddressBalance))
+    ? await Promise.all(uniqueInputAddrs.map(a => fetchAddressBalance(a, chainCfg)))
     : []
+
+  const providers = {
+    blockcypher:  cyData ? 'ok' : (cyRes.notFound  ? 'not found' : `error (${cyRes.error  || cyRes.httpStatus})`),
+    mempoolSpace: msData ? 'ok' : (msRes.notFound  ? 'not found' : `error (${msRes.error  || msRes.httpStatus})`),
+    sochain:      scData ? 'ok' : (scRes.notFound  ? 'not found' : `error (${scRes.error  || scRes.httpStatus})`),
+  }
+  if (chainCfg.hasBlockchainCom) {
+    providers.blockchainCom = bcData ? 'ok' : (bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`)
+  }
 
   return {
     status,
@@ -455,12 +472,7 @@ async function analyzeTx(txid) {
     size:      bcData?.size  || cyData?.size  || msData?.size  || scData?.size  || null,
     vsize:     cyData?.vsize || (msData?.weight ? Math.ceil(msData.weight / 4) : null),
     weight:    msData?.weight || null,
-    providers: {
-      blockcypher:   cyData  ? 'ok' : (cyRes.notFound  ? 'not found' : `error (${cyRes.error  || cyRes.httpStatus})`),
-      blockchainCom: bcData  ? 'ok' : (bcRes.notFound  ? 'not found' : `error (${bcRes.error  || bcRes.httpStatus})`),
-      mempoolSpace:  msData  ? 'ok' : (msRes.notFound  ? 'not found' : `error (${msRes.error  || msRes.httpStatus})`),
-      sochain:       scData  ? 'ok' : (scRes.notFound  ? 'not found' : `error (${scRes.error  || scRes.httpStatus})`),
-    },
+    providers,
   }
 }
 
@@ -478,7 +490,7 @@ function StatusBadge({ status }) {
   return <span className={`status-badge ${cls}`}>{label}</span>
 }
 
-function TxResultCard({ result }) {
+function TxResultCard({ result, chainCfg }) {
   if (!result.success) {
     return (
       <div className="btc-result-card error">
@@ -541,7 +553,7 @@ function TxResultCard({ result }) {
             <span>↙ Inputs</span>
             <span className="txflow-count">{d.inputs.length}</span>
             {d.totalIn > 0 && (
-              <span className="txflow-total">{(d.totalIn / 1e8).toFixed(8)} <span className="btc-sym">BTC</span></span>
+              <span className="txflow-total">{(d.totalIn / 1e8).toFixed(8)} <span className="btc-sym">{chainCfg.symbol}</span></span>
             )}
           </div>
 
@@ -554,7 +566,7 @@ function TxResultCard({ result }) {
                     <span className="inp-trace-idx">Input #{idx}</span>
                     <span className="tag-coinbase">COINBASE</span>
                   </div>
-                  <div className="inp-trace-note muted">Newly minted BTC — no previous UTXO to spend</div>
+                  <div className="inp-trace-note muted">Newly minted {chainCfg.symbol} — no previous UTXO to spend</div>
                 </div>
               )
             }
@@ -566,9 +578,6 @@ function TxResultCard({ result }) {
                 : c.prevTxid == null && c.outputIndex === inp.outputIndex
             )
 
-            // ── find the same UTXO as an input in the replacing TX (if any) ──
-            // Match by prevTxid+outputIndex first; fall back to address match
-            // (needed when prevTxid is unavailable on the original TX).
             const repInput = d.replacingTx?.inputs?.find(ri =>
               ri.prevTxid != null && inp.prevTxid != null
                 ? ri.prevTxid === inp.prevTxid && ri.outputIndex === inp.outputIndex
@@ -584,12 +593,10 @@ function TxResultCard({ result }) {
               : utxoUnspent ? 'itc-unspent'
               :               'itc-unknown'
 
-            // shared source footnote (prevTxid from repInput as fallback)
             const srcTxid = inp.prevTxid || repInput?.prevTxid || null
             const srcIdx  = inp.outputIndex ?? repInput?.outputIndex ?? null
             const isReplacedInput = spentElsewhere || (!check && isReplaced && d.replacedBy)
 
-            // spending txid to show in claim block
             const claimTxid = spentElsewhere ? check?.spentByTxid : d.replacedBy
             const claimBlockHeight = spentElsewhere
               ? (check?.spentConfirmed ? check?.spentBlockHeight : null)
@@ -599,7 +606,6 @@ function TxResultCard({ result }) {
               <div key={idx} className={`inp-trace ${cardCls}`}>
 
                 {isReplacedInput ? (
-                  /* ══ REPLACED FLOW: source card → arrow → claim card ══ */
                   <>
                     {/* ── Source: this (checked) transaction ── */}
                     <div className="itc-source">
@@ -608,20 +614,20 @@ function TxResultCard({ result }) {
                         <div className="itc-source-left">
                           <span className="inp-trace-idx">Input #{idx}</span>
                           {inp.address && (
-                            <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer"
+                            <a href={`${chainCfg.mempoolSite}/address/${inp.address}`} target="_blank" rel="noopener noreferrer"
                                className="addr-link inp-trace-addr">{shortHash(inp.address, 11)}</a>
                           )}
                         </div>
                         {inp.valueSats != null && (
                           <span className="inp-trace-amount">
-                            <b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span>
+                            <b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">{chainCfg.symbol}</span>
                           </span>
                         )}
                       </div>
                       <div className="itc-source-links">
-                        {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
-                        {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/explorer/transactions/btc/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
-                        {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
+                        {d.providers.mempoolSpace  === 'ok' && <a href={`${chainCfg.mempoolSite}/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 {chainCfg.mempoolLabel}</a>}
+                        {d.providers.blockchainCom === 'ok' && <a href={`${chainCfg.blockchainComExplorer}/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+                        {d.providers.blockcypher   === 'ok' && <a href={`${chainCfg.blockcypherExplorer}/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
                       </div>
                     </div>
 
@@ -634,14 +640,14 @@ function TxResultCard({ result }) {
                         <span className="inp-trace-label">Spent in:</span>
                         {claimTxid ? (
                           <>
-                            <a href={`https://mempool.space/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(claimTxid, 10)}</a>
+                            <a href={`${chainCfg.mempoolSite}/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(claimTxid, 10)}</a>
                             <button className="copy-btn" onClick={() => copyToClipboard(claimTxid)}>⧉</button>
                           </>
                         ) : <span className="muted">txid unresolved</span>}
                         {repInputIdx >= 0 && <span className="itc-input-ref">Input #{repInputIdx}</span>}
                         {repInput?.valueSats != null && (
                           <span className="itc-match-amt">
-                            · <b>{(repInput.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span>
+                            · <b>{(repInput.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">{chainCfg.symbol}</span>
                           </span>
                         )}
                         {claimBlockHeight && (
@@ -650,9 +656,9 @@ function TxResultCard({ result }) {
                       </div>
                       {claimTxid && (
                         <div className="itc-explorer-links">
-                          <a href={`https://mempool.space/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>
-                          <a href={`https://www.blockchain.com/explorer/transactions/btc/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>
-                          <a href={`https://live.blockcypher.com/btc/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
+                          <a href={`${chainCfg.mempoolSite}/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 {chainCfg.mempoolLabel}</a>
+                          {chainCfg.blockchainComExplorer && <a href={`${chainCfg.blockchainComExplorer}/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+                          <a href={`${chainCfg.blockcypherExplorer}/tx/${claimTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
                         </div>
                       )}
                     </div>
@@ -661,26 +667,25 @@ function TxResultCard({ result }) {
                     {srcTxid && (
                       <div className="inp-trace-footnote">
                         <span className="itc-fn-label">Source TX (where the input came from):</span>
-                        <a href={`https://mempool.space/tx/${srcTxid}`} target="_blank" rel="noopener noreferrer"
+                        <a href={`${chainCfg.mempoolSite}/tx/${srcTxid}`} target="_blank" rel="noopener noreferrer"
                            className="hash-link itc-fn-link">{shortHash(srcTxid, 10)}</a>
                         {srcIdx != null && <span className="muted">:{srcIdx}</span>}
                       </div>
                     )}
                   </>
                 ) : (
-                  /* ══ STANDARD layout: confirmed / unspent / unknown ══ */
                   <>
                     <div className="inp-trace-header">
                       <div className="inp-trace-header-left">
                         <span className="inp-trace-idx">Input #{idx}</span>
                         {inp.address && (
-                          <a href={`https://mempool.space/address/${inp.address}`} target="_blank" rel="noopener noreferrer"
+                          <a href={`${chainCfg.mempoolSite}/address/${inp.address}`} target="_blank" rel="noopener noreferrer"
                              className="addr-link inp-trace-addr">{shortHash(inp.address, 11)}</a>
                         )}
                       </div>
                       {inp.valueSats != null && (
                         <span className="inp-trace-amount">
-                          <b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">BTC</span>
+                          <b>{(inp.valueSats / 1e8).toFixed(8)}</b> <span className="btc-sym">{chainCfg.symbol}</span>
                         </span>
                       )}
                     </div>
@@ -704,7 +709,7 @@ function TxResultCard({ result }) {
                     {srcTxid && (
                       <div className="inp-trace-footnote">
                         <span className="itc-fn-label">Source UTXO (where the input came from):</span>
-                        <a href={`https://mempool.space/tx/${srcTxid}`} target="_blank" rel="noopener noreferrer"
+                        <a href={`${chainCfg.mempoolSite}/tx/${srcTxid}`} target="_blank" rel="noopener noreferrer"
                            className="hash-link itc-fn-link">{shortHash(srcTxid, 10)}</a>
                         {srcIdx != null && <span className="muted">:{srcIdx}</span>}
                       </div>
@@ -721,7 +726,7 @@ function TxResultCard({ result }) {
       {d.feeSats != null && (
         <div className="io-fee-row">
           <span className="io-fee-label">Fee</span>
-          <span className="io-fee-amount">{(d.feeSats / 1e8).toFixed(8)} BTC</span>
+          <span className="io-fee-amount">{(d.feeSats / 1e8).toFixed(8)} {chainCfg.symbol}</span>
           {d.vsize != null && (
             <span className="io-fee-rate">{Math.round(d.feeSats / d.vsize)} sat/vB</span>
           )}
@@ -731,14 +736,13 @@ function TxResultCard({ result }) {
         </div>
       )}
 
-      {/* ── TX explorer links — only for non-replaced TXs; replaced TXs show
-           these per-input inside the source card above ── */}
+      {/* ── TX explorer links ── */}
       {!isReplaced && (
         <div className="simple-tx-links">
           <span className="explorer-label">TX:</span>
-          {d.providers.mempoolSpace  === 'ok' && <a href={`https://mempool.space/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 mempool</a>}
-          {d.providers.blockchainCom === 'ok' && <a href={`https://www.blockchain.com/explorer/transactions/btc/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
-          {d.providers.blockcypher   === 'ok' && <a href={`https://live.blockcypher.com/btc/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
+          {d.providers.mempoolSpace  === 'ok' && <a href={`${chainCfg.mempoolSite}/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 {chainCfg.mempoolLabel}</a>}
+          {d.providers.blockchainCom === 'ok' && <a href={`${chainCfg.blockchainComExplorer}/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 blockchain.com</a>}
+          {d.providers.blockcypher   === 'ok' && <a href={`${chainCfg.blockcypherExplorer}/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>}
         </div>
       )}
 
@@ -758,10 +762,14 @@ function TxResultCard({ result }) {
 function BtcSafeToFail() {
   const location    = useLocation()
 
+  // ── Chain selector ──
+  const [chain, setChain] = useState('btc')
+  const C = CHAINS[chain]
+
   useEffect(() => {
-    document.title = 'BTC Safe-to-Fail'
+    document.title = `${C.label} Safe-to-Fail`
     return () => { document.title = 'Monad Boss Game' }
-  }, [])
+  }, [C.label])
 
   // ── Detail mode state ──
   const [input,      setInput]      = useState('')
@@ -782,6 +790,14 @@ function BtcSafeToFail() {
   const [batchSearch,       setBatchSearch]       = useState('')
   const [batchStatusFilter, setBatchStatusFilter] = useState('all')
   const abortRef = useRef(false)
+
+  const handleChainChange = (newChain) => {
+    if (newChain === chain || processing) return
+    setChain(newChain)
+    setResults([])
+    setBatchRows([])
+    setBatchProgress({ current: 0, total: 0 })
+  }
 
   useEffect(() => {
     if (processing && viewMode === 'detail') {
@@ -805,7 +821,7 @@ function BtcSafeToFail() {
     if (!input.trim()) return
 
     const items = input.trim().split(/[\s,\n]+/).filter(x => x.trim())
-    trackUsage('btc', items.length)
+    trackUsage(C.id, items.length)
     setProcessing(true)
     setResults([])
 
@@ -814,8 +830,8 @@ function BtcSafeToFail() {
       const item = items[i]
       setStatusMsg(`Analyzing ${i + 1} / ${items.length}: ${item.slice(0, 30)}…`)
       try {
-        const txid  = extractTxid(item)
-        const data  = await analyzeTx(txid)
+        const txid  = extractTxid(item, C)
+        const data  = await analyzeTx(txid, C)
         newResults.push({ input: item, success: true, data })
       } catch (err) {
         newResults.push({ input: item, success: false, error: err.message })
@@ -835,7 +851,7 @@ function BtcSafeToFail() {
     if (!input.trim()) return
     const items = input.trim().split(/[\s,\n]+/).filter(x => x.trim())
 
-    trackUsage('btc', items.length)
+    trackUsage(C.id, items.length)
     abortRef.current = false
     setProcessing(true)
     setBatchRows([])
@@ -851,14 +867,13 @@ function BtcSafeToFail() {
 
       await Promise.all(batch.map(async (item, bIdx) => {
         if (abortRef.current) return
-        // stagger starts within each concurrent batch by 300 ms
         if (bIdx > 0) await new Promise(r => setTimeout(r, bIdx * 300))
         if (abortRef.current) return
 
         const rowIndex = i + bIdx + 1
         try {
-          const txid = extractTxid(item)
-          const d    = await analyzeTx(txid)      // same logic as detail view
+          const txid = extractTxid(item, C)
+          const d    = await analyzeTx(txid, C)
           rowsRef.push({ index: rowIndex, input: item, txid, status: d.status, replacedBy: d.replacedBy || null, blockHeight: d.blockHeight || null, error: null })
         } catch (err) {
           rowsRef.push({ index: rowIndex, input: item, txid: null, status: 'ERROR', replacedBy: null, blockHeight: null, error: err.message })
@@ -868,7 +883,6 @@ function BtcSafeToFail() {
         setBatchRows([...rowsRef].sort((a, b) => a.index - b.index))
       }))
 
-      // delay between batches (not after the last one)
       if (!abortRef.current && i + batchConcurrency < items.length) {
         await new Promise(r => setTimeout(r, batchDelay))
       }
@@ -894,7 +908,7 @@ function BtcSafeToFail() {
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
-    a.download = `btc-status-${Date.now()}.csv`
+    a.download = `${C.id}-status-${Date.now()}.csv`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -996,11 +1010,17 @@ function BtcSafeToFail() {
       {/* ── Main container ── */}
       <div className="btc-container">
         <div className="btc-header">
-          <h1>₿ BTC Safe-to-Fail Checker</h1>
+          <h1>{C.icon} {C.label} Safe-to-Fail Checker</h1>
           <p className="subtitle">
-            Lookup any Bitcoin transaction — check confirmation status, detect RBF replacement&nbsp;/&nbsp;double-spends,
-            and inspect spent &amp; new UTXOs side-by-side from two independent providers.
+            Lookup any {C.name} transaction — check confirmation status, detect RBF replacement&nbsp;/&nbsp;double-spends,
+            and inspect spent &amp; new UTXOs side-by-side from independent providers.
           </p>
+        </div>
+
+        {/* ── Chain toggle ── */}
+        <div className="btc-chain-toggle">
+          <button type="button" className={`chain-btn ${chain === 'btc' ? 'active' : ''}`} disabled={processing} onClick={() => handleChainChange('btc')}>₿ BTC</button>
+          <button type="button" className={`chain-btn ${chain === 'ltc' ? 'active' : ''}`} disabled={processing} onClick={() => handleChainChange('ltc')}>Ł LTC</button>
         </div>
 
         <form onSubmit={viewMode === 'detail' ? handleSubmit : e => { e.preventDefault(); handleBatchRun() }} className="btc-form">
@@ -1011,15 +1031,15 @@ function BtcSafeToFail() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="txid-input">BTC Transaction ID(s) or explorer URL(s)</label>
+            <label htmlFor="txid-input">{C.label} Transaction ID(s) or explorer URL(s)</label>
             <textarea
               id="txid-input"
               value={input}
               onChange={e => setInput(e.target.value)}
               placeholder={
-                'e.g. 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b\n' +
-                'or  https://mempool.space/tx/<txid>\n' +
-                'Paste multiple txids on separate lines.'
+                chain === 'btc'
+                  ? 'e.g. 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b\nor  https://mempool.space/tx/<txid>\nPaste multiple txids on separate lines.'
+                  : 'e.g. 64-character hex txid\nor  https://litecoinspace.org/tx/<txid>\nPaste multiple txids on separate lines.'
               }
               rows={viewMode === 'batch' ? 6 : 4}
               disabled={processing}
@@ -1027,7 +1047,7 @@ function BtcSafeToFail() {
             <div className="form-hint">
               {viewMode === 'batch'
                 ? 'Batch mode — paste 1 000s of txids, one per line. Uses quick status check (no deep UTXO analysis). Results stream in live.'
-                : 'Supports raw 64-hex txids and URLs from mempool.space, blockchain.com, blockcypher.com, or blockstream.info.'}
+                : `Supports raw 64-hex txids and URLs from ${C.mempoolSite.replace('https://', '')}${C.hasBlockchainCom ? ', blockchain.com' : ''}, or blockcypher.com.`}
             </div>
           </div>
 
@@ -1082,7 +1102,7 @@ function BtcSafeToFail() {
             <div className="progress-bar-container">
               <div className="progress-bar" style={{ width: `${progress}%` }} />
             </div>
-            <div className="loading-hint">{statusMsg || 'Fetching from Blockchain.com + BlockCypher…'}</div>
+            <div className="loading-hint">{statusMsg || `Fetching from BlockCypher + ${C.mempoolLabel}…`}</div>
           </div>
         )}
 
@@ -1102,7 +1122,7 @@ function BtcSafeToFail() {
         {/* ── Detail mode results ── */}
         {viewMode === 'detail' && results.length > 0 && (
           <div className="btc-results">
-            {results.map((r, i) => <TxResultCard key={i} result={r} />)}
+            {results.map((r, i) => <TxResultCard key={i} result={r} chainCfg={C} />)}
           </div>
         )}
 
@@ -1172,7 +1192,7 @@ function BtcSafeToFail() {
                       <td className="bt-idx">{r.index}</td>
                       <td className="bt-hash">
                         {r.txid
-                          ? <a href={`https://mempool.space/tx/${r.txid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.txid, 10)}</a>
+                          ? <a href={`${C.mempoolSite}/tx/${r.txid}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.txid, 10)}</a>
                           : <span className="muted">{(r.input || '').slice(0, 20)}</span>}
                         <button className="copy-btn" title="Copy full hash" onClick={() => copyToClipboard(r.txid || r.input)}>⧉</button>
                       </td>
@@ -1188,7 +1208,7 @@ function BtcSafeToFail() {
                       </td>
                       <td className="bt-spending">
                         {r.replacedBy
-                          ? <a href={`https://mempool.space/tx/${r.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.replacedBy, 10)}</a>
+                          ? <a href={`${C.mempoolSite}/tx/${r.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.replacedBy, 10)}</a>
                           : <span className="muted">—</span>}
                       </td>
                       <td className="bt-block">

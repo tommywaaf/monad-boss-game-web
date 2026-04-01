@@ -33,9 +33,9 @@ const TOOL_INFO = {
     how: 'Enter a TON wallet address (EQ.../UQ.../raw 0:... format). The tool queries TonCenter for the wallet\'s current seqno, balance, status, and wallet type. The highest confirmed seqno and next seqno are displayed. Optionally enable Transaction Export to fetch full tx history with FB hashes, filterable by direction and date range, downloadable as CSV.',
   },
   'btc-safe-to-fail': {
-    title: 'BTC Safe-to-Fail',
-    why: 'Determines whether a BTC transaction can be safely failed by checking if its inputs have already been spent on-chain in another transaction. Also detects RBF signaling and double-spend flags.',
-    how: 'Paste one or more BTC txids or explorer URLs. The tool queries multiple providers (BlockCypher, blockchain.com, mempool.space, SoChain) to get confirmation status, then checks each input\'s UTXO to see if it\'s been spent by another tx. Results show Confirmed, Unconfirmed, Replaced, or Double-Spent status with a visual input flow layout showing source UTXOs. Use Batch mode for bulk checks with CSV export.',
+    title: 'BTC / LTC Safe-to-Fail',
+    why: 'Determines whether a BTC or LTC transaction can be safely failed by checking if its inputs have already been spent on-chain in another transaction. Also detects RBF signaling and double-spend flags.',
+    how: 'Toggle between BTC and LTC at the top, then paste one or more txids or explorer URLs. The tool queries multiple providers (BlockCypher, mempool.space/litecoinspace.org, SoChain, and blockchain.com for BTC) to get confirmation status, then checks each input\'s UTXO to see if it\'s been spent by another tx. Results show Confirmed, Unconfirmed, Replaced, or Double-Spent status with a visual input flow layout showing source UTXOs. Use Batch mode for bulk checks with CSV export.',
   },
   'btc-fetcher': {
     title: 'BTC Fetcher',

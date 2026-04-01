@@ -1470,6 +1470,41 @@
   font-size: 0.75rem;
 }
 
+/* ─── Chain toggle (BTC / LTC) ────────────────────────────────────────────────── */
+.btc-chain-toggle {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.chain-btn {
+  padding: 0.5rem 1.4rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #a1a1aa;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.chain-btn:hover:not(:disabled) { background: rgba(255,255,255,0.05); color: #e4e4e7; }
+
+.chain-btn.active {
+  background: rgba(247, 147, 26, 0.15);
+  border-color: rgba(247, 147, 26, 0.4);
+  color: #f7931a;
+}
+
+.chain-btn:disabled:not(.active) {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ─── Mode toggle ────────────────────────────────────────────────────────────── */
 .btc-mode-toggle {
   display: flex;
