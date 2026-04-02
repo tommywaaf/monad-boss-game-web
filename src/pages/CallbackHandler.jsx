@@ -239,6 +239,260 @@ function EventBubble({ event, isExpanded, onToggle }) {
   )
 }
 
+// ─── Policy Engine Helpers ─────────────────────────────────
+
+function generateRuleId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function createEmptyRule() {
+  return {
+    id: generateRuleId(),
+    name: '',
+    enabled: true,
+    conditions: {
+      operations: [],
+      assets: [],
+      amountMin: null,
+      amountMax: null,
+      amountUsdMin: null,
+      amountUsdMax: null,
+      sourceIds: [],
+      destIds: [],
+      destAddressTypes: [],
+      destAddresses: [],
+    },
+    action: 'APPROVE',
+  }
+}
+
+function buildRuleChips(conditions) {
+  if (!conditions) return [{ label: 'Any', type: 'any' }]
+  const chips = []
+  if (conditions.operations?.length) {
+    conditions.operations.forEach(op => chips.push({ label: op, type: 'operation' }))
+  }
+  if (conditions.assets?.length) {
+    conditions.assets.forEach(a => chips.push({ label: a, type: 'asset' }))
+  }
+  if (conditions.amountMin != null || conditions.amountMax != null) {
+    let label
+    if (conditions.amountMin != null && conditions.amountMax != null) {
+      label = `${conditions.amountMin}–${conditions.amountMax}`
+    } else if (conditions.amountMin != null) {
+      label = `≥${conditions.amountMin}`
+    } else {
+      label = `≤${conditions.amountMax}`
+    }
+    chips.push({ label, type: 'amount' })
+  }
+  if (conditions.amountUsdMin != null || conditions.amountUsdMax != null) {
+    let label
+    if (conditions.amountUsdMin != null && conditions.amountUsdMax != null) {
+      label = `$${conditions.amountUsdMin}–$${conditions.amountUsdMax}`
+    } else if (conditions.amountUsdMin != null) {
+      label = `≥$${conditions.amountUsdMin}`
+    } else {
+      label = `≤$${conditions.amountUsdMax}`
+    }
+    chips.push({ label, type: 'amount' })
+  }
+  if (conditions.sourceIds?.length) {
+    chips.push({ label: `src:${conditions.sourceIds.join(',')}`, type: 'source' })
+  }
+  if (conditions.destIds?.length) {
+    chips.push({ label: `dst:${conditions.destIds.join(',')}`, type: 'dest' })
+  }
+  if (conditions.destAddressTypes?.length) {
+    conditions.destAddressTypes.forEach(t => chips.push({ label: t, type: 'addrtype' }))
+  }
+  if (conditions.destAddresses?.length) {
+    chips.push({ label: `${conditions.destAddresses.length} addr`, type: 'address' })
+  }
+  if (chips.length === 0) chips.push({ label: 'Any', type: 'any' })
+  return chips
+}
+
+function RuleEditor({ rule, isNew, onSave, onCancel }) {
+  const [name, setName] = useState(rule.name || '')
+  const [action, setAction] = useState(rule.action || 'APPROVE')
+  const [operations, setOperations] = useState(rule.conditions?.operations || [])
+  const [assets, setAssets] = useState((rule.conditions?.assets || []).join(', '))
+  const [amountMin, setAmountMin] = useState(rule.conditions?.amountMin ?? '')
+  const [amountMax, setAmountMax] = useState(rule.conditions?.amountMax ?? '')
+  const [amountUsdMin, setAmountUsdMin] = useState(rule.conditions?.amountUsdMin ?? '')
+  const [amountUsdMax, setAmountUsdMax] = useState(rule.conditions?.amountUsdMax ?? '')
+  const [sourceIds, setSourceIds] = useState((rule.conditions?.sourceIds || []).join(', '))
+  const [destIds, setDestIds] = useState((rule.conditions?.destIds || []).join(', '))
+  const [destAddressTypes, setDestAddressTypes] = useState(rule.conditions?.destAddressTypes || [])
+  const [destAddresses, setDestAddresses] = useState((rule.conditions?.destAddresses || []).join('\n'))
+
+  const toggleList = (setter, val) =>
+    setter(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])
+  const parseList = (str) => str.split(/[,\n]/).map(s => s.trim()).filter(Boolean)
+  const parseNum = (str) => { const n = parseFloat(str); return isNaN(n) ? null : n }
+
+  const handleSave = () => {
+    onSave({
+      ...rule,
+      name: name.trim() || 'Untitled Rule',
+      action,
+      conditions: {
+        operations,
+        assets: parseList(assets),
+        amountMin: parseNum(amountMin),
+        amountMax: parseNum(amountMax),
+        amountUsdMin: parseNum(amountUsdMin),
+        amountUsdMax: parseNum(amountUsdMax),
+        sourceIds: parseList(sourceIds),
+        destIds: parseList(destIds),
+        destAddressTypes,
+        destAddresses: parseList(destAddresses),
+      },
+    })
+  }
+
+  return (
+    <div className="cbt-rule-editor">
+      <div className="cbt-rule-editor-field">
+        <label className="cbt-rule-editor-label">Rule Name</label>
+        <input
+          className="cbt-rule-editor-input"
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="e.g., Block large transfers"
+          autoFocus
+        />
+      </div>
+
+      <div className="cbt-rule-editor-field">
+        <label className="cbt-rule-editor-label">Operation</label>
+        <div className="cbt-rule-editor-checkboxes">
+          {['TRANSFER', 'CONTRACT_CALL', 'TYPED_MESSAGE', 'RAW'].map(op => (
+            <label key={op} className="cbt-rule-checkbox">
+              <input type="checkbox" checked={operations.includes(op)} onChange={() => toggleList(setOperations, op)} />
+              <span>{op}</span>
+            </label>
+          ))}
+        </div>
+        <span className="cbt-rule-editor-hint">Leave unchecked to match any operation</span>
+      </div>
+
+      <div className="cbt-rule-editor-field">
+        <label className="cbt-rule-editor-label">Asset</label>
+        <input
+          className="cbt-rule-editor-input"
+          type="text"
+          value={assets}
+          onChange={e => setAssets(e.target.value)}
+          placeholder="e.g., MONAD, ETH, BTC (empty = any)"
+        />
+      </div>
+
+      <div className="cbt-rule-editor-row">
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">Amount Min (native)</label>
+          <input className="cbt-rule-editor-input" type="number" step="any" value={amountMin} onChange={e => setAmountMin(e.target.value)} placeholder="No min" />
+        </div>
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">Amount Max (native)</label>
+          <input className="cbt-rule-editor-input" type="number" step="any" value={amountMax} onChange={e => setAmountMax(e.target.value)} placeholder="No max" />
+        </div>
+      </div>
+
+      <div className="cbt-rule-editor-row">
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">USD Amount Min</label>
+          <input className="cbt-rule-editor-input" type="number" step="any" value={amountUsdMin} onChange={e => setAmountUsdMin(e.target.value)} placeholder="No min" />
+        </div>
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">USD Amount Max</label>
+          <input className="cbt-rule-editor-input" type="number" step="any" value={amountUsdMax} onChange={e => setAmountUsdMax(e.target.value)} placeholder="No max" />
+        </div>
+      </div>
+
+      <div className="cbt-rule-editor-row">
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">Source Vault IDs</label>
+          <input className="cbt-rule-editor-input" type="text" value={sourceIds} onChange={e => setSourceIds(e.target.value)} placeholder="e.g., 0, 1 (empty = any)" />
+        </div>
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">Dest Vault IDs</label>
+          <input className="cbt-rule-editor-input" type="text" value={destIds} onChange={e => setDestIds(e.target.value)} placeholder="e.g., 2, 3 (empty = any)" />
+        </div>
+      </div>
+
+      <div className="cbt-rule-editor-field">
+        <label className="cbt-rule-editor-label">Dest Address Type</label>
+        <div className="cbt-rule-editor-checkboxes">
+          {['WHITELISTED', 'ONE_TIME'].map(t => (
+            <label key={t} className="cbt-rule-checkbox">
+              <input type="checkbox" checked={destAddressTypes.includes(t)} onChange={() => toggleList(setDestAddressTypes, t)} />
+              <span>{t}</span>
+            </label>
+          ))}
+        </div>
+        <span className="cbt-rule-editor-hint">Leave unchecked to match any address type</span>
+      </div>
+
+      <div className="cbt-rule-editor-field">
+        <label className="cbt-rule-editor-label">Dest Addresses</label>
+        <textarea
+          className="cbt-rule-editor-textarea"
+          value={destAddresses}
+          onChange={e => setDestAddresses(e.target.value)}
+          placeholder="One address per line (empty = any)"
+          rows={3}
+        />
+      </div>
+
+      <div className="cbt-rule-editor-field">
+        <label className="cbt-rule-editor-label">Action</label>
+        <div className="cbt-toggle-group">
+          <button className={`cbt-toggle-opt ${action === 'APPROVE' ? 'active-approve' : ''}`} onClick={() => setAction('APPROVE')}>APPROVE</button>
+          <button className={`cbt-toggle-opt ${action === 'REJECT' ? 'active-reject' : ''}`} onClick={() => setAction('REJECT')}>REJECT</button>
+        </div>
+      </div>
+
+      <div className="cbt-rule-editor-actions">
+        <button className="cbt-rule-editor-save" onClick={handleSave}>{isNew ? 'Add Rule' : 'Save Changes'}</button>
+        <button className="cbt-rule-editor-cancel" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+function RuleCard({ rule, index, total, onToggle, onEdit, onDelete, onMove }) {
+  const chips = buildRuleChips(rule.conditions)
+  const actionLower = (rule.action || '').toLowerCase()
+  return (
+    <div className={`cbt-rule-card ${rule.enabled ? '' : 'disabled'}`}>
+      <span className="cbt-rule-priority">{index + 1}</span>
+      <label className="cbt-rule-toggle-switch" onClick={e => e.stopPropagation()}>
+        <input type="checkbox" checked={rule.enabled} onChange={() => onToggle(rule.id)} />
+        <span className="cbt-rule-toggle-track" />
+        <span className="cbt-rule-toggle-knob" />
+      </label>
+      <div className="cbt-rule-info">
+        <span className="cbt-rule-name">{rule.name || 'Untitled Rule'}</span>
+        <div className="cbt-rule-chips">
+          {chips.map((c, i) => (
+            <span key={i} className={`cbt-rule-chip ${c.type}`}>{c.label}</span>
+          ))}
+        </div>
+      </div>
+      <span className={`cbt-rule-action-badge ${actionLower}`}>{rule.action}</span>
+      <div className="cbt-rule-controls">
+        <button className="cbt-rule-ctrl-btn" disabled={index === 0} onClick={() => onMove(rule.id, -1)} title="Move up">&#9650;</button>
+        <button className="cbt-rule-ctrl-btn" disabled={index === total - 1} onClick={() => onMove(rule.id, 1)} title="Move down">&#9660;</button>
+        <button className="cbt-rule-ctrl-btn" onClick={() => onEdit(rule.id)} title="Edit">&#9998;</button>
+        <button className="cbt-rule-ctrl-btn delete" onClick={() => onDelete(rule.id)} title="Delete">&times;</button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ────────────────────────────────────────
 
 function CallbackHandler() {
@@ -253,6 +507,9 @@ function CallbackHandler() {
   const [cosignerKeyInput, setCosignerKeyInput] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [pubKeyVisible, setPubKeyVisible] = useState(true)
+  const [rulesExpanded, setRulesExpanded] = useState(true)
+  const [editingRuleId, setEditingRuleId] = useState(null)
+  const [showNewRuleEditor, setShowNewRuleEditor] = useState(false)
   const wsRefs = useRef(new Map())
   const reconnectTimers = useRef(new Map())
   const mountedRef = useRef(true)
@@ -371,6 +628,7 @@ function CallbackHandler() {
             callbackUrl: h.callbackUrl,
             callbackPublicKey: h.callbackPublicKey,
             action: h.action || 'REJECT',
+            rules: h.rules || [],
             createdAt: h.createdAt,
           }
           order.push(h.id)
@@ -413,6 +671,7 @@ function CallbackHandler() {
           callbackUrl: data.callbackUrl,
           callbackPublicKey: data.callbackPublicKey,
           action: data.action || 'REJECT',
+          rules: data.rules || [],
           createdAt: new Date().toISOString(),
         }
       }))
@@ -461,12 +720,78 @@ function CallbackHandler() {
     } catch { /* best effort — UI already updated optimistically */ }
   }
 
+  // ─── Policy Rules CRUD ──────────────────────────────────
+
+  function getHandlerRules(handlerId) {
+    return handlers[handlerId]?.rules || []
+  }
+
+  function updateRulesState(handlerId, newRules) {
+    setHandlers(prev => ({
+      ...prev,
+      [handlerId]: { ...prev[handlerId], rules: newRules }
+    }))
+    saveRulesToServer(handlerId, newRules)
+  }
+
+  async function saveRulesToServer(handlerId, rules) {
+    try {
+      await fetch(`${API_BASE}/cbt/rules/${handlerId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules }),
+      })
+    } catch { /* best effort */ }
+  }
+
+  function handleAddRule(newRule) {
+    if (!selectedHandler) return
+    const rules = [...getHandlerRules(selectedHandler), newRule]
+    updateRulesState(selectedHandler, rules)
+    setShowNewRuleEditor(false)
+  }
+
+  function handleUpdateRule(updatedRule) {
+    if (!selectedHandler) return
+    const rules = getHandlerRules(selectedHandler).map(r => r.id === updatedRule.id ? updatedRule : r)
+    updateRulesState(selectedHandler, rules)
+    setEditingRuleId(null)
+  }
+
+  function handleDeleteRule(ruleId) {
+    if (!selectedHandler) return
+    const rules = getHandlerRules(selectedHandler).filter(r => r.id !== ruleId)
+    updateRulesState(selectedHandler, rules)
+    if (editingRuleId === ruleId) setEditingRuleId(null)
+  }
+
+  function handleToggleRule(ruleId) {
+    if (!selectedHandler) return
+    const rules = getHandlerRules(selectedHandler).map(r =>
+      r.id === ruleId ? { ...r, enabled: !r.enabled } : r
+    )
+    updateRulesState(selectedHandler, rules)
+  }
+
+  function handleMoveRule(ruleId, direction) {
+    if (!selectedHandler) return
+    const rules = [...getHandlerRules(selectedHandler)]
+    const idx = rules.findIndex(r => r.id === ruleId)
+    if (idx < 0) return
+    const newIdx = idx + direction
+    if (newIdx < 0 || newIdx >= rules.length) return
+    ;[rules[idx], rules[newIdx]] = [rules[newIdx], rules[idx]]
+    updateRulesState(selectedHandler, rules)
+  }
+
   // ─── Derived ──────────────────────────────────────────────
 
   const activeData = selectedHandler
     ? (handlers[selectedHandler] || { events: [], status: 'disconnected' })
     : null
   const activeEvents = activeData?.events || []
+  const activeRules = activeData?.rules || []
 
   // ─── Render ───────────────────────────────────────────────
 
@@ -675,9 +1000,65 @@ function CallbackHandler() {
                   </div>
                 </div>
 
-                {/* Action toggle */}
+                {/* Policy Rules */}
+                <div className="cbt-rules-section">
+                  <div className="cbt-rules-header" onClick={() => setRulesExpanded(v => !v)}>
+                    <div className="cbt-rules-header-left">
+                      <span className={`cbt-chevron ${rulesExpanded ? 'open' : ''}`}>&#9654;</span>
+                      <span className="cbt-rules-title">Policy Rules</span>
+                      <span className="cbt-rules-count">{activeRules.length} rule{activeRules.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <button
+                      className="cbt-rules-add-btn"
+                      onClick={e => { e.stopPropagation(); setShowNewRuleEditor(true); setEditingRuleId(null); setRulesExpanded(true) }}
+                    >
+                      + Add Rule
+                    </button>
+                  </div>
+                  {rulesExpanded && (
+                    <div className="cbt-rules-body">
+                      {activeRules.length === 0 && !showNewRuleEditor && (
+                        <div className="cbt-rules-empty">
+                          No rules configured. All requests use the default action below.
+                        </div>
+                      )}
+                      {activeRules.map((rule, idx) => (
+                        editingRuleId === rule.id ? (
+                          <RuleEditor
+                            key={rule.id}
+                            rule={rule}
+                            isNew={false}
+                            onSave={handleUpdateRule}
+                            onCancel={() => setEditingRuleId(null)}
+                          />
+                        ) : (
+                          <RuleCard
+                            key={rule.id}
+                            rule={rule}
+                            index={idx}
+                            total={activeRules.length}
+                            onToggle={handleToggleRule}
+                            onEdit={setEditingRuleId}
+                            onDelete={handleDeleteRule}
+                            onMove={handleMoveRule}
+                          />
+                        )
+                      ))}
+                      {showNewRuleEditor && (
+                        <RuleEditor
+                          rule={createEmptyRule()}
+                          isNew={true}
+                          onSave={handleAddRule}
+                          onCancel={() => setShowNewRuleEditor(false)}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Default action (fallback when no rule matches) */}
                 <div className="cbt-action-toggle">
-                  <span className="cbt-action-label">Auto-Response:</span>
+                  <span className="cbt-action-label">Default Action:</span>
                   <div className="cbt-toggle-group">
                     <button
                       className={`cbt-toggle-opt ${activeData?.action === 'APPROVE' ? 'active-approve' : ''}`}
@@ -692,6 +1073,7 @@ function CallbackHandler() {
                       REJECT
                     </button>
                   </div>
+                  <span className="cbt-default-action-sub">when no rule matches</span>
                 </div>
 
                 {error && (

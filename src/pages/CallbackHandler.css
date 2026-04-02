@@ -981,6 +981,470 @@
    RESPONSIVE
    ═════════════════════════════════════════ */
 
+/* ═════════════════════════════════════════
+   POLICY RULES SECTION
+   ═════════════════════════════════════════ */
+
+.cbt-rules-section {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(168, 85, 247, 0.02);
+}
+
+.cbt-rules-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1.25rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.cbt-rules-header:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cbt-rules-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.cbt-rules-title {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #a855f7;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cbt-rules-count {
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: #52525b;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.cbt-rules-add-btn {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.68rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.cbt-rules-add-btn:hover {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
+.cbt-rules-body {
+  padding: 0 0.75rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cbt-rules-empty {
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.76rem;
+  color: #3f3f46;
+  line-height: 1.5;
+}
+
+/* ── Rule Card ─────────────────────────── */
+
+.cbt-rule-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+}
+
+.cbt-rule-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.cbt-rule-card.disabled {
+  opacity: 0.45;
+}
+
+.cbt-rule-card.disabled:hover {
+  opacity: 0.6;
+}
+
+.cbt-rule-priority {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #3f3f46;
+  min-width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.cbt-rule-toggle-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.cbt-rule-toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.cbt-rule-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.cbt-rule-toggle-switch input:checked + .cbt-rule-toggle-track {
+  background: rgba(168, 85, 247, 0.4);
+}
+
+.cbt-rule-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #71717a;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.cbt-rule-toggle-switch input:checked ~ .cbt-rule-toggle-knob {
+  transform: translateX(12px);
+  background: #c084fc;
+}
+
+.cbt-rule-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cbt-rule-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #e4e4e7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cbt-rule-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.cbt-rule-chip {
+  font-size: 0.62rem;
+  font-weight: 500;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.cbt-rule-chip.operation {
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.12);
+}
+
+.cbt-rule-chip.asset {
+  color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.12);
+}
+
+.cbt-rule-chip.amount {
+  color: #fbbf24;
+  background: rgba(234, 179, 8, 0.1);
+}
+
+.cbt-rule-chip.source {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.cbt-rule-chip.dest {
+  color: #f472b6;
+  background: rgba(244, 114, 182, 0.1);
+}
+
+.cbt-rule-chip.addrtype {
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+}
+
+.cbt-rule-chip.address {
+  color: #94a3b8;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.cbt-rule-chip.any {
+  color: #52525b;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cbt-rule-action-badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+.cbt-rule-action-badge.approve {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.cbt-rule-action-badge.reject {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.cbt-rule-controls {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cbt-rule-ctrl-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #52525b;
+  font-size: 0.72rem;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.cbt-rule-ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #a1a1aa;
+}
+
+.cbt-rule-ctrl-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.cbt-rule-ctrl-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.cbt-rule-ctrl-btn:disabled:hover {
+  background: transparent;
+  color: #52525b;
+}
+
+/* ── Rule Editor (inline form) ─────────── */
+
+.cbt-rule-editor {
+  padding: 0.75rem;
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 8px;
+  background: rgba(168, 85, 247, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 4px;
+}
+
+.cbt-rule-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cbt-rule-editor-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cbt-rule-editor-input {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.76rem;
+  font-family: inherit;
+  color: #e4e4e7;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.cbt-rule-editor-input:focus {
+  border-color: rgba(168, 85, 247, 0.4);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.08);
+}
+
+.cbt-rule-editor-input::placeholder {
+  color: #3f3f46;
+}
+
+.cbt-rule-editor-textarea {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.76rem;
+  font-family: inherit;
+  color: #e4e4e7;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.cbt-rule-editor-textarea:focus {
+  border-color: rgba(168, 85, 247, 0.4);
+  box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.08);
+}
+
+.cbt-rule-editor-textarea::placeholder {
+  color: #3f3f46;
+}
+
+.cbt-rule-editor-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cbt-rule-editor-row > .cbt-rule-editor-field {
+  flex: 1;
+}
+
+.cbt-rule-editor-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cbt-rule-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: #a1a1aa;
+  cursor: pointer;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  transition: all 0.15s;
+}
+
+.cbt-rule-checkbox:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.cbt-rule-checkbox input {
+  accent-color: #a855f7;
+  margin: 0;
+}
+
+.cbt-rule-editor-hint {
+  font-size: 0.62rem;
+  color: #3f3f46;
+  line-height: 1.3;
+}
+
+.cbt-rule-editor-actions {
+  display: flex;
+  gap: 0.4rem;
+  padding-top: 0.25rem;
+}
+
+.cbt-rule-editor-save {
+  flex: 1;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.74rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #2dd4bf 0%, #a855f7 100%);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.cbt-rule-editor-save:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+.cbt-rule-editor-cancel {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.74rem;
+  font-family: inherit;
+  font-weight: 500;
+  color: #71717a;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cbt-rule-editor-cancel:hover {
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Default action relabel ─────────────── */
+
+.cbt-default-action-sub {
+  font-size: 0.64rem;
+  color: #3f3f46;
+  margin-left: 0.4rem;
+}
+
 @media (max-width: 768px) {
   .cbt-page {
     flex-direction: column;
