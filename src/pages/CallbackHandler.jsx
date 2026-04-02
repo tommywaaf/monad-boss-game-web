@@ -257,7 +257,9 @@ function createEmptyRule() {
       amountMax: null,
       amountUsdMin: null,
       amountUsdMax: null,
+      sourceTypes: [],
       sourceIds: [],
+      destTypes: [],
       destIds: [],
       destAddressTypes: [],
       destAddresses: [],
@@ -297,11 +299,17 @@ function buildRuleChips(conditions) {
     }
     chips.push({ label, type: 'amount' })
   }
+  if (conditions.sourceTypes?.length) {
+    conditions.sourceTypes.forEach(t => chips.push({ label: `src:${t}`, type: 'source' }))
+  }
   if (conditions.sourceIds?.length) {
-    chips.push({ label: `src:${conditions.sourceIds.join(',')}`, type: 'source' })
+    chips.push({ label: `srcId:${conditions.sourceIds.join(',')}`, type: 'source' })
+  }
+  if (conditions.destTypes?.length) {
+    conditions.destTypes.forEach(t => chips.push({ label: `dst:${t}`, type: 'dest' }))
   }
   if (conditions.destIds?.length) {
-    chips.push({ label: `dst:${conditions.destIds.join(',')}`, type: 'dest' })
+    chips.push({ label: `dstId:${conditions.destIds.join(',')}`, type: 'dest' })
   }
   if (conditions.destAddressTypes?.length) {
     conditions.destAddressTypes.forEach(t => chips.push({ label: t, type: 'addrtype' }))
@@ -322,7 +330,9 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
   const [amountMax, setAmountMax] = useState(rule.conditions?.amountMax ?? '')
   const [amountUsdMin, setAmountUsdMin] = useState(rule.conditions?.amountUsdMin ?? '')
   const [amountUsdMax, setAmountUsdMax] = useState(rule.conditions?.amountUsdMax ?? '')
+  const [sourceTypes, setSourceTypes] = useState(rule.conditions?.sourceTypes || [])
   const [sourceIds, setSourceIds] = useState((rule.conditions?.sourceIds || []).join(', '))
+  const [destTypes, setDestTypes] = useState(rule.conditions?.destTypes || [])
   const [destIds, setDestIds] = useState((rule.conditions?.destIds || []).join(', '))
   const [destAddressTypes, setDestAddressTypes] = useState(rule.conditions?.destAddressTypes || [])
   const [destAddresses, setDestAddresses] = useState((rule.conditions?.destAddresses || []).join('\n'))
@@ -344,7 +354,9 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
         amountMax: parseNum(amountMax),
         amountUsdMin: parseNum(amountUsdMin),
         amountUsdMax: parseNum(amountUsdMax),
+        sourceTypes,
         sourceIds: parseList(sourceIds),
+        destTypes,
         destIds: parseList(destIds),
         destAddressTypes,
         destAddresses: parseList(destAddresses),
@@ -369,7 +381,7 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
       <div className="cbt-rule-editor-field">
         <label className="cbt-rule-editor-label">Operation</label>
         <div className="cbt-rule-editor-checkboxes">
-          {['TRANSFER', 'CONTRACT_CALL', 'TYPED_MESSAGE', 'RAW'].map(op => (
+          {['TRANSFER', 'CONTRACT_CALL', 'TYPED_MESSAGE', 'RAW', 'MINT', 'BURN', 'ENABLE_ASSET', 'STAKE', 'UNSTAKE', 'WITHDRAW', 'PROGRAM_CALL'].map(op => (
             <label key={op} className="cbt-rule-checkbox">
               <input type="checkbox" checked={operations.includes(op)} onChange={() => toggleList(setOperations, op)} />
               <span>{op}</span>
@@ -414,11 +426,36 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
 
       <div className="cbt-rule-editor-row">
         <div className="cbt-rule-editor-field">
-          <label className="cbt-rule-editor-label">Source Vault IDs</label>
+          <label className="cbt-rule-editor-label">Source Type</label>
+          <div className="cbt-rule-editor-checkboxes">
+            {['VAULT', 'EXCHANGE'].map(t => (
+              <label key={t} className="cbt-rule-checkbox">
+                <input type="checkbox" checked={sourceTypes.includes(t)} onChange={() => toggleList(setSourceTypes, t)} />
+                <span>{t}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">Dest Type</label>
+          <div className="cbt-rule-editor-checkboxes">
+            {['VAULT', 'EXCHANGE_ACCOUNT', 'FIAT_ACCOUNT', 'UNMANAGED', 'ONE_TIME'].map(t => (
+              <label key={t} className="cbt-rule-checkbox">
+                <input type="checkbox" checked={destTypes.includes(t)} onChange={() => toggleList(setDestTypes, t)} />
+                <span>{t}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="cbt-rule-editor-row">
+        <div className="cbt-rule-editor-field">
+          <label className="cbt-rule-editor-label">Source Account IDs</label>
           <input className="cbt-rule-editor-input" type="text" value={sourceIds} onChange={e => setSourceIds(e.target.value)} placeholder="e.g., 0, 1 (empty = any)" />
         </div>
         <div className="cbt-rule-editor-field">
-          <label className="cbt-rule-editor-label">Dest Vault IDs</label>
+          <label className="cbt-rule-editor-label">Dest Account IDs</label>
           <input className="cbt-rule-editor-input" type="text" value={destIds} onChange={e => setDestIds(e.target.value)} placeholder="e.g., 2, 3 (empty = any)" />
         </div>
       </div>
