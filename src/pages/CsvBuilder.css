@@ -421,6 +421,97 @@
   box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.08);
 }
 
+/* ── Column Editor ── */
+
+.coleditor-section {
+  margin-top: 2.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.coleditor-header {
+  margin-bottom: 1rem;
+}
+
+.coleditor-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #a1a1aa;
+  margin: 0 0 0.25rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.coleditor-desc {
+  font-size: 0.8rem;
+  color: #52525b;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.coleditor-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.coleditor-input-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.coleditor-controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.coleditor-field {
+  flex: 1;
+}
+
+.coleditor-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #a1a1aa;
+  user-select: none;
+}
+
+.coleditor-checkbox input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #a855f7;
+  cursor: pointer;
+}
+
+.coleditor-textarea {
+  min-height: 220px;
+}
+
+.coleditor-output-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.coleditor-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.coleditor-output-textarea {
+  background: rgba(0, 0, 0, 0.25);
+  color: #a1a1aa;
+  cursor: default;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 900px) {
@@ -453,6 +544,10 @@
   }
 
   .csvbuilder-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .coleditor-layout {
     grid-template-columns: 1fr;
   }
 }

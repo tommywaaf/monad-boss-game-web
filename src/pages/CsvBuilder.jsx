@@ -94,6 +94,31 @@ function CsvBuilder() {
   }, 0)
 
   const [copied, setCopied] = useState(false)
+  const [colEditorInput, setColEditorInput] = useState('')
+  const [colEditorPrepend, setColEditorPrepend] = useState('')
+  const [colEditorAppend, setColEditorAppend] = useState('')
+  const [colEditorOmitLast, setColEditorOmitLast] = useState(false)
+  const [colEditorCopied, setColEditorCopied] = useState(false)
+
+  const colEditorOutput = useMemo(() => {
+    const lines = colEditorInput.split(/\r?\n/).filter(l => l.trim() !== '')
+    if (lines.length === 0) return ''
+    return lines.map((line, i) => {
+      let suffix = colEditorAppend
+      if (colEditorOmitLast && i === lines.length - 1 && suffix.endsWith(',')) {
+        suffix = suffix.slice(0, -1)
+      }
+      return `${colEditorPrepend}${line.trim()}${suffix}`
+    }).join('\n')
+  }, [colEditorInput, colEditorPrepend, colEditorAppend, colEditorOmitLast])
+
+  const handleColEditorCopy = useCallback(() => {
+    if (!colEditorOutput) return
+    navigator.clipboard.writeText(colEditorOutput).then(() => {
+      setColEditorCopied(true)
+      setTimeout(() => setColEditorCopied(false), 2000)
+    })
+  }, [colEditorOutput])
 
   const csvPreview = useMemo(() => buildCsv(), [buildCsv])
 
@@ -322,6 +347,78 @@ function CsvBuilder() {
             />
           </section>
         )}
+        {/* Column Editor */}
+        <section className="coleditor-section">
+          <div className="coleditor-header">
+            <h2 className="coleditor-title">Column Editor</h2>
+            <p className="coleditor-desc">Paste a list of values and wrap each line with a prefix/suffix. Useful for building SQL IN clauses.</p>
+          </div>
+          <div className="coleditor-layout">
+            <div className="coleditor-input-side">
+              <div className="coleditor-controls">
+                <div className="coleditor-field">
+                  <label className="col-field-label">Prepend</label>
+                  <input
+                    className="col-input"
+                    type="text"
+                    value={colEditorPrepend}
+                    onChange={e => setColEditorPrepend(e.target.value)}
+                    placeholder="e.g., '"
+                  />
+                </div>
+                <div className="coleditor-field">
+                  <label className="col-field-label">Append</label>
+                  <input
+                    className="col-input"
+                    type="text"
+                    value={colEditorAppend}
+                    onChange={e => setColEditorAppend(e.target.value)}
+                    placeholder="e.g., ',"
+                  />
+                </div>
+              </div>
+              <label className="coleditor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={colEditorOmitLast}
+                  onChange={e => setColEditorOmitLast(e.target.checked)}
+                />
+                <span>Omit trailing comma on last line</span>
+              </label>
+              <label className="col-field-label">
+                Input (1 value per line)
+                {colEditorInput.trim() && (
+                  <span className="line-count">
+                    {colEditorInput.split(/\r?\n/).filter(l => l.trim() !== '').length.toLocaleString()} lines
+                  </span>
+                )}
+              </label>
+              <textarea
+                className="col-textarea coleditor-textarea"
+                placeholder={"Paste values here...\nOne per line"}
+                value={colEditorInput}
+                onChange={e => setColEditorInput(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <div className="coleditor-output-side">
+              <div className="coleditor-output-header">
+                <label className="col-field-label">Output</label>
+                <button className="copy-csv-btn" onClick={handleColEditorCopy} disabled={!colEditorOutput}>
+                  {colEditorCopied ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <textarea
+                className="col-textarea coleditor-textarea coleditor-output-textarea"
+                value={colEditorOutput}
+                readOnly
+                spellCheck={false}
+                onFocus={e => e.target.select()}
+                placeholder="Output will appear here..."
+              />
+            </div>
+          </div>
+        </section>
       </div>
       <ToolInfoPanel toolId="csv-builder" />
     </div>
