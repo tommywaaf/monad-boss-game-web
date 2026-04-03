@@ -355,6 +355,14 @@ function CsvBuilder() {
           </div>
           <div className="coleditor-layout">
             <div className="coleditor-input-side">
+              <div className="coleditor-presets">
+                <button
+                  className="coleditor-preset-btn"
+                  onClick={() => { setColEditorPrepend("'"); setColEditorAppend("',"); setColEditorOmitLast(true) }}
+                >
+                  Quick SQL
+                </button>
+              </div>
               <div className="coleditor-controls">
                 <div className="coleditor-field">
                   <label className="col-field-label">Prepend</label>
