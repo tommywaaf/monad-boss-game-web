@@ -2,7 +2,6 @@ import { Link, useLocation } from 'react-router-dom'
 import './Sidebar.css'
 
 const NAV_ITEMS = [
-  { to: '/',                 icon: '🎮', label: 'Game' },
   { to: '/broadcaster',     icon: '🚀', label: 'Broadcaster' },
   { to: '/simulator',       icon: '⚡', label: 'Simulator' },
   { to: '/tx-fetcher',      icon: '📥', label: 'TX Fetcher' },
@@ -20,7 +19,6 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const location = useLocation()
-  const isHomePage = location.pathname === '/' || location.pathname === ''
 
   return (
     <nav className="page-sidebar">
@@ -32,11 +30,7 @@ export default function Sidebar() {
           <Link
             key={to}
             to={to}
-            className={`sidebar-link ${
-              to === '/'
-                ? isHomePage ? 'active' : ''
-                : location.pathname === to ? 'active' : ''
-            }`}
+            className={`sidebar-link ${location.pathname === to ? 'active' : ''}`}
           >
             <span className="sidebar-icon">{icon}</span>
             <span className="sidebar-text">{label}</span>
