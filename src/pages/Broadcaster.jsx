@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Link, useLocation } from 'react-router-dom'
 import { trackUsage } from '../utils/counter'
 import ToolInfoPanel from '../components/ToolInfoPanel'
 import './Broadcaster.css'
@@ -1272,99 +1271,8 @@ function Broadcaster() {
     return 'EVM'
   }
 
-  const location = useLocation()
-
   return (
     <div className="broadcaster-page">
-      <nav className="page-sidebar">
-        <div className="sidebar-header">
-          <h3>Navigation</h3>
-        </div>
-        <div className="sidebar-links">
-          <Link 
-            to="/broadcaster" 
-            className={`sidebar-link ${location.pathname === '/broadcaster' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">🚀</span>
-            <span className="sidebar-text">Broadcaster</span>
-          </Link>
-          <Link 
-            to="/simulator" 
-            className={`sidebar-link ${location.pathname === '/simulator' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">⚡</span>
-            <span className="sidebar-text">Simulator</span>
-          </Link>
-          <Link 
-            to="/tx-fetcher" 
-            className={`sidebar-link ${location.pathname === '/tx-fetcher' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">📥</span>
-            <span className="sidebar-text">TX Fetcher</span>
-          </Link>
-          <Link 
-            to="/ton-details" 
-            className={`sidebar-link ${location.pathname === '/ton-details' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">🔍</span>
-            <span className="sidebar-text">TON Details</span>
-          </Link>
-          <Link 
-            to="/ton-batch-lookup" 
-            className={`sidebar-link ${location.pathname === '/ton-batch-lookup' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">📋</span>
-            <span className="sidebar-text">TON Safe-to-Fail</span>
-          </Link>
-          <Link 
-            to="/ton-seqno-check" 
-            className={`sidebar-link ${location.pathname === '/ton-seqno-check' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">🔢</span>
-            <span className="sidebar-text">TON Seqno Check</span>
-          </Link>
-          <Link 
-            to="/btc-safe-to-fail" 
-            className={`sidebar-link ${location.pathname === '/btc-safe-to-fail' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">₿</span>
-            <span className="sidebar-text">BTC Safe-to-Fail</span>
-          </Link>
-          <Link 
-            to="/btc-fetcher" 
-            className={`sidebar-link ${location.pathname === '/btc-fetcher' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">🔗</span>
-            <span className="sidebar-text">BTC Fetcher</span>
-          </Link>
-          <Link 
-            to="/csv-builder" 
-            className={`sidebar-link ${location.pathname === '/csv-builder' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">📊</span>
-            <span className="sidebar-text">CSV Builder</span>
-          </Link>
-          <Link 
-            to="/faucet" 
-            className={`sidebar-link ${location.pathname === '/faucet' ? 'active' : ''}`}
-          >
-            <span className="sidebar-icon">🚰</span>
-            <span className="sidebar-text">Faucet</span>
-          </Link>
-          <Link to="/webhook-tester" className={`sidebar-link ${location.pathname === '/webhook-tester' ? 'active' : ''}`}>
-            <span className="sidebar-icon">🔗</span>
-            <span className="sidebar-text">Webhook Tester</span>
-          </Link>
-          <Link to="/callback-handler" className={`sidebar-link ${location.pathname === '/callback-handler' ? 'active' : ''}`}>
-            <span className="sidebar-icon">🛡️</span>
-            <span className="sidebar-text">Callback Handler</span>
-          </Link>
-          <Link to="/easy-cosigner" className={`sidebar-link ${location.pathname === '/easy-cosigner' ? 'active' : ''}`}>
-            <span className="sidebar-icon">🔐</span>
-            <span className="sidebar-text">Easy Cosigner</span>
-          </Link>
-        </div>
-      </nav>
       <div className="broadcaster-container">
         <header className="broadcaster-header">
           <h1>⚡ Transaction Broadcaster</h1>

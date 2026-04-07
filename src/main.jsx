@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import AppLayout from './layouts/AppLayout'
 import { DynamicContextProvider } from '@dynamic-labs/sdk-react-core'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
 import { DynamicWagmiConnector } from '@dynamic-labs/wagmi-connector'
@@ -119,20 +120,22 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
-        <Route path="/broadcaster" element={<Broadcaster />} />
-        <Route path="/simulator" element={<Simulator />} />
-        <Route path="/ton-details" element={<TonDetails />} />
-        <Route path="/ton-batch-lookup" element={<TonBatchLookup />} />
-        <Route path="/ton-seqno-check" element={<TonSeqnoCheck />} />
-        <Route path="/btc-safe-to-fail" element={<BtcSafeToFail />} />
-        <Route path="/tx-fetcher" element={<TxFetcher />} />
-        <Route path="/btc-fetcher" element={<BtcFetcher />} />
-        <Route path="/csv-builder" element={<CsvBuilder />} />
-        <Route path="/faucet" element={<Faucet />} />
-        <Route path="/webhook-tester" element={<WebhookTester />} />
-        <Route path="/callback-handler" element={<CallbackHandler />} />
-        <Route path="/easy-cosigner" element={<EasyCosigner />} />
-        <Route path="/*" element={<MainApp />} />
+        <Route element={<AppLayout />}>
+          <Route path="/broadcaster" element={<Broadcaster />} />
+          <Route path="/simulator" element={<Simulator />} />
+          <Route path="/ton-details" element={<TonDetails />} />
+          <Route path="/ton-batch-lookup" element={<TonBatchLookup />} />
+          <Route path="/ton-seqno-check" element={<TonSeqnoCheck />} />
+          <Route path="/btc-safe-to-fail" element={<BtcSafeToFail />} />
+          <Route path="/tx-fetcher" element={<TxFetcher />} />
+          <Route path="/btc-fetcher" element={<BtcFetcher />} />
+          <Route path="/csv-builder" element={<CsvBuilder />} />
+          <Route path="/faucet" element={<Faucet />} />
+          <Route path="/webhook-tester" element={<WebhookTester />} />
+          <Route path="/callback-handler" element={<CallbackHandler />} />
+          <Route path="/easy-cosigner" element={<EasyCosigner />} />
+          <Route path="/*" element={<MainApp />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   </StrictMode>,

@@ -647,15 +647,6 @@
     flex-direction: column;
   }
 
-  .ecs-page .page-sidebar {
-    width: 100%;
-    min-width: 100%;
-    height: auto;
-    position: relative;
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
   .ecs-content {
     padding: 1rem;
   }

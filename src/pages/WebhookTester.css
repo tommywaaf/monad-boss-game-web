@@ -807,15 +807,6 @@
     flex-direction: column;
   }
 
-  .page-sidebar {
-    width: 100%;
-    min-width: 100%;
-    height: auto;
-    position: relative;
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
   .wht-split {
     flex-direction: column;
     min-height: auto;
