@@ -21,7 +21,6 @@ function CsvBuilder() {
   const [columns, setColumns] = useState(() => [makeColumn(), makeColumn(), makeColumn(), makeColumn()])
   const [includeHeader, setIncludeHeader] = useState(false)
   const [rowDeleterEnabled, setRowDeleterEnabled] = useState(false)
-  const [deletedRows, setDeletedRows] = useState(new Set())
 
   const updateColumn = useCallback((id, field, value) => {
     setColumns(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c))
@@ -39,7 +38,7 @@ function CsvBuilder() {
     return columns.filter(c => c.staticValue.trim() !== '' || c.lines.trim() !== '')
   }, [columns])
 
-  const buildCsvRows = useCallback(() => {
+  const buildCsv = useCallback(() => {
     const active = getActiveColumns()
     if (active.length === 0) return null
 
@@ -56,32 +55,24 @@ function CsvBuilder() {
 
     if (maxRows === 0 && colData.every(d => d.isStatic)) return null
 
-    const headerRow = includeHeader
-      ? colData.map(d => escapeCsvCell(d.label)).join(',')
-      : null
+    const csvLines = []
 
-    const dataRows = []
+    if (includeHeader) {
+      csvLines.push(colData.map(d => escapeCsvCell(d.label)).join(','))
+    }
+
     for (let i = 0; i < maxRows; i++) {
       const row = colData.map(d => {
         if (d.isStatic) return escapeCsvCell(d.value)
         return escapeCsvCell(d.rows[i] ?? '')
       })
-      dataRows.push(row.join(','))
+      csvLines.push(row.join(','))
     }
 
-    return { headerRow, dataRows }
+    return csvLines.join('\n')
   }, [getActiveColumns, includeHeader])
 
-  const csvRowData = useMemo(() => buildCsvRows(), [buildCsvRows])
-
-  const csvPreview = useMemo(() => {
-    if (!csvRowData) return null
-    const { headerRow, dataRows } = csvRowData
-    const filteredData = dataRows.filter((_, i) => !deletedRows.has(i))
-    if (filteredData.length === 0 && !headerRow) return null
-    const lines = headerRow ? [headerRow, ...filteredData] : filteredData
-    return lines.join('\n')
-  }, [csvRowData, deletedRows])
+  const csvPreview = useMemo(() => buildCsv(), [buildCsv])
 
   const handleDownload = useCallback(() => {
     if (!csvPreview) return
@@ -136,13 +127,19 @@ function CsvBuilder() {
     })
   }, [csvPreview])
 
-  const toggleRowDeleted = useCallback((index) => {
-    setDeletedRows(prev => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
+  const deleteRow = useCallback((rowIndex) => {
+    setColumns(prev => prev.map(col => {
+      if (col.staticValue.trim()) return col
+      const lines = col.lines.split(/\r?\n/)
+      let nonEmptyIdx = 0
+      const filtered = lines.filter(l => {
+        if (l === '') return true
+        if (nonEmptyIdx === rowIndex) { nonEmptyIdx++; return false }
+        nonEmptyIdx++
+        return true
+      })
+      return { ...col, lines: filtered.join('\n') }
+    }))
   }, [])
 
   const colCounts = columns.map(c => {
@@ -182,10 +179,7 @@ function CsvBuilder() {
               <input
                 type="checkbox"
                 checked={rowDeleterEnabled}
-                onChange={e => {
-                  setRowDeleterEnabled(e.target.checked)
-                  if (!e.target.checked) setDeletedRows(new Set())
-                }}
+                onChange={e => setRowDeleterEnabled(e.target.checked)}
               />
               <span>Row Deleter</span>
             </label>
@@ -278,6 +272,20 @@ function CsvBuilder() {
                   <div className="col-static-notice">
                     Static value set — every row will use "{col.staticValue}"
                   </div>
+                ) : rowDeleterEnabled && col.lines.trim() ? (
+                  <div className="col-lines-deleter">
+                    {col.lines.split(/\r?\n/).filter(l => l !== '').map((line, i) => (
+                      <div key={i} className="col-line-item">
+                        <button
+                          className="col-line-delete-btn"
+                          onClick={() => deleteRow(i)}
+                          title="Delete row from all columns"
+                        >×</button>
+                        <span className="col-line-num">{i + 1}</span>
+                        <span className="col-line-text">{line}</span>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <textarea
                     className="col-textarea"
@@ -293,59 +301,22 @@ function CsvBuilder() {
           })}
         </section>
 
-        {(csvPreview || (rowDeleterEnabled && csvRowData)) && (
+        {csvPreview && (
           <section className="csv-preview-section">
             <div className="csv-preview-header">
               <h2 className="csv-preview-title">CSV Preview</h2>
-              <div className="csv-preview-actions">
-                {rowDeleterEnabled && deletedRows.size > 0 && (
-                  <span className="csv-deleted-count">{deletedRows.size} deleted</span>
-                )}
-                {rowDeleterEnabled && deletedRows.size > 0 && (
-                  <button className="copy-csv-btn" onClick={() => setDeletedRows(new Set())}>
-                    Undo All
-                  </button>
-                )}
-                <button className="copy-csv-btn" onClick={handleCopy}>
-                  {copied ? '✓ Copied' : 'Copy to Clipboard'}
-                </button>
-              </div>
+              <button className="copy-csv-btn" onClick={handleCopy}>
+                {copied ? '✓ Copied' : 'Copy to Clipboard'}
+              </button>
             </div>
-            {rowDeleterEnabled && csvRowData ? (
-              <div className="csv-row-deleter">
-                {csvRowData.headerRow && (
-                  <div className="csv-row-item csv-row-header-item">
-                    <span className="csv-row-delete-btn" style={{ visibility: 'hidden' }}>×</span>
-                    <span className="csv-row-num">H</span>
-                    <span className="csv-row-text">{csvRowData.headerRow}</span>
-                  </div>
-                )}
-                {csvRowData.dataRows.map((row, i) => {
-                  const isDeleted = deletedRows.has(i)
-                  return (
-                    <div key={i} className={`csv-row-item ${isDeleted ? 'csv-row-deleted' : ''}`}>
-                      <button
-                        className={`csv-row-delete-btn ${isDeleted ? 'csv-row-undo-btn' : ''}`}
-                        onClick={() => toggleRowDeleted(i)}
-                        title={isDeleted ? 'Undo delete' : 'Delete row'}
-                      >
-                        {isDeleted ? '↩' : '×'}
-                      </button>
-                      <span className="csv-row-num">{i + 1}</span>
-                      <span className="csv-row-text">{row}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <textarea
-                className="csv-preview-textarea"
-                value={csvPreview ?? ''}
-                readOnly
-                spellCheck={false}
-                onFocus={e => e.target.select()}
-              />
-            )}
+            <textarea
+              className="csv-preview-textarea"
+              value={csvPreview}
+              rows={Math.min((csvPreview.split('\n').length) + 1, 75)}
+              readOnly
+              spellCheck={false}
+              onFocus={e => e.target.select()}
+            />
           </section>
         )}
         {/* Column Editor */}
