@@ -421,6 +421,114 @@
   box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.08);
 }
 
+/* ── Row Deleter ── */
+
+.csv-preview-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.csv-deleted-count {
+  font-size: 0.75rem;
+  color: #f87171;
+  padding: 0.2rem 0.6rem;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.csv-row-deleter {
+  max-height: 1540px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.25rem 0;
+}
+
+.csv-row-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: #a1a1aa;
+  transition: background 0.15s;
+}
+
+.csv-row-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.csv-row-header-item {
+  color: #c084fc;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 0.1rem;
+}
+
+.csv-row-deleted {
+  opacity: 0.35;
+}
+
+.csv-row-deleted .csv-row-text {
+  text-decoration: line-through;
+}
+
+.csv-row-deleted:hover {
+  opacity: 0.6;
+}
+
+.csv-row-num {
+  min-width: 2.5rem;
+  text-align: right;
+  color: #52525b;
+  font-size: 0.7rem;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.csv-row-text {
+  flex: 1;
+  white-space: pre;
+  overflow-x: auto;
+  font-family: inherit;
+}
+
+.csv-row-delete-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #71717a;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.csv-row-delete-btn:hover {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.csv-row-undo-btn:hover {
+  color: #2dd4bf;
+  border-color: rgba(45, 212, 191, 0.4);
+  background: rgba(45, 212, 191, 0.1);
+}
+
 /* ── Column Editor ── */
 
 .coleditor-section {
