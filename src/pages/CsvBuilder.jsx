@@ -21,6 +21,7 @@ function CsvBuilder() {
   const [columns, setColumns] = useState(() => [makeColumn(), makeColumn(), makeColumn(), makeColumn()])
   const [includeHeader, setIncludeHeader] = useState(false)
   const [rowDeleterEnabled, setRowDeleterEnabled] = useState(false)
+  const [hoveredRow, setHoveredRow] = useState(null)
 
   const updateColumn = useCallback((id, field, value) => {
     setColumns(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c))
@@ -273,9 +274,13 @@ function CsvBuilder() {
                     Static value set — every row will use "{col.staticValue}"
                   </div>
                 ) : rowDeleterEnabled && col.lines.trim() ? (
-                  <div className="col-lines-deleter">
+                  <div className="col-lines-deleter" onMouseLeave={() => setHoveredRow(null)}>
                     {col.lines.split(/\r?\n/).filter(l => l !== '').map((line, i) => (
-                      <div key={i} className="col-line-item">
+                      <div
+                        key={i}
+                        className={`col-line-item${hoveredRow === i ? ' col-line-item-hover' : ''}`}
+                        onMouseEnter={() => setHoveredRow(i)}
+                      >
                         <button
                           className="col-line-delete-btn"
                           onClick={() => deleteRow(i)}
