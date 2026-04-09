@@ -190,12 +190,13 @@ export default function OnChainCheck() {
     setLogs(prev => [...prev.slice(-400), `[${ts}] ${msg}`])
   }, [])
 
+  // Only sync progress while running — resultsRef holds nulls for pending rows; pushing that
+  // array into state would crash the table (r.txHash on null). Full results are set once in handleRun.
   useEffect(() => {
     let id
     if (loading) {
       id = setInterval(() => {
         setProgress({ ...progressRef.current })
-        setResults([...resultsRef.current])
       }, UI_UPDATE_INTERVAL_MS)
     }
     return () => { if (id) clearInterval(id) }
@@ -322,6 +323,7 @@ export default function OnChainCheck() {
     const header = ['tx_hash', 'raw_input', 'request_success', 'on_chain', 'chain_id', 'chain_name', 'note']
     const lines = [header.join(',')]
     for (const r of results) {
+      if (r == null) continue
       lines.push([
         escapeCsvField(r.txHash),
         escapeCsvField(r.rawInput),
@@ -342,9 +344,10 @@ export default function OnChainCheck() {
     URL.revokeObjectURL(url)
   }
 
-  const totalPages = Math.max(1, Math.ceil(results.length / pageSize))
+  const safeResults = results.filter(Boolean)
+  const totalPages = Math.max(1, Math.ceil(safeResults.length / pageSize))
   const startIdx = resultsPage * pageSize
-  const pageRows = results.slice(startIdx, startIdx + pageSize)
+  const pageRows = safeResults.slice(startIdx, startIdx + pageSize)
   const progressPct = progress.total > 0 ? Math.min(95, (progress.done / progress.total) * 100) : 0
 
   const canRun = !loading && parsedTokens.length > 0
@@ -452,12 +455,12 @@ export default function OnChainCheck() {
           </section>
         )}
 
-        {results.length > 0 && (
+        {safeResults.length > 0 && (
           <section className="results-section">
             <div className="results-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <h3>Results</h3>
-                <span className="results-count">{results.length.toLocaleString()} rows</span>
+                <span className="results-count">{safeResults.length.toLocaleString()} rows</span>
               </div>
               <div className="results-actions">
                 <button type="button" className="download-btn" onClick={handleDownloadCSV}>
@@ -482,7 +485,7 @@ export default function OnChainCheck() {
                 <span>per page</span>
               </div>
               <div className="page-range-info">
-                Showing {(startIdx + 1).toLocaleString()}–{Math.min(startIdx + pageSize, results.length).toLocaleString()} of {results.length.toLocaleString()}
+                Showing {(startIdx + 1).toLocaleString()}–{Math.min(startIdx + pageSize, safeResults.length).toLocaleString()} of {safeResults.length.toLocaleString()}
               </div>
             </div>
 
@@ -503,6 +506,7 @@ export default function OnChainCheck() {
                 <span style={{ flex: 0.6 }}>note</span>
               </div>
               {pageRows.map((r, i) => {
+                if (r == null) return null
                 const globalIdx = startIdx + i + 1
                 const hash = r.txHash
                 const explorer = hash ? `${selectedNetwork.explorer}${hash}` : null
