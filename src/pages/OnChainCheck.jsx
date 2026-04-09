@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { trackUsage } from '../utils/counter'
 import ToolInfoPanel from '../components/ToolInfoPanel'
 import './TxFetcher.css'
@@ -147,6 +147,21 @@ function escapeCsvField(val) {
   return s
 }
 
+/** Count completed rows and successes (skips null slots while a run is in progress). */
+function tallyFromRef(refArr) {
+  const total = refArr.length
+  let completed = 0
+  let requestOk = 0
+  let onChain = 0
+  for (const r of refArr) {
+    if (r == null) continue
+    completed++
+    if (r.requestSuccess) requestOk++
+    if (r.onChain) onChain++
+  }
+  return { completed, requestOk, onChain, total }
+}
+
 export default function OnChainCheck() {
   useEffect(() => {
     document.title = 'Am I Onchain?'
@@ -162,6 +177,12 @@ export default function OnChainCheck() {
   const [logs, setLogs] = useState([])
   const [resultsPage, setResultsPage] = useState(0)
   const [pageSize, setPageSize] = useState(200)
+  const [liveScore, setLiveScore] = useState({
+    completed: 0,
+    requestOk: 0,
+    onChain: 0,
+    total: 0,
+  })
 
   const abortRef = useRef(null)
   const resultsRef = useRef([])
@@ -197,6 +218,7 @@ export default function OnChainCheck() {
     if (loading) {
       id = setInterval(() => {
         setProgress({ ...progressRef.current })
+        setLiveScore(tallyFromRef(resultsRef.current))
       }, UI_UPDATE_INTERVAL_MS)
     }
     return () => { if (id) clearInterval(id) }
@@ -229,6 +251,7 @@ export default function OnChainCheck() {
     progressRef.current = { done: 0, total: rows.length }
     setResults([])
     setProgress({ done: 0, total: rows.length })
+    setLiveScore({ completed: 0, requestOk: 0, onChain: 0, total: rows.length })
 
     let transientLogBudget = 80
 
@@ -289,6 +312,7 @@ export default function OnChainCheck() {
       })
 
       setResults(final)
+      setLiveScore(tallyFromRef(final))
       setProgress({ done: progressRef.current.total, total: progressRef.current.total })
       const stoppedEarly = signal.aborted || final.some(x => x.note === 'Aborted' || x.note === 'Incomplete')
       if (stoppedEarly) {
@@ -307,6 +331,7 @@ export default function OnChainCheck() {
         note: signal.aborted ? 'Aborted' : 'Incomplete',
       })
       setResults(final)
+      setLiveScore(tallyFromRef(final))
       setProgress({ done: progressRef.current.total, total: progressRef.current.total })
       addLog('Error or interrupt — partial results below.')
     } finally {
@@ -345,6 +370,12 @@ export default function OnChainCheck() {
   }
 
   const safeResults = results.filter(Boolean)
+  const scorecardStats = useMemo(() => {
+    if (safeResults.length > 0) return tallyFromRef(safeResults)
+    if (loading && progress.total > 0) return liveScore
+    return null
+  }, [safeResults, loading, progress.total, liveScore])
+
   const totalPages = Math.max(1, Math.ceil(safeResults.length / pageSize))
   const startIdx = resultsPage * pageSize
   const pageRows = safeResults.slice(startIdx, startIdx + pageSize)
@@ -455,8 +486,32 @@ export default function OnChainCheck() {
           </section>
         )}
 
-        {safeResults.length > 0 && (
+        {((loading && progress.total > 0) || safeResults.length > 0) && scorecardStats && (
           <section className="results-section">
+            <div className="onchain-scorecard" aria-live="polite">
+              <div className="onchain-scorecard-title">Scorecard</div>
+              <div className="onchain-scorecard-grid">
+                <div className="onchain-scorecard-metric">
+                  <span className="onchain-scorecard-label">Request success</span>
+                  <span className="onchain-scorecard-value">
+                    {scorecardStats.requestOk.toLocaleString()} / {scorecardStats.completed.toLocaleString()}
+                  </span>
+                </div>
+                <div className="onchain-scorecard-metric">
+                  <span className="onchain-scorecard-label">Found on chain</span>
+                  <span className="onchain-scorecard-value">
+                    {scorecardStats.onChain.toLocaleString()} / {scorecardStats.completed.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <div className="onchain-scorecard-foot">
+                {scorecardStats.completed.toLocaleString()} of {scorecardStats.total.toLocaleString()} hashes checked
+                {loading && <span className="onchain-scorecard-live"> · updating</span>}
+              </div>
+            </div>
+
+            {safeResults.length > 0 && (
+            <>
             <div className="results-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <h3>Results</h3>
@@ -540,6 +595,8 @@ export default function OnChainCheck() {
                 <button type="button" className="pagination-btn" disabled={resultsPage >= totalPages - 1} onClick={() => setResultsPage(p => p + 1)}>Next</button>
                 <button type="button" className="pagination-btn" disabled={resultsPage >= totalPages - 1} onClick={() => setResultsPage(totalPages - 1)}>Last</button>
               </div>
+            )}
+            </>
             )}
           </section>
         )}

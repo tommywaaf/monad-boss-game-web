@@ -831,3 +831,58 @@
     justify-content: center;
   }
 }
+
+/* Am I Onchain? — live scorecard */
+.onchain-scorecard {
+  margin-bottom: 1.5rem;
+  padding: 1.1rem 1.25rem;
+  background: rgba(45, 212, 191, 0.06);
+  border: 1px solid rgba(45, 212, 191, 0.25);
+  border-radius: 12px;
+}
+
+.onchain-scorecard-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #5eead4;
+  margin-bottom: 0.75rem;
+}
+
+.onchain-scorecard-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2.5rem;
+}
+
+.onchain-scorecard-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.onchain-scorecard-label {
+  font-size: 0.8rem;
+  color: #a1a1aa;
+}
+
+.onchain-scorecard-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #e4e4e7;
+}
+
+.onchain-scorecard-foot {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.8rem;
+  color: #71717a;
+}
+
+.onchain-scorecard-live {
+  color: #2dd4bf;
+  font-style: italic;
+}
