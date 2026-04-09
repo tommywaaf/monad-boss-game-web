@@ -242,19 +242,26 @@ function escapeCsvField(val) {
   return s
 }
 
-/** Count completed rows and successes (skips null slots while a run is in progress). */
+/** Count completed rows, request/on-chain stats, and per execution_status (receipt). */
 function tallyFromRef(refArr) {
   const total = refArr.length
   let completed = 0
   let requestOk = 0
   let onChain = 0
+  const execution = { success: 0, fail: 0, pending: 0, unknown: 0, na: 0 }
   for (const r of refArr) {
     if (r == null) continue
     completed++
     if (r.requestSuccess) requestOk++
     if (r.onChain) onChain++
+    const ex = r.executionStatus ?? 'n/a'
+    if (ex === 'success') execution.success++
+    else if (ex === 'fail') execution.fail++
+    else if (ex === 'pending') execution.pending++
+    else if (ex === 'unknown') execution.unknown++
+    else execution.na++
   }
-  return { completed, requestOk, onChain, total }
+  return { completed, requestOk, onChain, total, execution }
 }
 
 export default function OnChainCheck() {
@@ -277,6 +284,7 @@ export default function OnChainCheck() {
     requestOk: 0,
     onChain: 0,
     total: 0,
+    execution: { success: 0, fail: 0, pending: 0, unknown: 0, na: 0 },
   })
 
   const abortRef = useRef(null)
@@ -346,7 +354,13 @@ export default function OnChainCheck() {
     progressRef.current = { done: 0, total: rows.length }
     setResults([])
     setProgress({ done: 0, total: rows.length })
-    setLiveScore({ completed: 0, requestOk: 0, onChain: 0, total: rows.length })
+    setLiveScore({
+      completed: 0,
+      requestOk: 0,
+      onChain: 0,
+      total: rows.length,
+      execution: { success: 0, fail: 0, pending: 0, unknown: 0, na: 0 },
+    })
 
     let transientLogBudget = 80
 
@@ -622,6 +636,23 @@ export default function OnChainCheck() {
                     {scorecardStats.onChain.toLocaleString()} / {scorecardStats.completed.toLocaleString()}
                   </span>
                 </div>
+              </div>
+              <div className="onchain-scorecard-subtitle">Execution (receipt)</div>
+              <div className="onchain-scorecard-exec-grid">
+                {[
+                  { key: 'success', label: 'Success', color: '#4ade80' },
+                  { key: 'fail', label: 'Fail', color: '#f87171' },
+                  { key: 'pending', label: 'Pending', color: '#fbbf24' },
+                  { key: 'unknown', label: 'Unknown', color: '#c4b5fd' },
+                  { key: 'na', label: 'N/A', color: '#71717a' },
+                ].map(({ key, label, color }) => (
+                  <div key={key} className="onchain-scorecard-exec-cell">
+                    <span className="onchain-scorecard-exec-label" style={{ color }}>{label}</span>
+                    <span className="onchain-scorecard-exec-value" style={{ color }}>
+                      {(scorecardStats.execution?.[key] ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
               </div>
               <div className="onchain-scorecard-foot">
                 {scorecardStats.completed.toLocaleString()} of {scorecardStats.total.toLocaleString()} hashes checked
