@@ -17,6 +17,7 @@ import TonBatchLookup from './pages/TonBatchLookup.jsx'
 import TonSeqnoCheck from './pages/TonSeqnoCheck.jsx'
 import BtcSafeToFail from './pages/BtcSafeToFail.jsx'
 import TxFetcher from './pages/TxFetcher.jsx'
+import OnChainCheck from './pages/OnChainCheck.jsx'
 import BtcFetcher from './pages/BtcFetcher.jsx'
 import CsvBuilder from './pages/CsvBuilder.jsx'
 import Faucet from './pages/Faucet.jsx'
@@ -128,6 +129,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/ton-seqno-check" element={<TonSeqnoCheck />} />
           <Route path="/btc-safe-to-fail" element={<BtcSafeToFail />} />
           <Route path="/tx-fetcher" element={<TxFetcher />} />
+          <Route path="/onchain-check" element={<OnChainCheck />} />
           <Route path="/btc-fetcher" element={<BtcFetcher />} />
           <Route path="/csv-builder" element={<CsvBuilder />} />
           <Route path="/faucet" element={<Faucet />} />

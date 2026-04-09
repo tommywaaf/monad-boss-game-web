@@ -17,6 +17,11 @@ const TOOL_INFO = {
     why: 'Use this to reconcile a vault or determine the highest confirmed nonce on-chain to verify whether a transaction is safe to fail.',
     how: 'Enter an EVM address and select a chain from the Etherscan V2 network list. Fetch all tx hashes (Normal, Internal, ERC-20, ERC-721, ERC-1155) for all time or within a specific date range. Filter results by direction (incoming/outgoing). Use "Max Confirmed Nonce Only" for a quick nonce-only lookup via eth_getTransactionCount. Results can be copied or downloaded as CSV.',
   },
+  'onchain-check': {
+    title: 'Am I Onchain?',
+    why: 'Quickly verify whether a batch of EVM transaction hashes exists on a specific chain (for example after signing or before reconciliation).',
+    how: 'Select a chain from the Etherscan V2 list and paste hashes (comma, space, or newline separated — large batches supported). Each hash is checked via eth_getTransactionByHash with conservative pacing to reduce rate limits; failed requests retry with exponential backoff until a definitive response. Results show request_success and on_chain per row; export to CSV like other tools.',
+  },
   'ton-details': {
     title: 'TON Details',
     why: 'Provides a quick way to convert a TON transaction to its Fireblocks-format hash and identify the masterchain blocks to rescan.',

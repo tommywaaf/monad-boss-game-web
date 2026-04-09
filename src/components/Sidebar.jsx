@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: '/broadcaster',     icon: '🚀', label: 'Broadcaster' },
   { to: '/simulator',       icon: '⚡', label: 'Simulator' },
   { to: '/tx-fetcher',      icon: '📥', label: 'TX Fetcher' },
+  { to: '/onchain-check',   icon: '⛓️', label: 'Am I Onchain?' },
   { to: '/ton-details',     icon: '🔍', label: 'TON Details' },
   { to: '/ton-batch-lookup', icon: '📋', label: 'TON Safe-to-Fail' },
   { to: '/ton-seqno-check', icon: '🔢', label: 'TON Seqno Check' },
