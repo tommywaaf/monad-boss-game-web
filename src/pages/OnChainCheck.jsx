@@ -73,17 +73,67 @@ function interpretTxByHashResponse(json) {
       definitive: true,
       requestSuccess: true,
       onChain: false,
+      tx: null,
     }
   }
   if (r === null) {
-    return { definitive: true, requestSuccess: true, onChain: false }
+    return { definitive: true, requestSuccess: true, onChain: false, tx: null }
   }
   if (typeof r === 'object' && r !== null) {
     const h = r.hash
     const onChain = typeof h === 'string' && h.length > 0
-    return { definitive: true, requestSuccess: true, onChain }
+    return { definitive: true, requestSuccess: true, onChain, tx: r }
   }
-  return { definitive: true, requestSuccess: true, onChain: false }
+  return { definitive: true, requestSuccess: true, onChain: false, tx: null }
+}
+
+/** Confirmed in a block (not pending / pool). Pending txs have blockNumber null. */
+function isMinedTx(txObj) {
+  if (!txObj || typeof txObj !== 'object') return false
+  const bn = txObj.blockNumber
+  return bn != null && bn !== '' && bn !== '0x' && bn !== '0x0'
+}
+
+/** Human label + color for receipt / execution status (matches Etherscan Success / Fail). */
+function executionDisplay(status) {
+  switch (status) {
+    case 'success':
+      return { label: 'Success', color: '#4ade80' }
+    case 'fail':
+      return { label: 'Fail', color: '#f87171' }
+    case 'pending':
+      return { label: 'Pending', color: '#fbbf24' }
+    case 'unknown':
+      return { label: 'Unknown', color: '#c4b5fd' }
+    default:
+      return { label: 'N/A', color: '#71717a' }
+  }
+}
+
+function interpretReceiptStatusResponse(json) {
+  if (json?.result === undefined) {
+    return { definitive: false, kind: 'no_result' }
+  }
+  const r = json.result
+  if (typeof r === 'string') {
+    const lower = r.toLowerCase()
+    if (lower.includes('rate limit') || lower.includes('max rate')) {
+      return { definitive: false, kind: 'rate_limit' }
+    }
+    if (r === '1') return { definitive: true, execution: 'success' }
+    if (r === '0') return { definitive: true, execution: 'fail' }
+    return { definitive: true, execution: 'unknown' }
+  }
+  if (r === null) {
+    return { definitive: true, execution: 'unknown' }
+  }
+  if (typeof r === 'object' && r !== null && 'status' in r) {
+    const s = r.status
+    if (s === '1' || s === 1) return { definitive: true, execution: 'success' }
+    if (s === '0' || s === 0) return { definitive: true, execution: 'fail' }
+    if (s === '' || s == null) return { definitive: true, execution: 'unknown' }
+  }
+  return { definitive: false, kind: 'no_result' }
 }
 
 async function fetchTxByHashOnce(chainId, txHash, signal) {
@@ -129,12 +179,57 @@ async function lookupTxWithBackoff(chainId, txHash, signal, onTransient) {
       return {
         requestSuccess: interp.requestSuccess,
         onChain: interp.onChain,
+        tx: interp.tx ?? null,
       }
     } catch (e) {
       if (e.name === 'AbortError') throw e
       attempt++
       const backoff = Math.min(120000, 1000 * Math.pow(2, Math.min(attempt - 1, 16)) + Math.random() * 500)
       onTransient?.(`request error: ${e.message} — retry in ${Math.round(backoff / 1000)}s`)
+      await sleep(backoff, signal)
+    }
+  }
+}
+
+async function fetchReceiptStatusOnce(chainId, txHash, signal) {
+  const fullParams = {
+    chainid: String(chainId),
+    module: 'transaction',
+    action: 'gettxreceiptstatus',
+    txhash: txHash,
+  }
+  if (ETHERSCAN_API_KEY) fullParams.apikey = ETHERSCAN_API_KEY
+  const url = `${ETHERSCAN_V2}?${new URLSearchParams(fullParams)}`
+  const res = await fetch(url, { signal })
+  const json = await res.json()
+  return json
+}
+
+async function lookupReceiptStatusWithBackoff(chainId, txHash, signal, onTransient) {
+  let attempt = 0
+  while (true) {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    try {
+      if (attempt > 0) {
+        const backoff = Math.min(120000, 750 * Math.pow(2, Math.min(attempt - 1, 16)) + Math.random() * 400)
+        onTransient?.(`receipt status backoff ${Math.round(backoff / 1000)}s (${attempt})`)
+        await sleep(backoff, signal)
+      }
+
+      const json = await fetchReceiptStatusOnce(chainId, txHash, signal)
+      const interp = interpretReceiptStatusResponse(json)
+
+      if (!interp.definitive) {
+        attempt++
+        continue
+      }
+
+      return interp.execution
+    } catch (e) {
+      if (e.name === 'AbortError') throw e
+      attempt++
+      const backoff = Math.min(120000, 1000 * Math.pow(2, Math.min(attempt - 1, 16)) + Math.random() * 500)
+      onTransient?.(`receipt request error: ${e.message} — retry in ${Math.round(backoff / 1000)}s`)
       await sleep(backoff, signal)
     }
   }
@@ -267,6 +362,7 @@ export default function OnChainCheck() {
               txHash: '',
               requestSuccess: false,
               onChain: false,
+              executionStatus: 'n/a',
               note: 'Invalid tx hash (expected 0x + 64 hex)',
             }
           } else {
@@ -277,11 +373,30 @@ export default function OnChainCheck() {
                 addLog(`${txHash.slice(0, 10)}… ${msg}`)
               }
             })
+
+            let executionStatus = 'n/a'
+            if (data.onChain) {
+              if (!data.tx) {
+                executionStatus = 'n/a'
+              } else if (!isMinedTx(data.tx)) {
+                executionStatus = 'pending'
+              } else {
+                await sleep(DELAY_MS, signal)
+                executionStatus = await lookupReceiptStatusWithBackoff(chainId, txHash, signal, (msg) => {
+                  if (transientLogBudget > 0) {
+                    transientLogBudget--
+                    addLog(`${txHash.slice(0, 10)}… ${msg}`)
+                  }
+                })
+              }
+            }
+
             resultsRef.current[i] = {
               rawInput: '',
               txHash,
               requestSuccess: data.requestSuccess,
               onChain: data.onChain,
+              executionStatus,
               note: '',
             }
           }
@@ -292,6 +407,7 @@ export default function OnChainCheck() {
               txHash: txHash || '',
               requestSuccess: false,
               onChain: false,
+              executionStatus: 'n/a',
               note: 'Aborted',
             }
             addLog('Cancelled.')
@@ -308,6 +424,7 @@ export default function OnChainCheck() {
         txHash: rows[idx].txHash || '',
         requestSuccess: false,
         onChain: false,
+        executionStatus: 'n/a',
         note: signal.aborted ? 'Aborted' : 'Incomplete',
       })
 
@@ -328,6 +445,7 @@ export default function OnChainCheck() {
         txHash: rows[idx].txHash || '',
         requestSuccess: false,
         onChain: false,
+        executionStatus: 'n/a',
         note: signal.aborted ? 'Aborted' : 'Incomplete',
       })
       setResults(final)
@@ -345,7 +463,7 @@ export default function OnChainCheck() {
   }
 
   const handleDownloadCSV = () => {
-    const header = ['tx_hash', 'raw_input', 'request_success', 'on_chain', 'chain_id', 'chain_name', 'note']
+    const header = ['tx_hash', 'raw_input', 'request_success', 'on_chain', 'execution_status', 'chain_id', 'chain_name', 'note']
     const lines = [header.join(',')]
     for (const r of results) {
       if (r == null) continue
@@ -354,6 +472,7 @@ export default function OnChainCheck() {
         escapeCsvField(r.rawInput),
         escapeCsvField(r.requestSuccess),
         escapeCsvField(r.onChain),
+        escapeCsvField(r.executionStatus ?? 'n/a'),
         escapeCsvField(selectedNetwork.chainId),
         escapeCsvField(selectedNetwork.name),
         escapeCsvField(r.note || ''),
@@ -388,7 +507,7 @@ export default function OnChainCheck() {
       <div className="txfetcher-container">
         <header className="txfetcher-header">
           <h1>⛓️ Am I Onchain?</h1>
-          <p>Paste EVM transaction hashes and check whether each exists on a chosen chain (Etherscan V2).</p>
+          <p>Paste EVM transaction hashes — see on-chain presence and execution success or fail (revert) from the receipt when mined.</p>
         </header>
 
         <section className="txfetcher-section">
@@ -558,13 +677,15 @@ export default function OnChainCheck() {
                 <span style={{ flex: 1 }}>tx_hash</span>
                 <span style={{ width: '7rem', textAlign: 'center' }}>request_success</span>
                 <span style={{ width: '7rem', textAlign: 'center' }}>on_chain</span>
-                <span style={{ flex: 0.6 }}>note</span>
+                <span style={{ width: '6.5rem', textAlign: 'center' }}>execution</span>
+                <span style={{ flex: 0.55, minWidth: 0 }}>note</span>
               </div>
               {pageRows.map((r, i) => {
                 if (r == null) return null
                 const globalIdx = startIdx + i + 1
                 const hash = r.txHash
                 const explorer = hash ? `${selectedNetwork.explorer}${hash}` : null
+                const exec = executionDisplay(r.executionStatus)
                 return (
                   <div className="hash-item" key={`${globalIdx}-${hash || r.rawInput}`} style={{ alignItems: 'flex-start' }}>
                     <span className="hash-index">{globalIdx.toLocaleString()}</span>
@@ -581,7 +702,13 @@ export default function OnChainCheck() {
                     <span style={{ width: '7rem', textAlign: 'center', color: r.onChain ? '#4ade80' : '#a1a1aa' }}>
                       {String(r.onChain)}
                     </span>
-                    <span style={{ flex: 0.6, fontSize: '0.8rem', color: '#71717a' }}>{r.note || '—'}</span>
+                    <span
+                      style={{ width: '6.5rem', textAlign: 'center', fontWeight: 600, color: exec.color }}
+                      title="From tx receipt status (Etherscan gettxreceiptstatus): Success vs Fail / revert"
+                    >
+                      {exec.label}
+                    </span>
+                    <span style={{ flex: 0.55, minWidth: 0, fontSize: '0.8rem', color: '#71717a' }}>{r.note || '—'}</span>
                   </div>
                 )
               })}

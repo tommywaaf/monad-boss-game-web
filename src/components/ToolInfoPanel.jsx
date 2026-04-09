@@ -20,7 +20,7 @@ const TOOL_INFO = {
   'onchain-check': {
     title: 'Am I Onchain?',
     why: 'Quickly verify whether a batch of EVM transaction hashes exists on a specific chain (for example after signing or before reconciliation).',
-    how: 'Select a chain from the Etherscan V2 list and paste hashes (comma, space, or newline separated — large batches supported). Each hash is checked via eth_getTransactionByHash with conservative pacing to reduce rate limits; failed requests retry with exponential backoff until a definitive response. Results show request_success and on_chain per row; export to CSV like other tools.',
+    how: 'Select a chain from the Etherscan V2 list and paste hashes (comma, space, or newline separated — large batches supported). Each hash uses eth_getTransactionByHash plus, when the tx is mined, gettxreceiptstatus for Success vs Fail (execution reverted) like Etherscan. Pending txs show Pending; conservative pacing and retries apply. Results include request_success, on_chain, and execution; export to CSV.',
   },
   'ton-details': {
     title: 'TON Details',
