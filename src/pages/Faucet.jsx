@@ -326,7 +326,7 @@ function Faucet() {
           {txidSetup?.configured && txidSetup.publicKey && (
             <>
               <p className="faucet-txid-status">
-                All faucet transactions include a signed <code>externalTxId</code>. Copy this public key and paste it into your Callback Handler policy rule to verify.
+                All faucet transactions include a signed <code>externalTxId</code>. Copy this secret key and paste it into your Callback Handler policy rule to verify.
               </p>
               <div className="faucet-txid-key-row">
                 <code className="faucet-txid-pubkey">{txidSetup.publicKey}</code>

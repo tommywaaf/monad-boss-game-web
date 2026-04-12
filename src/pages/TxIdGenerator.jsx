@@ -169,16 +169,16 @@ export default function TxIdGenerator() {
             <section className="txid-section">
               <div className="txid-section-header">
                 <div>
-                  <h2 className="txid-section-title">Your Public Key</h2>
+                  <h2 className="txid-section-title">Your Secret Key</h2>
                   <p className="txid-section-sub">
-                    Paste this into <strong>Callback Handler → ExternalTxId Verification</strong> to verify incoming IDs.
+                    Paste this into a <strong>Callback Handler policy rule → ExternalTxId Verification</strong> to verify incoming IDs.
                   </p>
                 </div>
                 <CopyButton text={publicKey} />
               </div>
               <pre className="txid-pubkey-box">{publicKey}</pre>
               <div className="txid-section-footer">
-                <span className="txid-meta">{publicKey.length} hex chars · Ed25519 raw public key</span>
+                <span className="txid-meta">{publicKey.length} hex chars · HMAC-SHA256 secret key</span>
                 <button
                   className="txid-regen-btn"
                   onClick={() => setShowRegenerateConfirm(true)}

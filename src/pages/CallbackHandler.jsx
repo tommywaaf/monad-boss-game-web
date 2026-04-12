@@ -30,11 +30,11 @@ function decodeJwtPayload(jwt) {
   }
 }
 
-/** Verify an externalTxId signature against an Ed25519 public key (hex).
+/** Verify an externalTxId HMAC-SHA256 signature against a secret key (64 hex chars).
  *  Returns 'valid' | 'invalid' | 'no-id' | 'bad-key' */
-async function verifyExternalTxId(externalTxId, publicKeyHex) {
+async function verifyExternalTxId(externalTxId, secretKeyHex) {
   if (!externalTxId) return 'no-id'
-  if (!publicKeyHex || publicKeyHex.length !== 64) return 'bad-key'
+  if (!secretKeyHex || secretKeyHex.length !== 64) return 'bad-key'
   const parts = externalTxId.split('.')
   if (parts.length !== 2) return 'invalid'
   function fromBase64Url(str) {
@@ -53,9 +53,10 @@ async function verifyExternalTxId(externalTxId, publicKeyHex) {
   try {
     const idBytes = fromBase64Url(parts[0])
     const sigBytes = fromBase64Url(parts[1])
-    const pubKeyBytes = fromHex(publicKeyHex)
-    const pubKey = await crypto.subtle.importKey('raw', pubKeyBytes, { name: 'Ed25519' }, false, ['verify'])
-    const ok = await crypto.subtle.verify('Ed25519', pubKey, sigBytes, idBytes)
+    const key = await crypto.subtle.importKey(
+      'raw', fromHex(secretKeyHex), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
+    )
+    const ok = await crypto.subtle.verify('HMAC', key, sigBytes, idBytes)
     return ok ? 'valid' : 'invalid'
   } catch {
     return 'invalid'
@@ -577,7 +578,7 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
               type="text"
               value={extTxIdPubKey}
               onChange={e => setExtTxIdPubKey(e.target.value.trim())}
-              placeholder="Ed25519 public key (64 hex chars) — from TxId Generator"
+              placeholder="HMAC-SHA256 secret key (64 hex chars) — from TxId Generator or Faucet"
               spellCheck={false}
             />
             {extTxIdPubKey.length > 0 && extTxIdPubKey.length !== 64 && (
