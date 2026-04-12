@@ -64,8 +64,13 @@ const TOOL_INFO = {
   },
   'callback-handler': {
     title: 'Callback Handler',
-    why: 'An easy-to-set-up Fireblocks-compatible callback handler for your cosigner. Lets you see the incoming signing requests and the auto-approve/reject responses so you can troubleshoot callback issues.',
-    how: 'Paste your cosigner\'s RSA public key (PEM format) to create a handler. You\'ll get a callback URL and handler public key to configure in your cosigner setup. The handler auto-approves or auto-rejects requests (togglable). Incoming requests stream in real time — expand any event to see the full JWT, decoded payload, request/response details, and verification status.',
+    why: 'A hosted Fireblocks-compatible callback handler for your API Co-Signer. Every transaction signing request hits this handler before the Co-Signer auto-signs, giving you full visibility into what is being approved or rejected — and real policy control over it.',
+    how: 'Paste your Co-Signer\'s RSA public key (PEM format) to create a handler. You\'ll receive a Callback URL and a Handler Public Key to paste into your Co-Signer configuration. Once wired up, incoming signing requests stream in real time via WebSocket. Expand any event to inspect the full decoded JWT payload, the raw request and response, and the action taken. Use Policy Rules to build conditional APPROVE/REJECT logic based on operation type, asset, amount, source/dest account, or destination address. Each rule is evaluated in priority order — the first match wins. The default action applies when no rule matches. Enable ExternalTxId Verification in any rule to require that the transaction\'s externalTxId was cryptographically signed by your TxId Generator key — if the signature is missing or invalid the rule will not match.',
+  },
+  'tx-id-generator': {
+    title: 'TxId Generator',
+    why: 'Gives you a way to prove that a Fireblocks transaction was initiated by you and not by an attacker who compromised your API key. Every externalTxId you generate is cryptographically signed with a secret key that lives only on the server — an attacker with your API key alone cannot forge a valid ID.',
+    how: 'On first load a secret HMAC-SHA256 key is generated server-side and tied to your session. Your Secret Key is displayed at the top — copy it and paste it into a Callback Handler policy rule to enable verification. Hit Generate to produce a single signed externalTxId (format: base64url(random 16 bytes) + "." + base64url(HMAC-SHA256 signature), ~65 chars total, well under Fireblocks\' 255-char limit). Use Batch Generate to produce up to 100 IDs at once for pre-populating transaction queues. Session History tracks everything generated this visit. Use Rotate Keys to replace the key pair — note that any IDs signed with the old key will no longer verify.',
   },
   'easy-cosigner': {
     title: 'Easy Cosigner',
