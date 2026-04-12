@@ -221,6 +221,9 @@ function AssetCard({ asset, network, rateLimitUntil, onRateLimited }) {
 function Faucet() {
   const [rateLimits, setRateLimits] = useState(loadRateLimits)
   const [healthOk, setHealthOk] = useState(null)
+  const [txidSetup, setTxidSetup] = useState(null) // null=loading, { configured, publicKey? }
+  const [txidSetting, setTxidSetting] = useState(false)
+  const [txidCopied, setTxidCopied] = useState(false)
 
   useEffect(() => {
     document.title = 'Testnet Faucet'
@@ -243,6 +246,33 @@ function Faucet() {
           .catch(() => setHealthOk(false))
       })
   }, [])
+
+  useEffect(() => {
+    fetch(`${FAUCET_API}/faucet/txid-setup`)
+      .then(r => r.json())
+      .then(data => setTxidSetup(data))
+      .catch(() => setTxidSetup({ configured: false }))
+  }, [])
+
+  const handleTxidSetup = async () => {
+    setTxidSetting(true)
+    try {
+      const res = await fetch(`${FAUCET_API}/faucet/txid-setup`, { method: 'POST' })
+      const data = await res.json()
+      setTxidSetup(data)
+    } catch { /* noop */ } finally {
+      setTxidSetting(false)
+    }
+  }
+
+  const handleCopyPublicKey = async () => {
+    if (!txidSetup?.publicKey) return
+    try {
+      await navigator.clipboard.writeText(txidSetup.publicKey)
+      setTxidCopied(true)
+      setTimeout(() => setTxidCopied(false), 1500)
+    } catch { /* noop */ }
+  }
 
   const handleRateLimited = (assetId, retryAfter) => {
     setRateLimits(prev => {
@@ -267,7 +297,48 @@ function Faucet() {
 
         <div className="faucet-notice">
           <span className="notice-icon">ℹ️</span>
-          <span>Rate limit: 1 request per IP per 24 hours. Enter your wallet address for each asset to receive testnet tokens.</span>
+          <span>Enter your wallet address for each asset to receive testnet tokens.</span>
+        </div>
+
+        {/* ExternalTxId Signing Setup */}
+        <div className={`faucet-txid-panel ${txidSetup?.configured ? 'configured' : ''}`}>
+          <div className="faucet-txid-panel-header">
+            <span className="faucet-txid-panel-title">ExternalTxId Signing</span>
+            {txidSetup?.configured && <span className="faucet-txid-active-badge">Active</span>}
+          </div>
+          {txidSetup === null && (
+            <p className="faucet-txid-status">Checking configuration…</p>
+          )}
+          {txidSetup?.configured === false && (
+            <>
+              <p className="faucet-txid-status">
+                Not configured. Click below to generate an Ed25519 key pair — every faucet transaction will be signed with it so you can verify <code>externalTxId</code> in your Callback Handler policy.
+              </p>
+              <button
+                className="faucet-txid-setup-btn"
+                onClick={handleTxidSetup}
+                disabled={txidSetting}
+              >
+                {txidSetting ? 'Generating…' : 'Generate Signing Keys'}
+              </button>
+            </>
+          )}
+          {txidSetup?.configured && txidSetup.publicKey && (
+            <>
+              <p className="faucet-txid-status">
+                All faucet transactions include a signed <code>externalTxId</code>. Copy this public key and paste it into your Callback Handler policy rule to verify.
+              </p>
+              <div className="faucet-txid-key-row">
+                <code className="faucet-txid-pubkey">{txidSetup.publicKey}</code>
+                <button
+                  className={`faucet-txid-copy-btn ${txidCopied ? 'copied' : ''}`}
+                  onClick={handleCopyPublicKey}
+                >
+                  {txidCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {NETWORKS.map(network => (

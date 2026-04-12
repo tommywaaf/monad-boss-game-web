@@ -359,6 +359,110 @@
   white-space: nowrap;
 }
 
+/* ── ExternalTxId Signing Panel ── */
+
+.faucet-txid-panel {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 1.1rem 1.4rem;
+  margin-bottom: 1.5rem;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+.faucet-txid-panel.configured {
+  border-color: rgba(45, 212, 191, 0.2);
+  background: rgba(45, 212, 191, 0.03);
+}
+
+.faucet-txid-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.faucet-txid-panel-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.faucet-txid-active-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(45, 212, 191, 0.15);
+  color: #2dd4bf;
+  border-radius: 4px;
+  padding: 1px 7px;
+}
+
+.faucet-txid-status {
+  font-size: 0.8rem;
+  color: #71717a;
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.faucet-txid-status code {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+}
+
+.faucet-txid-setup-btn {
+  background: linear-gradient(135deg, #2dd4bf, #a855f7);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.55rem 1.2rem;
+  transition: opacity 0.15s;
+}
+
+.faucet-txid-setup-btn:hover:not(:disabled) { opacity: 0.88; }
+.faucet-txid-setup-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.faucet-txid-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  flex-wrap: wrap;
+}
+
+.faucet-txid-pubkey {
+  flex: 1;
+  font-size: 0.75rem;
+  color: #2dd4bf;
+  word-break: break-all;
+  font-family: inherit;
+}
+
+.faucet-txid-copy-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #a1a1aa;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.28rem 0.65rem;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.faucet-txid-copy-btn:hover { background: rgba(255, 255, 255, 0.08); color: #e4e4e7; }
+.faucet-txid-copy-btn.copied { background: rgba(45, 212, 191, 0.1); border-color: rgba(45, 212, 191, 0.3); color: #2dd4bf; }
+
 /* ── Responsive ── */
 
 @media (max-width: 768px) {
