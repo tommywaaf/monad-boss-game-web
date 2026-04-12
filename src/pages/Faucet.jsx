@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import ToolInfoPanel from '../components/ToolInfoPanel'
 import './Faucet.css'
 
@@ -57,70 +57,16 @@ const NETWORKS = [
   },
 ]
 
-const RATE_LIMIT_KEY = 'faucet_rate_limits'
-
-function loadRateLimits() {
-  try {
-    const stored = localStorage.getItem(RATE_LIMIT_KEY)
-    if (!stored) return {}
-    const parsed = JSON.parse(stored)
-    const now = Date.now()
-    const cleaned = {}
-    for (const [key, val] of Object.entries(parsed)) {
-      if (new Date(val).getTime() > now) cleaned[key] = val
-    }
-    return cleaned
-  } catch {
-    return {}
-  }
-}
-
-function saveRateLimits(limits) {
-  localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(limits))
-}
-
-function useCountdown(targetDate) {
-  const [remaining, setRemaining] = useState(() => {
-    if (!targetDate) return 0
-    return Math.max(0, Math.floor((new Date(targetDate).getTime() - Date.now()) / 1000))
-  })
-
-  useEffect(() => {
-    if (!targetDate) { setRemaining(0); return }
-    const target = new Date(targetDate).getTime()
-    const update = () => setRemaining(Math.max(0, Math.floor((target - Date.now()) / 1000)))
-    update()
-    const interval = setInterval(update, 1000)
-    return () => clearInterval(interval)
-  }, [targetDate])
-
-  return remaining
-}
-
-function formatCountdown(seconds) {
-  if (seconds <= 0) return null
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  const parts = []
-  if (h > 0) parts.push(`${h}h`)
-  if (m > 0) parts.push(`${m}m`)
-  parts.push(`${s}s`)
-  return parts.join(' ')
-}
-
-function AssetCard({ asset, network, rateLimitUntil, onRateLimited }) {
+function AssetCard({ asset, network }) {
   const [address, setAddress] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
-  const countdown = useCountdown(rateLimitUntil)
-  const isRateLimited = countdown > 0
 
   const isValidAddress = address.trim() !== '' && network.validateAddress(address.trim())
 
   const handleSend = async () => {
-    if (!isValidAddress || loading || isRateLimited) return
+    if (!isValidAddress || loading) return
 
     setLoading(true)
     setResult(null)
@@ -135,21 +81,12 @@ function AssetCard({ asset, network, rateLimitUntil, onRateLimited }) {
 
       const data = await res.json()
 
-      if (res.status === 429) {
-        const retryAfter = data.retryAfter || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-        onRateLimited(retryAfter)
-        setError(`Rate limited. Try again in ${formatCountdown(Math.floor((new Date(retryAfter).getTime() - Date.now()) / 1000))}`)
-        return
-      }
-
       if (!res.ok) {
         setError(data.error || `Request failed (${res.status})`)
         return
       }
 
       setResult(data)
-      const cooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-      onRateLimited(cooldownUntil)
     } catch (err) {
       setError(err.message || 'Network error')
     } finally {
@@ -158,7 +95,7 @@ function AssetCard({ asset, network, rateLimitUntil, onRateLimited }) {
   }
 
   return (
-    <div className={`asset-card ${isRateLimited ? 'rate-limited' : ''}`}>
+    <div className="asset-card">
       <div className="asset-card-header">
         <span className="asset-icon">{asset.icon}</span>
         <div className="asset-info">
@@ -186,15 +123,9 @@ function AssetCard({ asset, network, rateLimitUntil, onRateLimited }) {
         <button
           className={`send-btn ${loading ? 'loading' : ''}`}
           onClick={handleSend}
-          disabled={!isValidAddress || loading || isRateLimited}
+          disabled={!isValidAddress || loading}
         >
-          {loading ? (
-            <><span className="spinner" /> Sending...</>
-          ) : isRateLimited ? (
-            <>⏳ {formatCountdown(countdown)}</>
-          ) : (
-            <>Send {asset.symbol}</>
-          )}
+          {loading ? <><span className="spinner" /> Sending...</> : <>Send {asset.symbol}</>}
         </button>
       </div>
 
@@ -219,7 +150,6 @@ function AssetCard({ asset, network, rateLimitUntil, onRateLimited }) {
 }
 
 function Faucet() {
-  const [rateLimits, setRateLimits] = useState(loadRateLimits)
   const [healthOk, setHealthOk] = useState(null)
   const [txidSetup, setTxidSetup] = useState(null) // null=loading, { configured, publicKey? }
   const [txidSetting, setTxidSetting] = useState(false)
@@ -272,14 +202,6 @@ function Faucet() {
       setTxidCopied(true)
       setTimeout(() => setTxidCopied(false), 1500)
     } catch { /* noop */ }
-  }
-
-  const handleRateLimited = (assetId, retryAfter) => {
-    setRateLimits(prev => {
-      const next = { ...prev, [assetId]: retryAfter }
-      saveRateLimits(next)
-      return next
-    })
   }
 
   return (
@@ -355,8 +277,6 @@ function Faucet() {
                   key={asset.assetId}
                   asset={asset}
                   network={network}
-                  rateLimitUntil={rateLimits[asset.assetId]}
-                  onRateLimited={(retryAfter) => handleRateLimited(asset.assetId, retryAfter)}
                 />
               ))}
             </div>
