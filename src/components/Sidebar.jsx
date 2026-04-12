@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/webhook-tester',  icon: '🔗', label: 'Webhook Tester' },
   { to: '/callback-handler', icon: '🛡️', label: 'Callback Handler' },
   { to: '/easy-cosigner',   icon: '🔐', label: 'Easy Cosigner' },
+  { to: '/tx-id-generator', icon: '🔑', label: 'TxId Generator' },
 ]
 
 export default function Sidebar() {

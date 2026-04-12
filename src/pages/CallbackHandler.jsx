@@ -30,6 +30,38 @@ function decodeJwtPayload(jwt) {
   }
 }
 
+/** Verify an externalTxId signature against an Ed25519 public key (hex).
+ *  Returns 'valid' | 'invalid' | 'no-id' | 'bad-key' */
+async function verifyExternalTxId(externalTxId, publicKeyHex) {
+  if (!externalTxId) return 'no-id'
+  if (!publicKeyHex || publicKeyHex.length !== 64) return 'bad-key'
+  const parts = externalTxId.split('.')
+  if (parts.length !== 2) return 'invalid'
+  function fromBase64Url(str) {
+    const base64 = str.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    const binary = atob(padded)
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+    return bytes
+  }
+  function fromHex(hex) {
+    const arr = new Uint8Array(hex.length / 2)
+    for (let i = 0; i < arr.length; i++) arr[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+    return arr
+  }
+  try {
+    const idBytes = fromBase64Url(parts[0])
+    const sigBytes = fromBase64Url(parts[1])
+    const pubKeyBytes = fromHex(publicKeyHex)
+    const pubKey = await crypto.subtle.importKey('raw', pubKeyBytes, { name: 'Ed25519' }, false, ['verify'])
+    const ok = await crypto.subtle.verify('Ed25519', pubKey, sigBytes, idBytes)
+    return ok ? 'valid' : 'invalid'
+  } catch {
+    return 'invalid'
+  }
+}
+
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false)
   const handleCopy = async () => {
@@ -46,11 +78,13 @@ function CopyButton({ text }) {
   )
 }
 
-function EventBubble({ event, isExpanded, onToggle }) {
+function EventBubble({ event, isExpanded, onToggle, rules }) {
   const [decodedRequestOpen, setDecodedRequestOpen] = useState(false)
   const [decodedResponseOpen, setDecodedResponseOpen] = useState(false)
   const [rawRequestOpen, setRawRequestOpen] = useState(false)
   const [rawResponseOpen, setRawResponseOpen] = useState(false)
+  const [txidStatus, setTxidStatus] = useState(null)
+
   const actionLower = (event.action || '').toLowerCase()
   const decodedResponse = event.rawResponseSent ? decodeJwtPayload(event.rawResponseSent) : null
   const detail = event.asset && event.amount != null
@@ -61,6 +95,21 @@ function EventBubble({ event, isExpanded, onToggle }) {
     : null
   const summaryDetail = [detail, flow].filter(Boolean).join(' · ')
 
+  const externalTxId = event.rawPayload?.externalTxId ?? null
+
+  // Auto-derive verify key from the first enabled rule that has externalTxIdPublicKey configured
+  const autoVerifyKey = rules?.find(r => r.enabled && r.conditions?.externalTxIdPublicKey)?.conditions?.externalTxIdPublicKey ?? null
+
+  useEffect(() => {
+    if (!autoVerifyKey) { setTxidStatus(null); return }
+    if (!externalTxId) { setTxidStatus('no-id'); return }
+    setTxidStatus('pending')
+    verifyExternalTxId(externalTxId, autoVerifyKey).then(setTxidStatus)
+  }, [autoVerifyKey, externalTxId])
+
+  const txidBadgeLabel = { valid: 'VALID', invalid: 'INVALID', 'no-id': 'NO ID', 'bad-key': 'BAD KEY', pending: '…' }
+  const txidBadgeClass = { valid: 'txid-badge-valid', invalid: 'txid-badge-invalid', 'no-id': 'txid-badge-noid', 'bad-key': 'txid-badge-invalid', pending: 'txid-badge-pending' }
+
   return (
     <div className={`cbt-bubble ${isExpanded ? 'expanded' : ''}`}>
       <button className="cbt-bubble-summary" onClick={onToggle}>
@@ -70,6 +119,11 @@ function EventBubble({ event, isExpanded, onToggle }) {
           {event.action}
         </span>
         {summaryDetail && <span className="cbt-bubble-detail">{summaryDetail}</span>}
+        {txidStatus && (
+          <span className={`cbt-txid-badge ${txidBadgeClass[txidStatus] || ''}`} title={externalTxId || 'No externalTxId'}>
+            {txidBadgeLabel[txidStatus] || txidStatus}
+          </span>
+        )}
         <span className="cbt-bubble-time">{timeAgo(event.timestamp)}</span>
       </button>
 
@@ -124,6 +178,19 @@ function EventBubble({ event, isExpanded, onToggle }) {
                 {event.verified ? '✓ Valid' : '✗ Failed'}
               </span>
             </div>
+            {externalTxId != null && (
+              <div className="cbt-detail-row">
+                <span className="cbt-detail-label">ExternalTxId</span>
+                <span className="cbt-detail-value cbt-extid-value">
+                  <span className="cbt-extid-text">{externalTxId}</span>
+                  {txidStatus && (
+                    <span className={`cbt-txid-badge ${txidBadgeClass[txidStatus] || ''}`}>
+                      {txidBadgeLabel[txidStatus] || txidStatus}
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Raw request from cosigner (opaque JWT) */}
@@ -262,6 +329,7 @@ function createEmptyRule() {
       destIds: [],
       destAddressTypes: [],
       destAddresses: [],
+      externalTxIdPublicKey: null,
     },
     action: 'APPROVE',
   }
@@ -316,6 +384,9 @@ function buildRuleChips(conditions) {
   if (conditions.destAddresses?.length) {
     chips.push({ label: `${conditions.destAddresses.length} addr`, type: 'address' })
   }
+  if (conditions.externalTxIdPublicKey) {
+    chips.push({ label: 'ExtTxId ✓', type: 'extid' })
+  }
   if (chips.length === 0) chips.push({ label: 'Any', type: 'any' })
   return chips
 }
@@ -335,6 +406,8 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
   const [destIds, setDestIds] = useState((rule.conditions?.destIds || []).join(', '))
   const [destAddressTypes, setDestAddressTypes] = useState(rule.conditions?.destAddressTypes || [])
   const [destAddresses, setDestAddresses] = useState((rule.conditions?.destAddresses || []).join('\n'))
+  const [extTxIdEnabled, setExtTxIdEnabled] = useState(!!rule.conditions?.externalTxIdPublicKey)
+  const [extTxIdPubKey, setExtTxIdPubKey] = useState(rule.conditions?.externalTxIdPublicKey || '')
 
   const toggleList = (setter, val) =>
     setter(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])
@@ -359,6 +432,7 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
         destIds: parseList(destIds),
         destAddressTypes,
         destAddresses: parseList(destAddresses),
+        externalTxIdPublicKey: extTxIdEnabled && extTxIdPubKey.length === 64 ? extTxIdPubKey : null,
       },
     })
   }
@@ -481,6 +555,48 @@ function RuleEditor({ rule, isNew, onSave, onCancel }) {
           placeholder="One address per line (empty = any)"
           rows={3}
         />
+      </div>
+
+      <div className="cbt-rule-editor-field">
+        <label className="cbt-rule-editor-label">
+          ExternalTxId Verification
+          <label className="cbt-extid-toggle-label">
+            <input
+              type="checkbox"
+              checked={extTxIdEnabled}
+              onChange={e => setExtTxIdEnabled(e.target.checked)}
+            />
+            <span className={`cbt-extid-toggle-track ${extTxIdEnabled ? 'on' : ''}`} />
+            {extTxIdEnabled ? 'Enabled' : 'Disabled'}
+          </label>
+        </label>
+        {extTxIdEnabled && (
+          <>
+            <input
+              className="cbt-rule-editor-input cbt-extid-key-input"
+              type="text"
+              value={extTxIdPubKey}
+              onChange={e => setExtTxIdPubKey(e.target.value.trim())}
+              placeholder="Ed25519 public key (64 hex chars) — from TxId Generator"
+              spellCheck={false}
+            />
+            {extTxIdPubKey.length > 0 && extTxIdPubKey.length !== 64 && (
+              <span className="cbt-rule-editor-hint cbt-extid-warn">
+                Key must be exactly 64 hex chars ({extTxIdPubKey.length}/64)
+              </span>
+            )}
+            {extTxIdPubKey.length === 64 && (
+              <span className="cbt-rule-editor-hint">
+                Rule will only match transactions whose <code>externalTxId</code> was signed with this key.
+              </span>
+            )}
+          </>
+        )}
+        {!extTxIdEnabled && (
+          <span className="cbt-rule-editor-hint">
+            When enabled, this rule only matches if the transaction's <code>externalTxId</code> was signed by your TxId Generator key.
+          </span>
+        )}
       </div>
 
       <div className="cbt-rule-editor-field">
@@ -1075,6 +1191,7 @@ function CallbackHandler() {
                         event={evt}
                         isExpanded={expandedEvent === evt.id}
                         onToggle={() => setExpandedEvent(expandedEvent === evt.id ? null : evt.id)}
+                        rules={activeRules}
                       />
                     ))
                   )}

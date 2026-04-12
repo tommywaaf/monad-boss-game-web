@@ -1212,6 +1212,11 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
+.cbt-rule-chip.extid {
+  color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.1);
+}
+
 .cbt-rule-action-badge {
   font-size: 0.66rem;
   font-weight: 700;
@@ -1394,6 +1399,63 @@
   line-height: 1.3;
 }
 
+.cbt-rule-editor-hint code {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+}
+
+.cbt-extid-warn {
+  color: #f59e0b !important;
+}
+
+.cbt-extid-key-input {
+  margin-top: 0.4rem;
+  font-size: 0.78rem !important;
+}
+
+.cbt-extid-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.75rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: #71717a;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.cbt-extid-toggle-label input { display: none; }
+
+.cbt-extid-toggle-track {
+  display: inline-block;
+  width: 30px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.cbt-extid-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: #52525b;
+  border-radius: 50%;
+  transition: left 0.2s, background 0.2s;
+}
+
+.cbt-extid-toggle-track.on { background: rgba(45, 212, 191, 0.25); }
+.cbt-extid-toggle-track.on::after { left: 16px; background: #2dd4bf; }
+
 .cbt-rule-editor-actions {
   display: flex;
   gap: 0.4rem;
@@ -1443,6 +1505,168 @@
   font-size: 0.64rem;
   color: #3f3f46;
   margin-left: 0.4rem;
+}
+
+/* ── ExternalTxId Verification Section ──── */
+
+.cbt-verify-section {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 0 1rem;
+}
+
+.cbt-verify-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cbt-verify-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.cbt-verify-active-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(45, 212, 191, 0.15);
+  color: #2dd4bf;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 0.25rem;
+}
+
+.cbt-verify-body {
+  padding-bottom: 0.85rem;
+}
+
+.cbt-verify-hint {
+  font-size: 0.8rem;
+  color: #71717a;
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.cbt-verify-hint strong {
+  color: #a1a1aa;
+}
+
+.cbt-verify-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cbt-verify-input {
+  flex: 1;
+  min-width: 200px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #e4e4e7;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.65rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.cbt-verify-input:focus { border-color: #a855f7; }
+
+.cbt-verify-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #71717a;
+  user-select: none;
+}
+
+.cbt-verify-checkbox { display: none; }
+
+.cbt-verify-toggle-track {
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.cbt-verify-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  background: #71717a;
+  border-radius: 50%;
+  transition: left 0.2s, background 0.2s;
+}
+
+.cbt-verify-toggle-track.on { background: rgba(45, 212, 191, 0.25); }
+.cbt-verify-toggle-track.on::after { left: 19px; background: #2dd4bf; }
+.cbt-verify-toggle-track.disabled { opacity: 0.4; cursor: not-allowed; }
+
+.cbt-verify-warning {
+  font-size: 0.75rem;
+  color: #f59e0b;
+  margin: 0.4rem 0 0;
+}
+
+/* ── ExternalTxId Badges ─────────────────── */
+
+.cbt-txid-badge {
+  display: inline-block;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.txid-badge-valid {
+  background: rgba(45, 212, 191, 0.15);
+  color: #2dd4bf;
+}
+
+.txid-badge-invalid {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.txid-badge-noid {
+  background: rgba(113, 113, 122, 0.15);
+  color: #71717a;
+}
+
+.txid-badge-pending {
+  background: rgba(168, 85, 247, 0.1);
+  color: #a855f7;
+}
+
+/* ── ExternalTxId detail row ─────────────── */
+
+.cbt-extid-value {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cbt-extid-text {
+  font-size: 0.72rem;
+  word-break: break-all;
+  color: #a1a1aa;
 }
 
 @media (max-width: 768px) {
