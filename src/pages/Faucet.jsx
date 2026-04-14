@@ -10,9 +10,9 @@ const NETWORKS = [
     name: 'Sepolia',
     icon: '🔷',
     assets: [
-      { assetId: 'ETH_TEST5', symbol: 'ETH', amount: '0.2', icon: '⟠' },
-      { assetId: 'USDC_ETH_TEST5_0GER', symbol: 'USDC', amount: '5', icon: '💵' },
-      { assetId: 'LINK_ETH_TEST5_BOTX', symbol: 'LINK', amount: '1', icon: '🔗' },
+      { assetId: 'ETH_TEST5', symbol: 'ETH', amount: '0.01', icon: '⟠' },
+      { assetId: 'USDC_ETH_TEST5_0GER', symbol: 'USDC', amount: '0.25', icon: '💵' },
+      { assetId: 'LINK_ETH_TEST5_BOTX', symbol: 'LINK', amount: '0.05', icon: '🔗' },
     ],
     validateAddress: (addr) => /^0x[0-9a-fA-F]{40}$/.test(addr),
     placeholder: '0x...',
@@ -23,7 +23,7 @@ const NETWORKS = [
     name: 'Hoodi',
     icon: '🟣',
     assets: [
-      { assetId: 'ETH_TEST_HOODI', symbol: 'ETH', amount: '0.2', icon: '⟠' },
+      { assetId: 'ETH_TEST_HOODI', symbol: 'ETH', amount: '0.01', icon: '⟠' },
     ],
     validateAddress: (addr) => /^0x[0-9a-fA-F]{40}$/.test(addr),
     placeholder: '0x...',
@@ -34,7 +34,7 @@ const NETWORKS = [
     name: 'Bitcoin Testnet',
     icon: '₿',
     assets: [
-      { assetId: 'BTC_TEST', symbol: 'BTC', amount: '0.25', icon: '₿' },
+      { assetId: 'BTC_TEST', symbol: 'BTC', amount: '0.0125', icon: '₿' },
     ],
     validateAddress: (addr) => {
       if (/^[mn2][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)) return true
@@ -49,7 +49,7 @@ const NETWORKS = [
     name: 'Solana Devnet',
     icon: '◎',
     assets: [
-      { assetId: 'SOL_TEST', symbol: 'SOL', amount: '0.25', icon: '◎' },
+      { assetId: 'SOL_TEST', symbol: 'SOL', amount: '0.0125', icon: '◎' },
     ],
     validateAddress: (addr) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr),
     placeholder: 'Base58 address...',

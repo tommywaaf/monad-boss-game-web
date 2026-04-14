@@ -263,7 +263,7 @@ async function rescanPlan(inputUrlOrHex) {
   const fbHashAfterRescan = await getTraceExternalHashHex(s, tx)
 
   const start = await getMinRefMcSeqno(s, tx)
-  const end = start + 20
+  const end = start + 30
 
   return {
     mode: mode,
