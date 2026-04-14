@@ -40,6 +40,7 @@ const NETWORKS = [
   { id: 'shimmer', name: 'Shimmer EVM', rpc: 'https://json-rpc.evm.shimmer.network', type: 'evm', chainId: 148, explorer: 'https://explorer.evm.shimmer.network/tx/' },
   { id: 'smartbch', name: 'SmartBCH', rpc: 'https://smartbch.greyh.at', type: 'evm', chainId: 10000, explorer: 'https://www.smartscan.cash/tx/' },
   { id: 'songbird', name: 'Songbird', rpc: 'https://songbird-api.flare.network/ext/C/rpc', type: 'evm', chainId: 19, explorer: 'https://songbird-explorer.flare.network/tx/' },
+  { id: 'unichain', name: 'Unichain', rpc: 'https://unichain-mainnet.gateway.tatum.io', type: 'evm', chainId: 130, explorer: 'https://uniscan.xyz/tx/' },
   { id: 'velas', name: 'Velas', rpc: 'https://evmexplorer.velas.com/rpc', type: 'evm', chainId: 106, explorer: 'https://evmexplorer.velas.com/tx/' },
   { id: 'worldchain', name: 'Worldchain', rpc: 'https://worldchain-mainnet.g.alchemy.com/public', type: 'evm', chainId: 480, explorer: 'https://worldscan.org/tx/' },
   { id: 'xdc', name: 'XDC Network', rpc: 'https://rpc.xinfin.network', type: 'evm', chainId: 50, explorer: 'https://xdcscan.io/tx/' },
@@ -96,6 +97,7 @@ const CHAIN_ID_MAP = {
   43114: { name: 'Avalanche C-Chain', rpc: 'https://api.avax.network/ext/bc/C/rpc', explorer: 'https://snowtrace.io/tx/' },
   59144: { name: 'Linea', rpc: 'https://rpc.linea.build', explorer: 'https://lineascan.build/tx/' },
   88888: { name: 'Chiliz', rpc: 'https://rpc.ankr.com/chiliz', explorer: 'https://chiliscan.com/tx/' },
+  130: { name: 'Unichain', rpc: 'https://unichain-mainnet.gateway.tatum.io', explorer: 'https://uniscan.xyz/tx/' },
   1313161554: { name: 'Aurora', rpc: 'https://mainnet.aurora.dev', explorer: 'https://explorer.aurora.dev/tx/' },
 }
 
