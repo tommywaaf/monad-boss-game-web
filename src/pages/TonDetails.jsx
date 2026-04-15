@@ -192,7 +192,9 @@ async function getTxContextByEitherHash(session, hex64) {
 
 async function getTraceExternalHashHex(session, tx) {
   /**
-   * Prefer tx.trace_external_hash if present; else use actions?trace_id.
+   * Prefer tx.trace_external_hash if present; else try actions (classified traces),
+   * then fall back to /api/v3/traces which always carries external_hash regardless
+   * of classification state (e.g. unclassified Highload Wallet multi-sends).
    */
   const te = tx.trace_external_hash
   if (te) {
@@ -201,9 +203,10 @@ async function getTraceExternalHashHex(session, tx) {
 
   const traceId = tx.trace_id
   if (!traceId) {
-    throw new Error("Transaction missing trace_id; cannot fetch actions.")
+    throw new Error("Transaction missing trace_id; cannot fetch trace details.")
   }
 
+  // Try actions first (works for classified traces)
   const actData = await getJsonCalm(
     session,
     `${TONCENTER}/api/v3/actions`,
@@ -211,16 +214,30 @@ async function getTraceExternalHashHex(session, tx) {
   )
   
   const actions = actData.actions || []
-  if (actions.length === 0) {
-    throw new Error("No actions returned for trace_id")
-  }
-
   const traceExternalB64 = actions.find(a => a.trace_external_hash)?.trace_external_hash
-  if (!traceExternalB64) {
-    throw new Error("trace_external_hash not found in actions")
+  if (traceExternalB64) {
+    return b64ToHex(traceExternalB64)
   }
 
-  return b64ToHex(traceExternalB64)
+  // Fallback: query /api/v3/traces directly — works even for unclassified traces
+  // (e.g. Highload Wallet V3 multi-sends that TonCenter hasn't classified yet)
+  const tracesData = await getJsonCalm(
+    session,
+    `${TONCENTER}/api/v3/traces`,
+    { trace_id: traceId, limit: 1 }
+  )
+
+  const traces = tracesData.traces || []
+  if (traces.length === 0) {
+    throw new Error("No trace found for trace_id")
+  }
+
+  const externalHashB64 = traces[0].external_hash
+  if (!externalHashB64) {
+    throw new Error("external_hash not found in trace")
+  }
+
+  return b64ToHex(externalHashB64)
 }
 
 async function getMinRefMcSeqno(session, tx) {
