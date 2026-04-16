@@ -11,13 +11,13 @@ const NAV_ITEMS = [
   { to: '/ton-seqno-check', icon: '🔢', label: 'TON Seqno Check' },
   { to: '/btc-safe-to-fail', icon: '₿',  label: 'BTC Safe-to-Fail' },
   { to: '/btc-fetcher',     icon: '🔗', label: 'BTC Fetcher' },
+  { to: '/cosmos-check',    icon: '⚛️', label: 'Cosmos TX Check' },
   { to: '/csv-builder',     icon: '📊', label: 'CSV Builder' },
   { to: '/faucet',          icon: '🚰', label: 'Faucet' },
   { to: '/webhook-tester',  icon: '🔗', label: 'Webhook Tester' },
   { to: '/callback-handler', icon: '🛡️', label: 'Callback Handler' },
   { to: '/easy-cosigner',   icon: '🔐', label: 'Easy Cosigner' },
   { to: '/tx-id-generator', icon: '🔑', label: 'TxId Generator' },
-  { to: '/cosmos-check',    icon: '⚛️', label: 'Cosmos TX Check' },
 ]
 
 export default function Sidebar() {
