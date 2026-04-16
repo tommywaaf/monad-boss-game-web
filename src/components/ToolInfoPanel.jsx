@@ -72,6 +72,11 @@ const TOOL_INFO = {
     why: 'Gives you a way to prove that a Fireblocks transaction was initiated by you and not by an attacker who compromised your API key. Every externalTxId you generate is cryptographically signed with a secret key that lives only on the server — an attacker with your API key alone cannot forge a valid ID.',
     how: 'On first load a secret HMAC-SHA256 key is generated server-side and tied to your session. Your Secret Key is displayed at the top — copy it and paste it into a Callback Handler policy rule to enable verification. Hit Generate to produce a single signed externalTxId (format: base64url(random 16 bytes) + "." + base64url(HMAC-SHA256 signature), ~65 chars total, well under Fireblocks\' 255-char limit). Use Batch Generate to produce up to 100 IDs at once for pre-populating transaction queues. Session History tracks everything generated this visit. Use Rotate Keys to replace the key pair — note that any IDs signed with the old key will no longer verify.',
   },
+  'cosmos-check': {
+    title: 'Cosmos TX Check',
+    why: 'Cosmos/Tendermint transactions (Cosmos Hub, Osmosis, Celestia, Injective, dYdX, etc.) include a timeoutHeight field that determines the block at which the transaction expires. If the current chain height has passed the timeout height, the transaction can never be included in a block and is safe to fail.',
+    how: 'Select the chain the transaction was sent on, then paste the base64-encoded raw transaction (copy it from Coralogix after "About to send <ASSET_ID> tx="). You can check multiple transactions at once by pasting one per line — all will be checked against the same chain. The tool decodes the protobuf in-browser (no backend needed) to extract the timeoutHeight, fetches the current block height from a public REST node, and tells you whether the TX is safe to fail.',
+  },
   'easy-cosigner': {
     title: 'Easy Cosigner',
     why: 'A ready-to-go cosigner setup tool. Just paste your pairing token and you\'ll have a cosigner paired. Ideal for crypto journey testing.',

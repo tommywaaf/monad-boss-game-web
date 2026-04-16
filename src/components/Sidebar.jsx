@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { to: '/callback-handler', icon: '🛡️', label: 'Callback Handler' },
   { to: '/easy-cosigner',   icon: '🔐', label: 'Easy Cosigner' },
   { to: '/tx-id-generator', icon: '🔑', label: 'TxId Generator' },
+  { to: '/cosmos-check',    icon: '⚛️', label: 'Cosmos TX Check' },
 ]
 
 export default function Sidebar() {

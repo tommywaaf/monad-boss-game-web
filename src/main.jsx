@@ -25,6 +25,7 @@ import WebhookTester from './pages/WebhookTester.jsx'
 import CallbackHandler from './pages/CallbackHandler.jsx'
 import EasyCosigner from './pages/EasyCosigner.jsx'
 import TxIdGenerator from './pages/TxIdGenerator.jsx'
+import CosmosCheck from './pages/CosmosCheck.jsx'
 
 // Get Dynamic Environment ID from environment variable
 const dynamicEnvironmentId = import.meta.env.VITE_DYNAMIC_ENVIRONMENT_ID
@@ -138,6 +139,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/callback-handler" element={<CallbackHandler />} />
           <Route path="/easy-cosigner" element={<EasyCosigner />} />
           <Route path="/tx-id-generator" element={<TxIdGenerator />} />
+          <Route path="/cosmos-check" element={<CosmosCheck />} />
           <Route path="/*" element={<MainApp />} />
         </Route>
       </Routes>
