@@ -26,6 +26,7 @@ const CHAIN_ENDPOINTS = {
       'https://cosmos-lcd.quickapi.com',
     ],
     explorer: 'https://www.mintscan.io/cosmos/txs/',
+    bech32Prefix: 'cosmos',
   },
   osmosis_mainnet: {
     label: 'Osmosis (Mainnet)',
@@ -39,6 +40,7 @@ const CHAIN_ENDPOINTS = {
       'https://osmosis-lcd.quickapi.com',
     ],
     explorer: 'https://www.mintscan.io/osmosis/txs/',
+    bech32Prefix: 'osmo',
   },
   celestia_mainnet: {
     label: 'Celestia (Mainnet)',
@@ -51,6 +53,7 @@ const CHAIN_ENDPOINTS = {
       'https://api-celestia.mzonder.com',
     ],
     explorer: 'https://www.mintscan.io/celestia/txs/',
+    bech32Prefix: 'celestia',
   },
   injective_mainnet: {
     label: 'Injective (Mainnet)',
@@ -63,6 +66,7 @@ const CHAIN_ENDPOINTS = {
       'https://sentry.lcd.injective.network',
     ],
     explorer: 'https://www.mintscan.io/injective/txs/',
+    bech32Prefix: 'inj',
   },
   dydx_mainnet: {
     label: 'dYdX (Mainnet)',
@@ -75,42 +79,71 @@ const CHAIN_ENDPOINTS = {
       'https://dydx-mainnet-lcd.autostake.com',
     ],
     explorer: 'https://www.mintscan.io/dydx/txs/',
+    bech32Prefix: 'dydx',
   },
   thor_mainnet: {
     label: 'THORChain (Mainnet)',
-    heightUrl: 'https://thornode.ninerealms.com',
+    // Note: thornode.ninerealms.com does a 301 to liquify gateway which breaks
+    // cross-origin redirects in the browser. Use cosmos.directory as primary.
+    heightUrl: 'https://rest.cosmos.directory/thorchain',
     txLookupUrls: [
-      'https://thornode.ninerealms.com',
       'https://rest.cosmos.directory/thorchain',
+      'https://thornode.ninerealms.com',
       'https://thornode-v2.ninerealms.com',
     ],
     explorer: 'https://www.mintscan.io/thorchain/txs/',
+    bech32Prefix: 'thor',
   },
   cosmos_testnet: {
     label: 'Cosmos (Testnet)',
     heightUrl: 'https://rest.testcosmos.directory/cosmoshubtestnet',
     txLookupUrls: ['https://rest.testcosmos.directory/cosmoshubtestnet'],
     explorer: null,
+    bech32Prefix: 'cosmos',
   },
   osmosis_testnet: {
     label: 'Osmosis (Testnet)',
     heightUrl: 'https://rest.testcosmos.directory/osmosistestnet',
     txLookupUrls: ['https://rest.testcosmos.directory/osmosistestnet'],
     explorer: null,
+    bech32Prefix: 'osmo',
   },
   celestia_testnet: {
     label: 'Celestia (Testnet)',
     heightUrl: 'https://celestia-mocha-rest.publicnode.com',
     txLookupUrls: ['https://celestia-mocha-rest.publicnode.com'],
     explorer: null,
+    bech32Prefix: 'celestia',
   },
   injective_testnet: {
     label: 'Injective (Testnet)',
     heightUrl: 'https://injective-testnet-rest.publicnode.com',
     txLookupUrls: ['https://injective-testnet-rest.publicnode.com'],
     explorer: null,
+    bech32Prefix: 'inj',
   },
 }
+
+// Maps a bech32 HRP (human-readable prefix) to the nicest chain key to suggest.
+// Keys are the prefix as found in the TX; values are the chain key in CHAIN_ENDPOINTS.
+const PREFIX_TO_CHAIN = {
+  cosmos: 'cosmos_mainnet',
+  osmo: 'osmosis_mainnet',
+  celestia: 'celestia_mainnet',
+  inj: 'injective_mainnet',
+  dydx: 'dydx_mainnet',
+  thor: 'thor_mainnet',
+}
+
+// TypeURL fragments that uniquely identify a chain family (when the bech32
+// prefix alone isn't enough). THORChain's `/types.Msg*` is its tell-tale sign.
+const TYPE_URL_HINTS = [
+  { pattern: /^\/types\.Msg(Send|Deposit|ObservedTx|Swap|Outbound)/, chain: 'thor_mainnet' },
+  { pattern: /^\/injective\./, chain: 'injective_mainnet' },
+  { pattern: /^\/osmosis\./, chain: 'osmosis_mainnet' },
+  { pattern: /^\/celestia\./, chain: 'celestia_mainnet' },
+  { pattern: /^\/dydx(protocol)?\./, chain: 'dydx_mainnet' },
+]
 
 // ─── Minimal in-browser protobuf parser ──────────────────────────────────────
 // Cosmos Tx proto structure:
@@ -186,6 +219,57 @@ function extractTimeoutHeight(txBytes) {
   return bodyFields[3] ? bodyFields[3][0] : 0
 }
 
+// Extracts all message type URLs from TxBody.messages[].type_url.
+// E.g. "/cosmos.bank.v1beta1.MsgSend" (generic) or "/types.MsgSend" (THORChain).
+function extractTypeUrls(txBytes) {
+  const txFields = parseFields(txBytes)
+  if (!txFields[1] || txFields[1].length === 0) return []
+  const bodyFields = parseFields(txFields[1][0])
+  if (!bodyFields[1]) return []
+  const typeUrls = []
+  const decoder = new TextDecoder()
+  for (const msgBytes of bodyFields[1]) {
+    const msgFields = parseFields(msgBytes)
+    if (msgFields[1] && msgFields[1][0]) {
+      try { typeUrls.push(decoder.decode(msgFields[1][0])) } catch { /* skip */ }
+    }
+  }
+  return typeUrls
+}
+
+// Scans the TX bytes (interpreted as latin1 text) for bech32-style addresses
+// and returns the set of unique HRPs (e.g. "cosmos", "thor", "osmo"). Used to
+// detect what chain the TX was built for.
+function extractBech32Prefixes(txBytes) {
+  const text = new TextDecoder('latin1').decode(txBytes)
+  // bech32: HRP (lowercase letters) + "1" + data chars (a-z0-9 minus b,i,o,1)
+  const re = /([a-z]{2,16})1[023456789acdefghjklmnpqrstuvwxyz]{30,90}/g
+  const prefixes = new Set()
+  let m
+  while ((m = re.exec(text)) !== null) {
+    prefixes.add(m[1])
+  }
+  return prefixes
+}
+
+// Returns the most likely chain key for this TX based on address prefixes and
+// typeURL hints, or null if we can't tell.
+function detectChain(txBytes) {
+  const typeUrls = extractTypeUrls(txBytes)
+  for (const url of typeUrls) {
+    for (const hint of TYPE_URL_HINTS) {
+      if (hint.pattern.test(url)) return { chain: hint.chain, reason: `type URL "${url}"` }
+    }
+  }
+  const prefixes = extractBech32Prefixes(txBytes)
+  for (const prefix of prefixes) {
+    if (PREFIX_TO_CHAIN[prefix]) {
+      return { chain: PREFIX_TO_CHAIN[prefix], reason: `address prefix "${prefix}1..."` }
+    }
+  }
+  return null
+}
+
 async function computeTxHash(txBytes) {
   const hashBuffer = await crypto.subtle.digest('SHA-256', txBytes)
   return Array.from(new Uint8Array(hashBuffer))
@@ -196,16 +280,30 @@ async function computeTxHash(txBytes) {
 
 // ─── Chain REST API ──────────────────────────────────────────────────────────
 
-async function fetchBlockHeight(endpointUrl) {
-  const res = await fetch(
-    `${endpointUrl}/cosmos/base/tendermint/v1beta1/blocks/latest`,
-    { signal: AbortSignal.timeout(15000) }
-  )
-  if (!res.ok) throw new Error(`Chain RPC returned HTTP ${res.status}`)
+async function fetchBlockHeightFrom(url) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const data = await res.json()
   const height = parseInt(data?.block?.header?.height, 10)
-  if (!height || isNaN(height)) throw new Error('Unexpected response format from chain endpoint')
+  if (!height || isNaN(height)) throw new Error('Unexpected response format')
   return height
+}
+
+// Tries direct first; on any failure (CORS, redirect, network) falls back to
+// the CORS proxy. This covers endpoints that redirect cross-origin (e.g.
+// thornode.ninerealms.com → gateway.liquify.com) which browsers block.
+async function fetchBlockHeight(endpointUrl) {
+  const target = `${endpointUrl}/cosmos/base/tendermint/v1beta1/blocks/latest`
+  try {
+    return await fetchBlockHeightFrom(target)
+  } catch (directErr) {
+    try {
+      return await fetchBlockHeightFrom(`${CORS_PROXY}${encodeURIComponent(target)}`)
+    } catch {
+      // Preserve the original error — it's more useful than the proxy's
+      throw directErr
+    }
+  }
 }
 
 // Builds the URL that will actually be fetched. If useProxy=true we wrap the
@@ -359,6 +457,16 @@ function CosmosCheck() {
           computeTxHash(txBytes),
         ])
 
+        // Detect likely chain from addresses + typeURLs, compare to selection
+        const detected = detectChain(txBytes)
+        const chainMismatch = detected && detected.chain !== chain
+          ? {
+              detectedChain: detected.chain,
+              detectedLabel: CHAIN_ENDPOINTS[detected.chain]?.label ?? detected.chain,
+              reason: detected.reason,
+            }
+          : null
+
         const onChain = await checkTxOnChain(chainConfig.txLookupUrls, txHash).catch(err => ({
           status: 'error',
           error: err.message || String(err),
@@ -424,6 +532,7 @@ function CosmosCheck() {
           verdict,
           safeToFail,
           requiresManualCheck,
+          chainMismatch,
         })
       } catch (err) {
         newResults.push({ rawTx, success: false, error: err.message || String(err) })
@@ -543,6 +652,26 @@ function CosmosCheck() {
 
                 {result.success ? (
                   <div className="result-content">
+                    {result.chainMismatch && (
+                      <div className="cosmos-chain-warning">
+                        <div className="cosmos-chain-warning-header">
+                          <span className="cosmos-chain-warning-icon">⚠</span>
+                          <strong>Wrong chain selected?</strong>
+                        </div>
+                        <div className="cosmos-chain-warning-body">
+                          The transaction looks like a <strong>{result.chainMismatch.detectedLabel}</strong> TX
+                          (detected from {result.chainMismatch.reason}), but you selected <strong>{result.chain}</strong>.
+                          The verdict below may be meaningless — the TX can never land on the selected chain.
+                        </div>
+                        <button
+                          type="button"
+                          className="cosmos-chain-switch-btn"
+                          onClick={() => setChain(result.chainMismatch.detectedChain)}
+                        >
+                          Switch to {result.chainMismatch.detectedLabel} and re-check
+                        </button>
+                      </div>
+                    )}
                     <div className="cosmos-result-grid">
                       <div className="cosmos-stat">
                         <span className="field-label">Chain</span>
