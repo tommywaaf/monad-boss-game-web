@@ -770,18 +770,9 @@ function CosmosCheck() {
               disabled={processing}
               className="cosmos-chain-select"
             >
-              <optgroup label="⭐ Fireblocks Rescan Supported (Mainnet)">
+              <optgroup label="Mainnet">
                 {Object.entries(CHAIN_ENDPOINTS)
-                  .filter(([k, cfg]) => k.endsWith('_mainnet') && cfg.fireblocksRescanSupported)
-                  .map(([key, cfg]) => (
-                    <option key={key} value={key}>
-                      {cfg.label}{cfg.fireblocksId ? ` — ${cfg.fireblocksId}` : ''}
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="Other Cosmos Chains (Mainnet)">
-                {Object.entries(CHAIN_ENDPOINTS)
-                  .filter(([k, cfg]) => k.endsWith('_mainnet') && !cfg.fireblocksRescanSupported)
+                  .filter(([k]) => k.endsWith('_mainnet'))
                   .map(([key, cfg]) => (
                     <option key={key} value={key}>
                       {cfg.label}{cfg.fireblocksId ? ` — ${cfg.fireblocksId}` : ''}
