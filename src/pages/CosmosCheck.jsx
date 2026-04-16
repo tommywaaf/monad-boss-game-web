@@ -3,16 +3,81 @@ import { trackUsage } from '../utils/counter'
 import ToolInfoPanel from '../components/ToolInfoPanel'
 import './CosmosCheck.css'
 
+// txLookupUrls is tried in order for the on-chain check.
+// publicnode prunes old txs; Cosmostation and cosmos.directory are full archives.
 const CHAIN_ENDPOINTS = {
-  cosmos_mainnet:    { label: 'Cosmos (Mainnet)',     url: 'https://cosmos-rest.publicnode.com',            explorer: 'https://www.mintscan.io/cosmos/txs/' },
-  osmosis_mainnet:   { label: 'Osmosis (Mainnet)',    url: 'https://osmosis-rest.publicnode.com',           explorer: 'https://www.mintscan.io/osmosis/txs/' },
-  celestia_mainnet:  { label: 'Celestia (Mainnet)',   url: 'https://celestia-rest.publicnode.com',          explorer: 'https://www.mintscan.io/celestia/txs/' },
-  injective_mainnet: { label: 'Injective (Mainnet)',  url: 'https://injective-rest.publicnode.com',         explorer: 'https://www.mintscan.io/injective/txs/' },
-  dydx_mainnet:      { label: 'dYdX (Mainnet)',       url: 'https://dydx-rest.publicnode.com',              explorer: 'https://www.mintscan.io/dydx/txs/' },
-  cosmos_testnet:    { label: 'Cosmos (Testnet)',     url: 'https://rest.testcosmos.directory/cosmoshubtestnet', explorer: null },
-  osmosis_testnet:   { label: 'Osmosis (Testnet)',    url: 'https://rest.testcosmos.directory/osmosistestnet',  explorer: null },
-  celestia_testnet:  { label: 'Celestia (Testnet)',   url: 'https://celestia-mocha-rest.publicnode.com',    explorer: null },
-  injective_testnet: { label: 'Injective (Testnet)',  url: 'https://injective-testnet-rest.publicnode.com', explorer: null },
+  cosmos_mainnet: {
+    label: 'Cosmos (Mainnet)',
+    url: 'https://cosmos-rest.publicnode.com',
+    txLookupUrls: [
+      'https://cosmos-rest.publicnode.com',
+      'https://lcd-cosmos.cosmostation.io',
+      'https://rest.cosmos.directory/cosmoshub',
+    ],
+    explorer: 'https://www.mintscan.io/cosmos/txs/',
+  },
+  osmosis_mainnet: {
+    label: 'Osmosis (Mainnet)',
+    url: 'https://osmosis-rest.publicnode.com',
+    txLookupUrls: [
+      'https://osmosis-rest.publicnode.com',
+      'https://lcd-osmosis.cosmostation.io',
+      'https://rest.cosmos.directory/osmosis',
+    ],
+    explorer: 'https://www.mintscan.io/osmosis/txs/',
+  },
+  celestia_mainnet: {
+    label: 'Celestia (Mainnet)',
+    url: 'https://celestia-rest.publicnode.com',
+    txLookupUrls: [
+      'https://celestia-rest.publicnode.com',
+      'https://rest.cosmos.directory/celestia',
+    ],
+    explorer: 'https://www.mintscan.io/celestia/txs/',
+  },
+  injective_mainnet: {
+    label: 'Injective (Mainnet)',
+    url: 'https://injective-rest.publicnode.com',
+    txLookupUrls: [
+      'https://injective-rest.publicnode.com',
+      'https://lcd-injective.cosmostation.io',
+      'https://rest.cosmos.directory/injective',
+    ],
+    explorer: 'https://www.mintscan.io/injective/txs/',
+  },
+  dydx_mainnet: {
+    label: 'dYdX (Mainnet)',
+    url: 'https://dydx-rest.publicnode.com',
+    txLookupUrls: [
+      'https://dydx-rest.publicnode.com',
+      'https://rest.cosmos.directory/dydx',
+    ],
+    explorer: 'https://www.mintscan.io/dydx/txs/',
+  },
+  cosmos_testnet: {
+    label: 'Cosmos (Testnet)',
+    url: 'https://rest.testcosmos.directory/cosmoshubtestnet',
+    txLookupUrls: ['https://rest.testcosmos.directory/cosmoshubtestnet'],
+    explorer: null,
+  },
+  osmosis_testnet: {
+    label: 'Osmosis (Testnet)',
+    url: 'https://rest.testcosmos.directory/osmosistestnet',
+    txLookupUrls: ['https://rest.testcosmos.directory/osmosistestnet'],
+    explorer: null,
+  },
+  celestia_testnet: {
+    label: 'Celestia (Testnet)',
+    url: 'https://celestia-mocha-rest.publicnode.com',
+    txLookupUrls: ['https://celestia-mocha-rest.publicnode.com'],
+    explorer: null,
+  },
+  injective_testnet: {
+    label: 'Injective (Testnet)',
+    url: 'https://injective-testnet-rest.publicnode.com',
+    txLookupUrls: ['https://injective-testnet-rest.publicnode.com'],
+    explorer: null,
+  },
 }
 
 // ─── Minimal in-browser protobuf parser ──────────────────────────────────────
@@ -111,17 +176,16 @@ async function fetchBlockHeight(endpointUrl) {
   return height
 }
 
-async function checkTxOnChain(endpointUrl, txHash) {
+async function checkTxAtEndpoint(endpointUrl, txHash) {
   const res = await fetch(
     `${endpointUrl}/cosmos/tx/v1beta1/txs/${txHash}`,
-    { signal: AbortSignal.timeout(15000) }
+    { signal: AbortSignal.timeout(12000) }
   )
   if (res.status === 404) return { found: false }
   if (!res.ok) {
-    // Some nodes return 400/500 with a "not found" body instead of 404
     const text = await res.text().catch(() => '')
     if (text.toLowerCase().includes('not found')) return { found: false }
-    throw new Error(`HTTP ${res.status} checking on-chain status`)
+    throw new Error(`HTTP ${res.status}`)
   }
   const data = await res.json()
   const txr = data?.tx_response
@@ -131,7 +195,24 @@ async function checkTxOnChain(endpointUrl, txHash) {
     code: Number(txr.code ?? 0),
     height: parseInt(txr.height, 10),
     hash: txr.txhash,
+    foundAt: endpointUrl,
   }
+}
+
+// Tries each endpoint in order; publicnode prunes old txs so fallbacks cover archives.
+async function checkTxOnChain(txLookupUrls, txHash) {
+  const errors = []
+  for (const url of txLookupUrls) {
+    try {
+      const result = await checkTxAtEndpoint(url, txHash)
+      if (result.found) return result
+      // TX not found at this node — try next (may be pruned here)
+    } catch (err) {
+      errors.push(`${url}: ${err.message}`)
+    }
+  }
+  // All endpoints returned not-found or errored
+  return { found: false, triedUrls: txLookupUrls.length, errors }
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
@@ -203,8 +284,7 @@ function CosmosCheck() {
           computeTxHash(txBytes),
         ])
 
-        // On-chain check runs concurrently with nothing else here but is awaited before verdict
-        const onChain = await checkTxOnChain(chainConfig.url, txHash).catch(err => ({
+        const onChain = await checkTxOnChain(chainConfig.txLookupUrls, txHash).catch(err => ({
           found: null,
           error: err.message || String(err),
         }))
@@ -216,10 +296,11 @@ function CosmosCheck() {
           safeToFail = false
           const execStatus = onChain.code === 0 ? 'succeeded' : `failed on-chain (code ${onChain.code})`
           onChainLabel = `Yes — ${execStatus} at block ${onChain.height?.toLocaleString() ?? '?'}`
-          verdict = `Transaction is confirmed on-chain at block ${onChain.height?.toLocaleString() ?? '?'} (${execStatus}). It has already been processed and is NOT safe to fail.`
+          verdict = `Transaction confirmed on-chain at block ${onChain.height?.toLocaleString() ?? '?'} (${execStatus}). It has already been processed and is NOT safe to fail.`
         } else {
+          const checked = onChain.triedUrls ?? 1
           onChainLabel = onChain.found === false
-            ? 'Not found'
+            ? `Not found (checked ${checked} node${checked !== 1 ? 's' : ''})`
             : `Unknown (${onChain.error})`
 
           if (timeoutHeight === 0) {
