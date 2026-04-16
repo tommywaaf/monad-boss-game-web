@@ -3,78 +3,100 @@ import { trackUsage } from '../utils/counter'
 import ToolInfoPanel from '../components/ToolInfoPanel'
 import './CosmosCheck.css'
 
-// txLookupUrls is tried in order for the on-chain check.
-// publicnode prunes old txs; Cosmostation and cosmos.directory are full archives.
+// CORS proxy used as a fallback when an endpoint lacks CORS headers.
+// We race direct + proxied requests so the fastest reachable one wins.
+const CORS_PROXY = 'https://corsproxy.io/?url='
+
+// Per-chain endpoints:
+//   - heightUrl: used to fetch the current block height (fast pruned node is fine)
+//   - txLookupUrls: queried in PARALLEL. Each URL is tried both directly and through
+//     the CORS proxy. The first node returning "found" wins.
+//     Mix of pruned public nodes (fast path for recent txs) and archive nodes
+//     (historical coverage). Archive sources: Polkachu, ecostake, numia, cosmos.directory.
 const CHAIN_ENDPOINTS = {
   cosmos_mainnet: {
     label: 'Cosmos (Mainnet)',
-    url: 'https://cosmos-rest.publicnode.com',
+    heightUrl: 'https://cosmos-rest.publicnode.com',
     txLookupUrls: [
       'https://cosmos-rest.publicnode.com',
       'https://lcd-cosmos.cosmostation.io',
       'https://rest.cosmos.directory/cosmoshub',
+      'https://cosmos-api.polkachu.com',
+      'https://rest-cosmoshub.ecostake.com',
+      'https://cosmos-lcd.quickapi.com',
     ],
     explorer: 'https://www.mintscan.io/cosmos/txs/',
   },
   osmosis_mainnet: {
     label: 'Osmosis (Mainnet)',
-    url: 'https://osmosis-rest.publicnode.com',
+    heightUrl: 'https://osmosis-rest.publicnode.com',
     txLookupUrls: [
       'https://osmosis-rest.publicnode.com',
       'https://lcd-osmosis.cosmostation.io',
       'https://rest.cosmos.directory/osmosis',
+      'https://osmosis-api.polkachu.com',
+      'https://rest.osmosis.zone',
+      'https://osmosis-lcd.quickapi.com',
     ],
     explorer: 'https://www.mintscan.io/osmosis/txs/',
   },
   celestia_mainnet: {
     label: 'Celestia (Mainnet)',
-    url: 'https://celestia-rest.publicnode.com',
+    heightUrl: 'https://celestia-rest.publicnode.com',
     txLookupUrls: [
       'https://celestia-rest.publicnode.com',
       'https://rest.cosmos.directory/celestia',
+      'https://public-celestia-lcd.numia.xyz',
+      'https://celestia-api.polkachu.com',
+      'https://api-celestia.mzonder.com',
     ],
     explorer: 'https://www.mintscan.io/celestia/txs/',
   },
   injective_mainnet: {
     label: 'Injective (Mainnet)',
-    url: 'https://injective-rest.publicnode.com',
+    heightUrl: 'https://injective-rest.publicnode.com',
     txLookupUrls: [
       'https://injective-rest.publicnode.com',
       'https://lcd-injective.cosmostation.io',
       'https://rest.cosmos.directory/injective',
+      'https://injective-api.polkachu.com',
+      'https://sentry.lcd.injective.network',
     ],
     explorer: 'https://www.mintscan.io/injective/txs/',
   },
   dydx_mainnet: {
     label: 'dYdX (Mainnet)',
-    url: 'https://dydx-rest.publicnode.com',
+    heightUrl: 'https://dydx-rest.publicnode.com',
     txLookupUrls: [
       'https://dydx-rest.publicnode.com',
       'https://rest.cosmos.directory/dydx',
+      'https://dydx-api.polkachu.com',
+      'https://dydx-dao-api.polkachu.com',
+      'https://dydx-mainnet-lcd.autostake.com',
     ],
     explorer: 'https://www.mintscan.io/dydx/txs/',
   },
   cosmos_testnet: {
     label: 'Cosmos (Testnet)',
-    url: 'https://rest.testcosmos.directory/cosmoshubtestnet',
+    heightUrl: 'https://rest.testcosmos.directory/cosmoshubtestnet',
     txLookupUrls: ['https://rest.testcosmos.directory/cosmoshubtestnet'],
     explorer: null,
   },
   osmosis_testnet: {
     label: 'Osmosis (Testnet)',
-    url: 'https://rest.testcosmos.directory/osmosistestnet',
+    heightUrl: 'https://rest.testcosmos.directory/osmosistestnet',
     txLookupUrls: ['https://rest.testcosmos.directory/osmosistestnet'],
     explorer: null,
   },
   celestia_testnet: {
     label: 'Celestia (Testnet)',
-    url: 'https://celestia-mocha-rest.publicnode.com',
+    heightUrl: 'https://celestia-mocha-rest.publicnode.com',
     txLookupUrls: ['https://celestia-mocha-rest.publicnode.com'],
     explorer: null,
   },
   injective_testnet: {
     label: 'Injective (Testnet)',
-    url: 'https://injective-testnet-rest.publicnode.com',
+    heightUrl: 'https://injective-testnet-rest.publicnode.com',
     txLookupUrls: ['https://injective-testnet-rest.publicnode.com'],
     explorer: null,
   },
@@ -176,43 +198,86 @@ async function fetchBlockHeight(endpointUrl) {
   return height
 }
 
-async function checkTxAtEndpoint(endpointUrl, txHash) {
-  const res = await fetch(
-    `${endpointUrl}/cosmos/tx/v1beta1/txs/${txHash}`,
-    { signal: AbortSignal.timeout(12000) }
-  )
-  if (res.status === 404) return { found: false }
+// Builds the URL that will actually be fetched. If useProxy=true we wrap the
+// target URL in a public CORS proxy so the browser can reach nodes without
+// CORS headers. The proxy simply forwards the GET.
+function buildLookupUrl(baseUrl, txHash, useProxy) {
+  const target = `${baseUrl}/cosmos/tx/v1beta1/txs/${txHash}`
+  return useProxy ? `${CORS_PROXY}${encodeURIComponent(target)}` : target
+}
+
+async function checkTxAtEndpoint(baseUrl, txHash, useProxy) {
+  const url = buildLookupUrl(baseUrl, txHash, useProxy)
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) })
+  if (res.status === 404) return { status: 'not_found' }
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    if (text.toLowerCase().includes('not found')) return { found: false }
+    if (text.toLowerCase().includes('not found') || text.toLowerCase().includes('tx not found')) {
+      return { status: 'not_found' }
+    }
     throw new Error(`HTTP ${res.status}`)
   }
-  const data = await res.json()
+  const data = await res.json().catch(() => null)
+  if (!data) throw new Error('Invalid JSON response')
   const txr = data?.tx_response
-  if (!txr) return { found: false }
+  if (!txr) {
+    // Some nodes return 200 with an error message body
+    if (data?.code === 5 || (typeof data?.message === 'string' && data.message.toLowerCase().includes('not found'))) {
+      return { status: 'not_found' }
+    }
+    throw new Error('Unexpected response shape')
+  }
   return {
-    found: true,
+    status: 'found',
     code: Number(txr.code ?? 0),
     height: parseInt(txr.height, 10),
     hash: txr.txhash,
-    foundAt: endpointUrl,
+    foundAt: baseUrl,
+    viaProxy: useProxy,
   }
 }
 
-// Tries each endpoint in order; publicnode prunes old txs so fallbacks cover archives.
+// Looks up the TX across ALL endpoints in parallel, racing both the direct URL
+// and the CORS-proxied URL for each endpoint. Returns as soon as any endpoint
+// returns "found". Only returns "not_found" if ALL endpoints agree.
 async function checkTxOnChain(txLookupUrls, txHash) {
-  const errors = []
+  const attempts = []
   for (const url of txLookupUrls) {
-    try {
-      const result = await checkTxAtEndpoint(url, txHash)
-      if (result.found) return result
-      // TX not found at this node — try next (may be pruned here)
-    } catch (err) {
-      errors.push(`${url}: ${err.message}`)
-    }
+    attempts.push({ url, useProxy: false })
+    attempts.push({ url, useProxy: true })
   }
-  // All endpoints returned not-found or errored
-  return { found: false, triedUrls: txLookupUrls.length, errors }
+
+  const outcomes = new Array(attempts.length)
+  let resolvedFound = null
+  let remaining = attempts.length
+
+  return new Promise((resolve) => {
+    attempts.forEach((a, idx) => {
+      checkTxAtEndpoint(a.url, txHash, a.useProxy)
+        .then(r => { outcomes[idx] = r })
+        .catch(err => { outcomes[idx] = { status: 'error', error: err.message, url: a.url, viaProxy: a.useProxy } })
+        .finally(() => {
+          const latest = outcomes[idx]
+          if (!resolvedFound && latest?.status === 'found') {
+            resolvedFound = latest
+            resolve(latest)
+            return
+          }
+          remaining -= 1
+          if (remaining === 0 && !resolvedFound) {
+            const notFoundCount = outcomes.filter(o => o?.status === 'not_found').length
+            const errorCount = outcomes.filter(o => o?.status === 'error').length
+            resolve({
+              status: 'not_found',
+              uniqueEndpointsTried: txLookupUrls.length,
+              notFoundCount,
+              errorCount,
+              errors: outcomes.filter(o => o?.status === 'error').map(o => `${o.url}${o.viaProxy ? ' (via proxy)' : ''}: ${o.error}`),
+            })
+          }
+        })
+    })
+  })
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
@@ -262,7 +327,7 @@ function CosmosCheck() {
     const chainConfig = CHAIN_ENDPOINTS[chain]
 
     // Fetch current block height once, shared across all TXes
-    const heightResult = await fetchBlockHeight(chainConfig.url).then(
+    const heightResult = await fetchBlockHeight(chainConfig.heightUrl).then(
       h => ({ ok: true, value: h }),
       err => ({ ok: false, error: err.message || String(err) })
     )
@@ -285,27 +350,33 @@ function CosmosCheck() {
         ])
 
         const onChain = await checkTxOnChain(chainConfig.txLookupUrls, txHash).catch(err => ({
-          found: null,
+          status: 'error',
           error: err.message || String(err),
         }))
 
-        let verdict, safeToFail, onChainLabel
+        let verdict, safeToFail, onChainLabel, requiresManualCheck = false
 
-        if (onChain.found === true) {
+        if (onChain.status === 'found') {
           // TX is already on-chain — never safe to fail regardless of timeout
           safeToFail = false
           const execStatus = onChain.code === 0 ? 'succeeded' : `failed on-chain (code ${onChain.code})`
+          const foundAtHost = onChain.foundAt.replace(/^https?:\/\//, '')
           onChainLabel = `Yes — ${execStatus} at block ${onChain.height?.toLocaleString() ?? '?'}`
-          verdict = `Transaction confirmed on-chain at block ${onChain.height?.toLocaleString() ?? '?'} (${execStatus}). It has already been processed and is NOT safe to fail.`
-        } else {
-          const checked = onChain.triedUrls ?? 1
-          onChainLabel = onChain.found === false
-            ? `Not found (checked ${checked} node${checked !== 1 ? 's' : ''})`
-            : `Unknown (${onChain.error})`
+          verdict = `Transaction confirmed on-chain at block ${onChain.height?.toLocaleString() ?? '?'} (${execStatus}) — found on ${foundAtHost}${onChain.viaProxy ? ' via CORS proxy' : ''}. It has already been processed and is NOT safe to fail.`
+        } else if (onChain.status === 'not_found') {
+          const n = onChain.uniqueEndpointsTried ?? 1
+          onChainLabel = `Not found (checked ${n} node${n !== 1 ? 's' : ''})`
+
+          // For TXs whose timeout height is VERY far in the past, not-found
+          // from pruned nodes is ambiguous — even archive nodes don't all go back forever.
+          // We flag it so the user can verify on Mintscan.
+          const blocksPast = currentHeight - Number(timeoutHeight)
+          const isVeryOld = timeoutHeight > 0 && blocksPast > 100_000
 
           if (timeoutHeight === 0) {
             verdict = 'No timeout height set (timeoutHeight = 0) — not found on-chain. Cannot determine safety.'
             safeToFail = null
+            requiresManualCheck = true
           } else if (timeoutHeight > currentHeight) {
             const delta = timeoutHeight - currentHeight
             verdict = `Not on-chain. Timeout height ${timeoutHeight.toLocaleString()} is ${delta.toLocaleString()} block${delta !== 1 ? 's' : ''} in the future.`
@@ -313,11 +384,21 @@ function CosmosCheck() {
           } else if (timeoutHeight === currentHeight) {
             verdict = `Not on-chain. Timeout height ${timeoutHeight.toLocaleString()} equals current height — transaction is expiring now.`
             safeToFail = false
+          } else if (isVeryOld) {
+            const days = Math.round(blocksPast / 14400) // ~6s block times -> ~14,400 blocks/day
+            verdict = `Timeout height ${timeoutHeight.toLocaleString()} is ${blocksPast.toLocaleString()} blocks in the past (~${days} day${days !== 1 ? 's' : ''} ago). TX was not found on any queried node, but public archives may not retain data this far back. VERIFY MANUALLY on Mintscan before failing.`
+            safeToFail = null
+            requiresManualCheck = true
           } else {
             const delta = currentHeight - timeoutHeight
             verdict = `Not on-chain. Timeout height ${timeoutHeight.toLocaleString()} is ${delta.toLocaleString()} block${delta !== 1 ? 's' : ''} in the past — transaction has expired.`
             safeToFail = true
           }
+        } else {
+          onChainLabel = `Unknown (${onChain.error})`
+          verdict = `Could not determine on-chain status: ${onChain.error}. Please verify manually on Mintscan.`
+          safeToFail = null
+          requiresManualCheck = true
         }
 
         newResults.push({
@@ -328,10 +409,11 @@ function CosmosCheck() {
           txHash,
           timeoutHeight,
           currentHeight,
-          onChainFound: onChain.found,
+          onChainStatus: onChain.status,
           onChainLabel,
           verdict,
           safeToFail,
+          requiresManualCheck,
         })
       } catch (err) {
         newResults.push({ rawTx, success: false, error: err.message || String(err) })
@@ -459,8 +541,8 @@ function CosmosCheck() {
                       <div className="cosmos-stat">
                         <span className="field-label">On-Chain</span>
                         <span className={`field-value cosmos-onchain-value ${
-                          result.onChainFound === true ? 'cosmos-onchain-yes' :
-                          result.onChainFound === false ? 'cosmos-onchain-no' : 'cosmos-zero'
+                          result.onChainStatus === 'found' ? 'cosmos-onchain-yes' :
+                          result.onChainStatus === 'not_found' ? 'cosmos-onchain-no' : 'cosmos-zero'
                         }`}>
                           {result.onChainLabel}
                         </span>
@@ -501,6 +583,17 @@ function CosmosCheck() {
                     }`}>
                       {result.verdict}
                     </div>
+
+                    {result.requiresManualCheck && result.explorer && (
+                      <a
+                        href={`${result.explorer}${result.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="cosmos-mintscan-btn"
+                      >
+                        ↗ Verify on Mintscan
+                      </a>
+                    )}
                   </div>
                 ) : (
                   <div className="result-content">
