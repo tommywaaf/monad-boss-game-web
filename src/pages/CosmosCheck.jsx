@@ -224,6 +224,50 @@ const CHAIN_ENDPOINTS = {
     explorer: 'https://www.mintscan.io/persistence/txs/',
     bech32Prefix: 'persistence',
   },
+  mantra_mainnet: {
+    label: 'MANTRA (Mainnet)',
+    // publicnode returns 403; use cosmos.directory + Polkachu
+    heightUrl: 'https://rest.cosmos.directory/mantrachain',
+    txLookupUrls: [
+      'https://rest.cosmos.directory/mantrachain',
+      'https://mantra-api.polkachu.com',
+      'https://lcd-mantra.cosmostation.io',
+    ],
+    explorer: 'https://www.mintscan.io/mantra/txs/',
+    bech32Prefix: 'mantra',
+  },
+  zigchain_mainnet: {
+    label: 'ZIGChain (Mainnet)',
+    heightUrl: 'https://rest.cosmos.directory/zigchain',
+    txLookupUrls: [
+      'https://rest.cosmos.directory/zigchain',
+      'https://zigchain-api.polkachu.com',
+    ],
+    explorer: 'https://www.mintscan.io/zigchain/txs/',
+    bech32Prefix: 'zig',
+  },
+  initia_mainnet: {
+    label: 'Initia (Mainnet)',
+    heightUrl: 'https://rest.initia.xyz',
+    txLookupUrls: [
+      'https://rest.initia.xyz',
+      'https://rest.cosmos.directory/initia',
+      'https://initia-api.polkachu.com',
+    ],
+    explorer: 'https://scan.initia.xyz/initia-1/txs/',
+    bech32Prefix: 'init',
+  },
+  babylon_mainnet: {
+    label: 'Babylon (Mainnet)',
+    heightUrl: 'https://babylon-rest.publicnode.com',
+    txLookupUrls: [
+      'https://babylon-rest.publicnode.com',
+      'https://rest.cosmos.directory/babylon',
+      'https://babylon-api.polkachu.com',
+    ],
+    explorer: 'https://www.mintscan.io/babylon/txs/',
+    bech32Prefix: 'bbn',
+  },
   cosmos_testnet: {
     label: 'Cosmos (Testnet)',
     heightUrl: 'https://rest.testcosmos.directory/cosmoshubtestnet',
@@ -274,6 +318,10 @@ const PREFIX_TO_CHAIN = {
   akash: 'akash_mainnet',
   juno: 'juno_mainnet',
   persistence: 'persistence_mainnet',
+  mantra: 'mantra_mainnet',
+  zig: 'zigchain_mainnet',
+  init: 'initia_mainnet',
+  bbn: 'babylon_mainnet',
 }
 
 // TypeURL fragments that uniquely identify a chain family (when the bech32
