@@ -4,20 +4,20 @@ import ToolInfoPanel from '../components/ToolInfoPanel'
 import './CosmosCheck.css'
 
 const CHAIN_ENDPOINTS = {
-  cosmos_mainnet:    { label: 'Cosmos (Mainnet)',     url: 'https://cosmos-rest.publicnode.com' },
-  osmosis_mainnet:   { label: 'Osmosis (Mainnet)',    url: 'https://osmosis-rest.publicnode.com' },
-  celestia_mainnet:  { label: 'Celestia (Mainnet)',   url: 'https://celestia-rest.publicnode.com' },
-  injective_mainnet: { label: 'Injective (Mainnet)',  url: 'https://injective-rest.publicnode.com' },
-  dydx_mainnet:      { label: 'dYdX (Mainnet)',       url: 'https://dydx-rest.publicnode.com' },
-  cosmos_testnet:    { label: 'Cosmos (Testnet)',     url: 'https://rest.testcosmos.directory/cosmoshubtestnet' },
-  osmosis_testnet:   { label: 'Osmosis (Testnet)',    url: 'https://rest.testcosmos.directory/osmosistestnet' },
-  celestia_testnet:  { label: 'Celestia (Testnet)',   url: 'https://celestia-mocha-rest.publicnode.com' },
-  injective_testnet: { label: 'Injective (Testnet)',  url: 'https://injective-testnet-rest.publicnode.com' },
+  cosmos_mainnet:    { label: 'Cosmos (Mainnet)',     url: 'https://cosmos-rest.publicnode.com',            explorer: 'https://www.mintscan.io/cosmos/txs/' },
+  osmosis_mainnet:   { label: 'Osmosis (Mainnet)',    url: 'https://osmosis-rest.publicnode.com',           explorer: 'https://www.mintscan.io/osmosis/txs/' },
+  celestia_mainnet:  { label: 'Celestia (Mainnet)',   url: 'https://celestia-rest.publicnode.com',          explorer: 'https://www.mintscan.io/celestia/txs/' },
+  injective_mainnet: { label: 'Injective (Mainnet)',  url: 'https://injective-rest.publicnode.com',         explorer: 'https://www.mintscan.io/injective/txs/' },
+  dydx_mainnet:      { label: 'dYdX (Mainnet)',       url: 'https://dydx-rest.publicnode.com',              explorer: 'https://www.mintscan.io/dydx/txs/' },
+  cosmos_testnet:    { label: 'Cosmos (Testnet)',     url: 'https://rest.testcosmos.directory/cosmoshubtestnet', explorer: null },
+  osmosis_testnet:   { label: 'Osmosis (Testnet)',    url: 'https://rest.testcosmos.directory/osmosistestnet',  explorer: null },
+  celestia_testnet:  { label: 'Celestia (Testnet)',   url: 'https://celestia-mocha-rest.publicnode.com',    explorer: null },
+  injective_testnet: { label: 'Injective (Testnet)',  url: 'https://injective-testnet-rest.publicnode.com', explorer: null },
 }
 
-// ─── Minimal in-browser protobuf parser ────────────────────────────────────
+// ─── Minimal in-browser protobuf parser ──────────────────────────────────────
 // Cosmos Tx proto structure:
-//   Tx.body        = field 1, wire type 2 (length-delimited)
+//   Tx.body               = field 1, wire type 2 (length-delimited)
 //   TxBody.timeout_height = field 3, wire type 0 (varint)
 
 function readVarint(bytes, pos) {
@@ -65,7 +65,7 @@ function parseFields(bytes) {
   return fields
 }
 
-function extractTimeoutHeight(base64Tx) {
+function base64ToBytes(base64Tx) {
   const normalized = base64Tx.trim().replace(/-/g, '+').replace(/_/g, '/')
   let binary
   try {
@@ -73,22 +73,31 @@ function extractTimeoutHeight(base64Tx) {
   } catch {
     throw new Error('Invalid base64 — could not decode the raw transaction.')
   }
-
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
 
+function extractTimeoutHeight(txBytes) {
   // Parse outer Tx: field 1 = TxBody
-  const txFields = parseFields(bytes)
+  const txFields = parseFields(txBytes)
   if (!txFields[1] || txFields[1].length === 0) {
     throw new Error('Could not find TxBody in transaction. Is this a valid Cosmos raw TX?')
   }
-
   // Parse TxBody: field 3 = timeout_height (uint64)
   const bodyFields = parseFields(txFields[1][0])
   return bodyFields[3] ? bodyFields[3][0] : 0
 }
 
-// ─── Chain REST API ─────────────────────────────────────────────────────────
+async function computeTxHash(txBytes) {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', txBytes)
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()
+}
+
+// ─── Chain REST API ──────────────────────────────────────────────────────────
 
 async function fetchBlockHeight(endpointUrl) {
   const res = await fetch(
@@ -100,6 +109,29 @@ async function fetchBlockHeight(endpointUrl) {
   const height = parseInt(data?.block?.header?.height, 10)
   if (!height || isNaN(height)) throw new Error('Unexpected response format from chain endpoint')
   return height
+}
+
+async function checkTxOnChain(endpointUrl, txHash) {
+  const res = await fetch(
+    `${endpointUrl}/cosmos/tx/v1beta1/txs/${txHash}`,
+    { signal: AbortSignal.timeout(15000) }
+  )
+  if (res.status === 404) return { found: false }
+  if (!res.ok) {
+    // Some nodes return 400/500 with a "not found" body instead of 404
+    const text = await res.text().catch(() => '')
+    if (text.toLowerCase().includes('not found')) return { found: false }
+    throw new Error(`HTTP ${res.status} checking on-chain status`)
+  }
+  const data = await res.json()
+  const txr = data?.tx_response
+  if (!txr) return { found: false }
+  return {
+    found: true,
+    code: Number(txr.code ?? 0),
+    height: parseInt(txr.height, 10),
+    hash: txr.txhash,
+  }
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
@@ -147,49 +179,76 @@ function CosmosCheck() {
     setResults([])
 
     const chainConfig = CHAIN_ENDPOINTS[chain]
-    let currentHeight = null
-    let heightError = null
 
-    try {
-      currentHeight = await fetchBlockHeight(chainConfig.url)
-    } catch (err) {
-      heightError = err.message || String(err)
-    }
+    // Fetch current block height once, shared across all TXes
+    const heightResult = await fetchBlockHeight(chainConfig.url).then(
+      h => ({ ok: true, value: h }),
+      err => ({ ok: false, error: err.message || String(err) })
+    )
 
     const newResults = []
 
     for (const rawTx of lines) {
-      if (heightError) {
-        newResults.push({ rawTx, success: false, error: `Failed to fetch current block height: ${heightError}` })
+      if (!heightResult.ok) {
+        newResults.push({ rawTx, success: false, error: `Failed to fetch current block height: ${heightResult.error}` })
         continue
       }
 
-      try {
-        const timeoutHeight = extractTimeoutHeight(rawTx)
+      const currentHeight = heightResult.value
 
-        let verdict, safeToFail
-        if (timeoutHeight === 0) {
-          verdict = 'No timeout height set (timeoutHeight = 0) — cannot determine safety.'
-          safeToFail = null
-        } else if (timeoutHeight > currentHeight) {
-          const blocksRemaining = timeoutHeight - currentHeight
-          verdict = `Timeout height ${timeoutHeight.toLocaleString()} is ${blocksRemaining.toLocaleString()} block${blocksRemaining !== 1 ? 's' : ''} in the future.`
+      try {
+        const txBytes = base64ToBytes(rawTx)
+        const [timeoutHeight, txHash] = await Promise.all([
+          Promise.resolve(extractTimeoutHeight(txBytes)),
+          computeTxHash(txBytes),
+        ])
+
+        // On-chain check runs concurrently with nothing else here but is awaited before verdict
+        const onChain = await checkTxOnChain(chainConfig.url, txHash).catch(err => ({
+          found: null,
+          error: err.message || String(err),
+        }))
+
+        let verdict, safeToFail, onChainLabel
+
+        if (onChain.found === true) {
+          // TX is already on-chain — never safe to fail regardless of timeout
           safeToFail = false
-        } else if (timeoutHeight === currentHeight) {
-          verdict = `Timeout height ${timeoutHeight.toLocaleString()} equals current height — transaction is expiring now.`
-          safeToFail = false
+          const execStatus = onChain.code === 0 ? 'succeeded' : `failed on-chain (code ${onChain.code})`
+          onChainLabel = `Yes — ${execStatus} at block ${onChain.height?.toLocaleString() ?? '?'}`
+          verdict = `Transaction is confirmed on-chain at block ${onChain.height?.toLocaleString() ?? '?'} (${execStatus}). It has already been processed and is NOT safe to fail.`
         } else {
-          const blocksPast = currentHeight - timeoutHeight
-          verdict = `Timeout height ${timeoutHeight.toLocaleString()} is ${blocksPast.toLocaleString()} block${blocksPast !== 1 ? 's' : ''} in the past.`
-          safeToFail = true
+          onChainLabel = onChain.found === false
+            ? 'Not found'
+            : `Unknown (${onChain.error})`
+
+          if (timeoutHeight === 0) {
+            verdict = 'No timeout height set (timeoutHeight = 0) — not found on-chain. Cannot determine safety.'
+            safeToFail = null
+          } else if (timeoutHeight > currentHeight) {
+            const delta = timeoutHeight - currentHeight
+            verdict = `Not on-chain. Timeout height ${timeoutHeight.toLocaleString()} is ${delta.toLocaleString()} block${delta !== 1 ? 's' : ''} in the future.`
+            safeToFail = false
+          } else if (timeoutHeight === currentHeight) {
+            verdict = `Not on-chain. Timeout height ${timeoutHeight.toLocaleString()} equals current height — transaction is expiring now.`
+            safeToFail = false
+          } else {
+            const delta = currentHeight - timeoutHeight
+            verdict = `Not on-chain. Timeout height ${timeoutHeight.toLocaleString()} is ${delta.toLocaleString()} block${delta !== 1 ? 's' : ''} in the past — transaction has expired.`
+            safeToFail = true
+          }
         }
 
         newResults.push({
           rawTx,
           success: true,
           chain: chainConfig.label,
+          explorer: chainConfig.explorer,
+          txHash,
           timeoutHeight,
           currentHeight,
+          onChainFound: onChain.found,
+          onChainLabel,
           verdict,
           safeToFail,
         })
@@ -209,7 +268,7 @@ function CosmosCheck() {
       <div className="cosmos-check-container">
         <div className="cosmos-check-header">
           <h1>⚛️ Cosmos TX Check</h1>
-          <p className="subtitle">Determine if a stuck Cosmos ecosystem transaction is safe to fail based on its timeout height</p>
+          <p className="subtitle">Check if a Cosmos ecosystem transaction is on-chain or safe to fail based on its timeout height</p>
         </div>
 
         <form onSubmit={handleSubmit} className="cosmos-check-form">
@@ -259,7 +318,7 @@ function CosmosCheck() {
             className="submit-btn"
             disabled={processing || !input.trim()}
           >
-            {processing ? 'Checking...' : 'Check Timeout'}
+            {processing ? 'Checking...' : 'Check Transaction'}
           </button>
         </form>
 
@@ -273,7 +332,7 @@ function CosmosCheck() {
               <div className="progress-bar cosmos-progress-bar" style={{ width: `${progress}%` }} />
             </div>
             <div className="loading-hint">
-              Querying {CHAIN_ENDPOINTS[chain].label} REST endpoint...
+              Querying {CHAIN_ENDPOINTS[chain].label} — checking block height and on-chain status...
             </div>
           </div>
         )}
@@ -317,6 +376,15 @@ function CosmosCheck() {
                         <span className="field-value">{result.chain}</span>
                       </div>
                       <div className="cosmos-stat">
+                        <span className="field-label">On-Chain</span>
+                        <span className={`field-value cosmos-onchain-value ${
+                          result.onChainFound === true ? 'cosmos-onchain-yes' :
+                          result.onChainFound === false ? 'cosmos-onchain-no' : 'cosmos-zero'
+                        }`}>
+                          {result.onChainLabel}
+                        </span>
+                      </div>
+                      <div className="cosmos-stat">
                         <span className="field-label">Timeout Height</span>
                         <span className={`field-value cosmos-height-value ${result.timeoutHeight === 0 ? 'cosmos-zero' : ''}`}>
                           {result.timeoutHeight === 0 ? 'Not set (0)' : result.timeoutHeight.toLocaleString()}
@@ -327,6 +395,25 @@ function CosmosCheck() {
                         <span className="field-value">{result.currentHeight.toLocaleString()}</span>
                       </div>
                     </div>
+
+                    <div className="cosmos-tx-hash-row">
+                      <span className="field-label">TX Hash</span>
+                      <span className="cosmos-tx-hash-value">
+                        {result.explorer ? (
+                          <a
+                            href={`${result.explorer}${result.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="cosmos-explorer-link"
+                          >
+                            {result.txHash}
+                          </a>
+                        ) : (
+                          result.txHash
+                        )}
+                      </span>
+                    </div>
+
                     <div className={`cosmos-verdict-text ${
                       result.safeToFail === true ? 'safe' :
                       result.safeToFail === false ? 'unsafe' : 'unknown'

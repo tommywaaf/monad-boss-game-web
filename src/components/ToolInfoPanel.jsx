@@ -75,7 +75,7 @@ const TOOL_INFO = {
   'cosmos-check': {
     title: 'Cosmos TX Check',
     why: 'Cosmos/Tendermint transactions (Cosmos Hub, Osmosis, Celestia, Injective, dYdX, etc.) include a timeoutHeight field that determines the block at which the transaction expires. If the current chain height has passed the timeout height, the transaction can never be included in a block and is safe to fail.',
-    how: 'Select the chain the transaction was sent on, then paste the base64-encoded raw transaction (copy it from Coralogix after "About to send <ASSET_ID> tx="). You can check multiple transactions at once by pasting one per line — all will be checked against the same chain. The tool decodes the protobuf in-browser (no backend needed) to extract the timeoutHeight, fetches the current block height from a public REST node, and tells you whether the TX is safe to fail.',
+    how: 'Select the chain the transaction was sent on, then paste the base64-encoded raw transaction (copy it from Coralogix after "About to send <ASSET_ID> tx="). You can check multiple transactions at once by pasting one per line — all will be checked against the same chain. The tool decodes the protobuf in-browser (no backend needed) to extract the timeoutHeight and compute the TX hash (SHA-256 of raw bytes). It then checks the chain in parallel: fetching the current block height and querying whether the TX is already on-chain. If the TX is found on-chain it is never safe to fail. If it is not found, the timeout height is compared to the current height to determine safety. The TX hash links to Mintscan for mainnet chains.',
   },
   'easy-cosigner': {
     title: 'Easy Cosigner',
