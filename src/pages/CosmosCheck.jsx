@@ -76,6 +76,16 @@ const CHAIN_ENDPOINTS = {
     ],
     explorer: 'https://www.mintscan.io/dydx/txs/',
   },
+  thor_mainnet: {
+    label: 'THORChain (Mainnet)',
+    heightUrl: 'https://thornode.ninerealms.com',
+    txLookupUrls: [
+      'https://thornode.ninerealms.com',
+      'https://rest.cosmos.directory/thorchain',
+      'https://thornode-v2.ninerealms.com',
+    ],
+    explorer: 'https://www.mintscan.io/thorchain/txs/',
+  },
   cosmos_testnet: {
     label: 'Cosmos (Testnet)',
     heightUrl: 'https://rest.testcosmos.directory/cosmoshubtestnet',
