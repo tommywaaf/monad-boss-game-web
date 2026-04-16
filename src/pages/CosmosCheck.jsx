@@ -15,7 +15,9 @@ const CORS_PROXY = 'https://corsproxy.io/?url='
 //     (historical coverage). Archive sources: Polkachu, ecostake, numia, cosmos.directory.
 const CHAIN_ENDPOINTS = {
   cosmos_mainnet: {
-    label: 'Cosmos (Mainnet)',
+    label: 'Cosmos Hub (Mainnet)',
+    fireblocksId: 'ATOM_COS',
+    fireblocksRescanSupported: true,
     heightUrl: 'https://cosmos-rest.publicnode.com',
     txLookupUrls: [
       'https://cosmos-rest.publicnode.com',
@@ -30,6 +32,8 @@ const CHAIN_ENDPOINTS = {
   },
   osmosis_mainnet: {
     label: 'Osmosis (Mainnet)',
+    fireblocksId: 'OSMO',
+    fireblocksRescanSupported: true,
     heightUrl: 'https://osmosis-rest.publicnode.com',
     txLookupUrls: [
       'https://osmosis-rest.publicnode.com',
@@ -44,6 +48,8 @@ const CHAIN_ENDPOINTS = {
   },
   celestia_mainnet: {
     label: 'Celestia (Mainnet)',
+    fireblocksId: 'CELESTIA',
+    fireblocksRescanSupported: true,
     heightUrl: 'https://celestia-rest.publicnode.com',
     txLookupUrls: [
       'https://celestia-rest.publicnode.com',
@@ -57,6 +63,7 @@ const CHAIN_ENDPOINTS = {
   },
   injective_mainnet: {
     label: 'Injective (Mainnet)',
+    fireblocksId: 'INJ_INJ',
     heightUrl: 'https://injective-rest.publicnode.com',
     txLookupUrls: [
       'https://injective-rest.publicnode.com',
@@ -70,6 +77,8 @@ const CHAIN_ENDPOINTS = {
   },
   dydx_mainnet: {
     label: 'dYdX (Mainnet)',
+    fireblocksId: 'DYDX_DYDX',
+    fireblocksRescanSupported: true,
     heightUrl: 'https://dydx-rest.publicnode.com',
     txLookupUrls: [
       'https://dydx-rest.publicnode.com',
@@ -83,6 +92,8 @@ const CHAIN_ENDPOINTS = {
   },
   thor_mainnet: {
     label: 'THORChain (Mainnet)',
+    fireblocksId: 'RUNE_THOR',
+    fireblocksRescanSupported: true,
     // Note: thornode.ninerealms.com does a 301 to liquify gateway which breaks
     // cross-origin redirects in the browser. Use cosmos.directory as primary.
     heightUrl: 'https://rest.cosmos.directory/thorchain',
@@ -108,6 +119,8 @@ const CHAIN_ENDPOINTS = {
   },
   axelar_mainnet: {
     label: 'Axelar (Mainnet)',
+    fireblocksId: 'AXL',
+    fireblocksRescanSupported: true,
     heightUrl: 'https://axelar-rest.publicnode.com',
     txLookupUrls: [
       'https://axelar-rest.publicnode.com',
@@ -269,7 +282,9 @@ const CHAIN_ENDPOINTS = {
     bech32Prefix: 'bbn',
   },
   cosmos_testnet: {
-    label: 'Cosmos (Testnet)',
+    label: 'Cosmos Hub (Testnet)',
+    fireblocksId: 'ATOM_COS_TEST',
+    fireblocksRescanSupported: true,
     heightUrl: 'https://rest.testcosmos.directory/cosmoshubtestnet',
     txLookupUrls: ['https://rest.testcosmos.directory/cosmoshubtestnet'],
     explorer: null,
@@ -284,6 +299,8 @@ const CHAIN_ENDPOINTS = {
   },
   celestia_testnet: {
     label: 'Celestia (Testnet)',
+    fireblocksId: 'CELESTIA_TEST',
+    fireblocksRescanSupported: true,
     heightUrl: 'https://celestia-mocha-rest.publicnode.com',
     txLookupUrls: ['https://celestia-mocha-rest.publicnode.com'],
     explorer: null,
@@ -712,6 +729,7 @@ function CosmosCheck() {
           rawTx,
           success: true,
           chain: chainConfig.label,
+          fireblocksId: chainConfig.fireblocksId ?? null,
           explorer: chainConfig.explorer,
           txHash,
           timeoutHeight,
@@ -752,18 +770,31 @@ function CosmosCheck() {
               disabled={processing}
               className="cosmos-chain-select"
             >
-              <optgroup label="Mainnet">
+              <optgroup label="⭐ Fireblocks Rescan Supported (Mainnet)">
                 {Object.entries(CHAIN_ENDPOINTS)
-                  .filter(([k]) => k.endsWith('_mainnet'))
+                  .filter(([k, cfg]) => k.endsWith('_mainnet') && cfg.fireblocksRescanSupported)
                   .map(([key, cfg]) => (
-                    <option key={key} value={key}>{cfg.label}</option>
+                    <option key={key} value={key}>
+                      {cfg.label}{cfg.fireblocksId ? ` — ${cfg.fireblocksId}` : ''}
+                    </option>
+                  ))}
+              </optgroup>
+              <optgroup label="Other Cosmos Chains (Mainnet)">
+                {Object.entries(CHAIN_ENDPOINTS)
+                  .filter(([k, cfg]) => k.endsWith('_mainnet') && !cfg.fireblocksRescanSupported)
+                  .map(([key, cfg]) => (
+                    <option key={key} value={key}>
+                      {cfg.label}{cfg.fireblocksId ? ` — ${cfg.fireblocksId}` : ''}
+                    </option>
                   ))}
               </optgroup>
               <optgroup label="Testnet">
                 {Object.entries(CHAIN_ENDPOINTS)
                   .filter(([k]) => k.endsWith('_testnet'))
                   .map(([key, cfg]) => (
-                    <option key={key} value={key}>{cfg.label}</option>
+                    <option key={key} value={key}>
+                      {cfg.label}{cfg.fireblocksId ? ` — ${cfg.fireblocksId}` : ''}
+                    </option>
                   ))}
               </optgroup>
             </select>
@@ -864,7 +895,14 @@ function CosmosCheck() {
                     <div className="cosmos-result-grid">
                       <div className="cosmos-stat">
                         <span className="field-label">Chain</span>
-                        <span className="field-value">{result.chain}</span>
+                        <span className="field-value">
+                          {result.chain}
+                          {result.fireblocksId && (
+                            <span className="cosmos-fb-id-badge" title="Fireblocks asset ID">
+                              {result.fireblocksId}
+                            </span>
+                          )}
+                        </span>
                       </div>
                       <div className="cosmos-stat">
                         <span className="field-label">On-Chain</span>
