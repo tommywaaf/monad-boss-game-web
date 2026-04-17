@@ -487,7 +487,9 @@ const detectAutoNetworkType = (txPayload) => {
 // Network picker categories (horizontal tabs above the grid). Each category has
 // a matcher that decides which NETWORKS entries belong to it.
 const NETWORK_CATEGORIES = [
-  { key: 'auto',    label: 'Auto',        icon: '🔄', match: (n) => n.isAuto },
+  // "All" tab shows every network so the search can find anything across categories.
+  // The Auto-detect option itself sits at the top of the Auto section.
+  { key: 'auto',    label: 'All',         icon: '🔄', match: () => true },
   { key: 'evm',     label: 'EVM',         icon: '⬡',  match: (n) => n.type === 'evm' && !n.isAuto },
   { key: 'cosmos',  label: 'Cosmos SDK',  icon: '⚛️', match: (n) => n.type === 'cosmos' },
   { key: 'solana',  label: 'Solana',      icon: '◎',  match: (n) => n.type === 'solana' },
@@ -497,10 +499,13 @@ const NETWORK_CATEGORIES = [
 ]
 
 function categoryForNetwork(network) {
+  // Skip the "all" catch-all and find the most specific category for this network.
   for (const cat of NETWORK_CATEGORIES) {
+    if (cat.key === 'auto') continue
     if (cat.match(network)) return cat.key
   }
-  return 'evm'
+  // For the Auto-detect pseudo-network itself, default to the "all" view.
+  return 'auto'
 }
 
 function Broadcaster() {
