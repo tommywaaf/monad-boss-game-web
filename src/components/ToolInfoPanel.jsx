@@ -5,7 +5,7 @@ const TOOL_INFO = {
   broadcaster: {
     title: 'Broadcaster',
     why: 'Sometimes a transaction is not broadcast even though it\'s otherwise valid. You can take a signed RLP or raw tx and send it to the correct network. You can also test whether a transaction will fail by broadcasting it and checking if the RPC response is final or not.',
-    how: 'Select a network or use Auto to detect the chain from the transaction. Paste signed transactions (one per line) — supports EVM RLP, Solana (base64/base58/hex), XRP blobs, Stellar XDR, and Bitcoin raw hex. You can also paste from clipboard, upload a file, or drag and drop. Configure rate limits and retry settings under Settings, then hit Broadcast. Results show tx hash or error per line with explorer links, and can be searched, filtered, and downloaded as CSV.',
+    how: 'Select a network or use Auto to detect the chain from the transaction. Paste signed transactions (one per line) — supports EVM RLP, Solana (base64/base58/hex), XRP blobs, Stellar XDR, Bitcoin raw hex, and Cosmos SDK (base64 protobuf — Cosmos Hub, Osmosis, Celestia, Injective, dYdX, THORChain, Axelar, and 15+ more). You can also paste from clipboard, upload a file, or drag and drop. Configure rate limits and retry settings under Settings, then hit Broadcast. Results show tx hash or error per line with explorer links, and can be searched, filtered, and downloaded as CSV.',
   },
   simulator: {
     title: 'Simulator',

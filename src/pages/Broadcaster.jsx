@@ -57,7 +57,36 @@ const NETWORKS = [
   { id: 'litecoin', name: 'Litecoin (LTC)', rpc: 'https://litecoinspace.org/api', type: 'bitcoin', explorer: 'https://litecoinspace.org/tx/' },
   { id: 'bitcoincash', name: 'Bitcoin Cash (BCH)', rpc: 'https://rest.bitcoin.com/v2/rawtransactions', type: 'bitcoincash', explorer: 'https://blockchair.com/bitcoin-cash/transaction/' },
   { id: 'custom-bitcoin', name: 'Custom Bitcoin RPC...', rpc: '', type: 'bitcoin' },
+  // Cosmos SDK chains — POST /cosmos/tx/v1beta1/txs with { tx_bytes: base64, mode: BROADCAST_MODE_SYNC }
+  { id: 'cosmos', name: 'Cosmos Hub — ATOM_COS', rpc: 'https://cosmos-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/cosmos/txs/' },
+  { id: 'osmosis', name: 'Osmosis — OSMO', rpc: 'https://osmosis-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/osmosis/txs/' },
+  { id: 'celestia', name: 'Celestia — CELESTIA', rpc: 'https://celestia-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/celestia/txs/' },
+  { id: 'injective', name: 'Injective — INJ_INJ', rpc: 'https://injective-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/injective/txs/' },
+  { id: 'dydx', name: 'dYdX — DYDX_DYDX', rpc: 'https://dydx-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/dydx/txs/' },
+  { id: 'thor', name: 'THORChain — RUNE_THOR', rpc: 'https://rest.cosmos.directory/thorchain', type: 'cosmos', explorer: 'https://www.mintscan.io/thorchain/txs/' },
+  { id: 'axelar', name: 'Axelar — AXL', rpc: 'https://axelar-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/axelar/txs/' },
+  { id: 'kava-cosmos', name: 'Kava (Cosmos SDK)', rpc: 'https://kava-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/kava/txs/' },
+  { id: 'noble', name: 'Noble', rpc: 'https://noble-api.polkachu.com', type: 'cosmos', explorer: 'https://www.mintscan.io/noble/txs/' },
+  { id: 'kujira', name: 'Kujira', rpc: 'https://kujira-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/kujira/txs/' },
+  { id: 'stargaze', name: 'Stargaze', rpc: 'https://stargaze-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/stargaze/txs/' },
+  { id: 'stride', name: 'Stride', rpc: 'https://stride-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/stride/txs/' },
+  { id: 'sei', name: 'Sei', rpc: 'https://sei-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/sei/txs/' },
+  { id: 'neutron', name: 'Neutron', rpc: 'https://neutron-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/neutron/txs/' },
+  { id: 'akash', name: 'Akash', rpc: 'https://akash-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/akash/txs/' },
+  { id: 'juno', name: 'Juno', rpc: 'https://juno-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/juno/txs/' },
+  { id: 'persistence', name: 'Persistence', rpc: 'https://persistence-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/persistence/txs/' },
+  { id: 'mantra', name: 'MANTRA', rpc: 'https://rest.cosmos.directory/mantrachain', type: 'cosmos', explorer: 'https://www.mintscan.io/mantra/txs/' },
+  { id: 'zigchain', name: 'ZIGChain', rpc: 'https://rest.cosmos.directory/zigchain', type: 'cosmos', explorer: 'https://www.mintscan.io/zigchain/txs/' },
+  { id: 'initia', name: 'Initia', rpc: 'https://rest.initia.xyz', type: 'cosmos', explorer: 'https://scan.initia.xyz/initia-1/txs/' },
+  { id: 'babylon', name: 'Babylon', rpc: 'https://babylon-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/babylon/txs/' },
+  // Cosmos testnets
+  { id: 'cosmos-test', name: 'Cosmos Hub Testnet — ATOM_COS_TEST', rpc: 'https://rest.testcosmos.directory/cosmoshubtestnet', type: 'cosmos', explorer: null },
+  { id: 'celestia-test', name: 'Celestia Testnet — CELESTIA_TEST', rpc: 'https://celestia-mocha-rest.publicnode.com', type: 'cosmos', explorer: null },
+  { id: 'custom-cosmos', name: 'Custom Cosmos LCD...', rpc: '', type: 'cosmos' },
 ]
+
+// CORS proxy used as a fallback when a Cosmos LCD endpoint lacks CORS headers.
+const COSMOS_CORS_PROXY = 'https://corsproxy.io/?url='
 
 // Chain ID to network mapping for auto-detection
 const CHAIN_ID_MAP = {
@@ -501,6 +530,7 @@ function Broadcaster() {
   const isXrp = selectedNetwork.type === 'xrp'
   const isStellar = selectedNetwork.type === 'stellar'
   const isBitcoin = selectedNetwork.type === 'bitcoin' || selectedNetwork.type === 'bitcoincash'
+  const isCosmos = selectedNetwork.type === 'cosmos'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
   
   // Filter and paginate results
@@ -547,6 +577,17 @@ function Broadcaster() {
       const detected = detectAutoNetworkType(txPayload)
       if (detected && detected.type !== 'evm') {
         return detected
+      }
+    }
+
+    // Cosmos is selected explicitly — no RLP decoding needed.
+    if (selectedNetwork.type === 'cosmos') {
+      return {
+        chainId: null,
+        chainName: selectedNetwork.name,
+        rpc: getRpcUrl(),
+        explorer: selectedNetwork.explorer || null,
+        type: 'cosmos',
       }
     }
 
@@ -607,6 +648,11 @@ function Broadcaster() {
     if (networkType === 'bitcoin' || networkType === 'bitcoincash') {
       // For Bitcoin-style chains, return raw hex (strip 0x if present)
       return trimmed.startsWith('0x') ? trimmed.slice(2) : trimmed
+    }
+
+    if (networkType === 'cosmos') {
+      // Cosmos SDK chains: base64-encoded cosmos.tx.v1beta1.Tx — keep as-is
+      return trimmed
     }
     
     // For EVM (including auto mode): only add 0x prefix when the input is actually hex.
@@ -691,7 +737,12 @@ function Broadcaster() {
   }
 
   const getRpcUrl = () => {
-    if (selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana') {
+    if (
+      selectedNetwork.id === 'custom-evm' ||
+      selectedNetwork.id === 'custom-solana' ||
+      selectedNetwork.id === 'custom-bitcoin' ||
+      selectedNetwork.id === 'custom-cosmos'
+    ) {
       return customRpc
     }
     return selectedNetwork.rpc
@@ -792,6 +843,24 @@ function Broadcaster() {
     /temBAD_SIGNATURE/i,
     /temINVALID/i,
     /tefALREADY/i,
+    // Cosmos SDK errors (tx_response.code mappings / raw_log substrings)
+    /account sequence mismatch/i,
+    /incorrect account sequence/i,
+    /signature verification failed/i,
+    /tx already in mempool/i,
+    /tx already exists in cache/i,
+    /timeout height/i,
+    /insufficient fees/i,
+    /insufficient fee/i,
+    /insufficient gas/i,
+    /out of gas/i,
+    /unauthorized/i,
+    /invalid pubkey/i,
+    /memo too large/i,
+    /tx parse error/i,
+    /invalid request/i,
+    /unknown request/i,
+    /tx intended signer does not match/i,
   ]
 
   const isRetryableError = (error, httpStatus) => {
@@ -826,6 +895,7 @@ function Broadcaster() {
     const effectiveXrp     = effectiveType === 'xrp'
     const effectiveStellar = effectiveType === 'stellar'
     const effectiveBitcoin = effectiveType === 'bitcoin' || effectiveType === 'bitcoincash'
+    const effectiveCosmos  = effectiveType === 'cosmos'
     
     if (!rpcUrl) {
       return {
@@ -957,6 +1027,80 @@ function Broadcaster() {
         }
       }
       
+      if (effectiveCosmos) {
+        // Cosmos SDK chains: POST /cosmos/tx/v1beta1/txs with { tx_bytes (base64), mode }
+        // Success: tx_response.code === 0. Non-zero code = rejected by CheckTx.
+        const endpoint = `${rpcUrl.replace(/\/$/, '')}/cosmos/tx/v1beta1/txs`
+        const payload = JSON.stringify({
+          tx_bytes: txPayload,
+          mode: 'BROADCAST_MODE_SYNC',
+        })
+
+        // Try direct first; on any network/CORS error fall back to CORS proxy.
+        const attempt = async (url) => fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          signal,
+        })
+        let res
+        try {
+          res = await attempt(endpoint)
+        } catch (directErr) {
+          if (directErr.name === 'AbortError') throw directErr
+          res = await attempt(`${COSMOS_CORS_PROXY}${encodeURIComponent(endpoint)}`)
+        }
+
+        const httpStatus = res.status
+        let data
+        try {
+          data = await res.json()
+        } catch {
+          const text = await res.text().catch(() => '')
+          return {
+            success: false,
+            error: text || `HTTP ${httpStatus}: non-JSON response`,
+            txHash: null,
+            retryable: isRetryableError(text || `HTTP ${httpStatus}`, httpStatus),
+            httpStatus,
+          }
+        }
+
+        const txr = data?.tx_response
+        if (!res.ok && !txr) {
+          const errorMsg = data?.message || data?.error || `HTTP ${httpStatus}`
+          return {
+            success: false,
+            error: errorMsg,
+            txHash: null,
+            retryable: isRetryableError(errorMsg, httpStatus),
+            httpStatus,
+          }
+        }
+
+        const code = Number(txr?.code ?? 0)
+        const txHash = txr?.txhash || null
+        const rawLog = txr?.raw_log || ''
+
+        if (code === 0) {
+          return {
+            success: true,
+            error: null,
+            txHash,
+            retryable: false,
+            httpStatus,
+          }
+        }
+        const errorMsg = `code ${code}${txr?.codespace ? ` (${txr.codespace})` : ''}: ${rawLog || 'rejected by CheckTx'}`
+        return {
+          success: false,
+          error: errorMsg,
+          txHash,
+          retryable: isRetryableError(errorMsg, httpStatus),
+          httpStatus,
+        }
+      }
+
       let body
       
       if (effectiveSolana) {
@@ -1264,12 +1408,14 @@ function Broadcaster() {
   const xrpNetworks = NETWORKS.filter(n => n.type === 'xrp')
   const stellarNetworks = NETWORKS.filter(n => n.type === 'stellar')
   const bitcoinNetworks = NETWORKS.filter(n => n.type === 'bitcoin' || n.type === 'bitcoincash')
+  const cosmosNetworks = NETWORKS.filter(n => n.type === 'cosmos')
   
   const getNetworkTypeLabel = () => {
     if (isSolana) return 'Solana'
     if (isXrp) return 'XRP Ledger'
     if (isStellar) return 'Stellar (XLM)'
     if (isBitcoin) return 'Bitcoin'
+    if (isCosmos) return 'Cosmos LCD'
     return 'EVM'
   }
 
@@ -1278,7 +1424,7 @@ function Broadcaster() {
       <div className="broadcaster-container">
         <header className="broadcaster-header">
           <h1>⚡ Transaction Broadcaster</h1>
-          <p>Broadcast raw transactions to EVM, Solana, Bitcoin-style chains, XRP, and Stellar.</p>
+          <p>Broadcast raw transactions to EVM, Solana, Bitcoin-style chains, XRP, Stellar, and Cosmos SDK chains.</p>
         </header>
 
         <section className="network-section">
@@ -1327,6 +1473,13 @@ function Broadcaster() {
                   </option>
                 ))}
               </optgroup>
+              <optgroup label="─── Cosmos SDK Chains">
+                {cosmosNetworks.map(network => (
+                  <option key={network.id} value={network.id}>
+                    {network.name}
+                  </option>
+                ))}
+              </optgroup>
               <optgroup label="─── EVM Networks">
                 {evmNetworks.map(network => (
                   <option key={network.id} value={network.id}>
@@ -1336,7 +1489,7 @@ function Broadcaster() {
               </optgroup>
             </select>
             
-            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp' || selectedNetwork.id === 'custom-bitcoin') ? (
+            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp' || selectedNetwork.id === 'custom-bitcoin' || selectedNetwork.id === 'custom-cosmos') ? (
               <input
                 type="text"
                 value={customRpc}
@@ -1378,6 +1531,12 @@ function Broadcaster() {
           {isBitcoin && (
             <div className="network-type-badge bitcoin">
               ₿ Bitcoin Mode
+            </div>
+          )}
+
+          {isCosmos && (
+            <div className="network-type-badge cosmos">
+              ⚛️ Cosmos SDK Mode
             </div>
           )}
           
@@ -1494,9 +1653,11 @@ function Broadcaster() {
                   ? 'Paste signed Stellar transactions (one per line) - base64 XDR format'
                   : isBitcoin
                     ? 'Paste signed Bitcoin transactions (one per line) - raw hex format'
-                    : isAutoMode
-                      ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
-                      : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
+                    : isCosmos
+                      ? 'Paste signed Cosmos SDK transactions (one per line) - base64 protobuf (cosmos.tx.v1beta1.Tx)'
+                      : isAutoMode
+                        ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
+                        : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
             }
           </p>
           
@@ -1537,9 +1698,11 @@ function Broadcaster() {
             <textarea
               value={inputText}
               onChange={handleInputChange}
-              placeholder={isSolana 
+              placeholder={isSolana
                 ? "Paste or drop your signed Solana transactions here...\n\nBase64: AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAdNz...\nBase58: 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bES...\nHex: 010000000000000000000000..."
-                : "Paste or drop your RLP values here...\n\n0x02f86d01832e559d...\n02f8b18201e08259e9...\n0x02f8b00a82837c..."
+                : isCosmos
+                  ? "Paste or drop your signed Cosmos transactions here (base64)...\n\nCpkBCpEBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnEKLW...\nCrMBCpUBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnUKL2..."
+                  : "Paste or drop your RLP values here...\n\n0x02f86d01832e559d...\n02f8b18201e08259e9...\n0x02f8b00a82837c..."
               }
               className="tx-input"
               rows={8}
