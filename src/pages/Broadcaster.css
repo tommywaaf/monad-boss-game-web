@@ -205,36 +205,57 @@ section {
   color: #a5b4fc;
 }
 
-/* ── Network picker (category tabs + grid) ───────────────────────────────── */
+/* ── Network picker (dropdown trigger + popup with tabs + multi-col grid) ── */
 
-.selected-network-banner {
+.network-dropdown-wrapper {
+  position: relative;
+  margin-bottom: 0.75rem;
+}
+
+.network-dropdown-trigger {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.65rem 1rem;
-  margin-bottom: 0.75rem;
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(45, 212, 191, 0.06) 100%);
-  border: 1px solid rgba(168, 85, 247, 0.2);
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.06) 0%, rgba(45, 212, 191, 0.04) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  flex-wrap: wrap;
-}
-
-.selected-network-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #71717a;
-}
-
-.selected-network-name {
   color: #e4e4e7;
+  font-family: inherit;
   font-size: 0.95rem;
-  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
 }
 
-.selected-network-type {
-  margin-left: auto;
+.network-dropdown-trigger:hover {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(45, 212, 191, 0.06) 100%);
+  border-color: rgba(168, 85, 247, 0.35);
+}
+
+.network-dropdown-trigger.open {
+  border-color: rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.trigger-category-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.trigger-network-name {
+  flex: 1;
+  font-weight: 600;
+  color: #f4f4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trigger-network-type {
   padding: 0.15rem 0.55rem;
   font-size: 0.7rem;
   font-weight: 600;
@@ -244,17 +265,39 @@ section {
   background: rgba(168, 85, 247, 0.15);
   border: 1px solid rgba(168, 85, 247, 0.3);
   color: #c4b5fd;
+  white-space: nowrap;
+}
+
+.trigger-chevron {
+  color: #71717a;
+  font-size: 0.7rem;
+  margin-left: 0.25rem;
+}
+
+.network-picker-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 150;
+  padding: 0.75rem;
+  background: #1a1a24;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
 }
 
 .network-category-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 0.75rem;
-  padding: 0.3rem;
-  background: rgba(0, 0, 0, 0.25);
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+  padding: 0.25rem;
+  background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .network-category-tab {
@@ -312,7 +355,7 @@ section {
 
 .network-search-row {
   position: relative;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.6rem;
 }
 
 .network-search-input {
@@ -364,14 +407,13 @@ section {
 .network-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.5rem;
-  max-height: 280px;
+  gap: 0.4rem;
+  max-height: 340px;
   overflow-y: auto;
-  padding: 0.5rem;
-  background: rgba(0, 0, 0, 0.2);
+  padding: 0.4rem;
+  background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 10px;
-  margin-bottom: 0.75rem;
+  border-radius: 8px;
 }
 
 .network-grid::-webkit-scrollbar {

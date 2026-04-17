@@ -510,6 +510,23 @@ function Broadcaster() {
   // Network picker state — default to the category that matches the selected network
   const [activeCategory, setActiveCategory] = useState(() => categoryForNetwork(NETWORKS[0]))
   const [networkSearch, setNetworkSearch] = useState('')
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const pickerRef = useRef(null)
+
+  // Close the dropdown when the user clicks outside of it or presses Escape.
+  useEffect(() => {
+    if (!pickerOpen) return
+    const onClickOutside = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setPickerOpen(false)
+    }
+    const onKey = (e) => { if (e.key === 'Escape') setPickerOpen(false) }
+    document.addEventListener('mousedown', onClickOutside)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [pickerOpen])
   const [transactions, setTransactions] = useState([])
   const [results, setResults] = useState([])
   const [isBroadcasting, setIsBroadcasting] = useState(false)
@@ -1443,76 +1460,101 @@ function Broadcaster() {
         <section className="network-section">
           <label className="section-label">Select Network</label>
 
-          {/* Selected-network banner — always visible so the user knows what's picked */}
-          <div className="selected-network-banner">
-            <span className="selected-network-label">Selected:</span>
-            <strong className="selected-network-name">{selectedNetwork.name}</strong>
-            <span className="selected-network-type">{getNetworkTypeLabel()}</span>
-          </div>
+          {/* Collapsible dropdown — click to open the multi-column picker panel */}
+          <div className="network-dropdown-wrapper" ref={pickerRef}>
+            <button
+              type="button"
+              className={`network-dropdown-trigger ${pickerOpen ? 'open' : ''}`}
+              onClick={() => {
+                // When opening, reset the category filter to the one matching
+                // the currently selected network so the user starts in context.
+                if (!pickerOpen) {
+                  setActiveCategory(categoryForNetwork(selectedNetwork))
+                  setNetworkSearch('')
+                }
+                setPickerOpen(!pickerOpen)
+              }}
+            >
+              <span className="trigger-category-icon">
+                {NETWORK_CATEGORIES.find(c => c.key === categoryForNetwork(selectedNetwork))?.icon}
+              </span>
+              <span className="trigger-network-name">{selectedNetwork.name}</span>
+              <span className="trigger-network-type">{getNetworkTypeLabel()}</span>
+              <span className="trigger-chevron">{pickerOpen ? '▲' : '▼'}</span>
+            </button>
 
-          {/* Horizontal category tabs with counts */}
-          <div className="network-category-tabs">
-            {NETWORK_CATEGORIES.map(cat => {
-              const count = NETWORKS.filter(cat.match).length
-              if (count === 0) return null
-              return (
-                <button
-                  key={cat.key}
-                  type="button"
-                  className={`network-category-tab ${activeCategory === cat.key ? 'active' : ''}`}
-                  onClick={() => { setActiveCategory(cat.key); setNetworkSearch('') }}
-                >
-                  <span className="network-category-icon">{cat.icon}</span>
-                  <span className="network-category-label">{cat.label}</span>
-                  <span className="network-category-count">{count}</span>
-                </button>
-              )
-            })}
-          </div>
+            {pickerOpen && (
+              <div className="network-picker-popup">
+                {/* Horizontal category tabs with counts */}
+                <div className="network-category-tabs">
+                  {NETWORK_CATEGORIES.map(cat => {
+                    const count = NETWORKS.filter(cat.match).length
+                    if (count === 0) return null
+                    return (
+                      <button
+                        key={cat.key}
+                        type="button"
+                        className={`network-category-tab ${activeCategory === cat.key ? 'active' : ''}`}
+                        onClick={() => { setActiveCategory(cat.key); setNetworkSearch('') }}
+                      >
+                        <span className="network-category-icon">{cat.icon}</span>
+                        <span className="network-category-label">{cat.label}</span>
+                        <span className="network-category-count">{count}</span>
+                      </button>
+                    )
+                  })}
+                </div>
 
-          {/* Search input filters the grid below */}
-          <div className="network-search-row">
-            <input
-              type="text"
-              className="network-search-input"
-              value={networkSearch}
-              onChange={(e) => setNetworkSearch(e.target.value)}
-              placeholder={`Filter ${NETWORK_CATEGORIES.find(c => c.key === activeCategory)?.label ?? ''} networks...`}
-            />
-            {networkSearch && (
-              <button type="button" className="network-search-clear" onClick={() => setNetworkSearch('')}>×</button>
+                {/* Search input filters the grid below */}
+                <div className="network-search-row">
+                  <input
+                    type="text"
+                    className="network-search-input"
+                    value={networkSearch}
+                    onChange={(e) => setNetworkSearch(e.target.value)}
+                    placeholder={`Filter ${NETWORK_CATEGORIES.find(c => c.key === activeCategory)?.label ?? ''} networks...`}
+                    autoFocus
+                  />
+                  {networkSearch && (
+                    <button type="button" className="network-search-clear" onClick={() => setNetworkSearch('')}>×</button>
+                  )}
+                </div>
+
+                {/* Multi-column grid — click any network to select + close */}
+                <div className="network-grid">
+                  {(() => {
+                    const cat = NETWORK_CATEGORIES.find(c => c.key === activeCategory)
+                    const filtered = NETWORKS
+                      .filter(n => cat ? cat.match(n) : true)
+                      .filter(n => {
+                        if (!networkSearch) return true
+                        const q = networkSearch.toLowerCase()
+                        return n.name.toLowerCase().includes(q) ||
+                               n.id.toLowerCase().includes(q) ||
+                               (n.rpc || '').toLowerCase().includes(q)
+                      })
+                    if (filtered.length === 0) {
+                      return <div className="network-grid-empty">No networks match “{networkSearch}”</div>
+                    }
+                    return filtered.map(network => (
+                      <button
+                        key={network.id}
+                        type="button"
+                        className={`network-card ${selectedNetwork.id === network.id ? 'selected' : ''}`}
+                        onClick={() => {
+                          handleNetworkChange(network)
+                          setPickerOpen(false)
+                        }}
+                        title={network.rpc || network.name}
+                      >
+                        <span className="network-card-name">{network.name}</span>
+                        {network.rpc && <span className="network-card-rpc">{network.rpc.replace(/^https?:\/\//, '')}</span>}
+                      </button>
+                    ))
+                  })()}
+                </div>
+              </div>
             )}
-          </div>
-
-          {/* Network grid — filtered by category + search. 2–4 columns depending on viewport. */}
-          <div className="network-grid">
-            {(() => {
-              const cat = NETWORK_CATEGORIES.find(c => c.key === activeCategory)
-              const filtered = NETWORKS
-                .filter(n => cat ? cat.match(n) : true)
-                .filter(n => {
-                  if (!networkSearch) return true
-                  const q = networkSearch.toLowerCase()
-                  return n.name.toLowerCase().includes(q) ||
-                         n.id.toLowerCase().includes(q) ||
-                         (n.rpc || '').toLowerCase().includes(q)
-                })
-              if (filtered.length === 0) {
-                return <div className="network-grid-empty">No networks match “{networkSearch}”</div>
-              }
-              return filtered.map(network => (
-                <button
-                  key={network.id}
-                  type="button"
-                  className={`network-card ${selectedNetwork.id === network.id ? 'selected' : ''}`}
-                  onClick={() => handleNetworkChange(network)}
-                  title={network.rpc || network.name}
-                >
-                  <span className="network-card-name">{network.name}</span>
-                  {network.rpc && <span className="network-card-rpc">{network.rpc.replace(/^https?:\/\//, '')}</span>}
-                </button>
-              ))
-            })()}
           </div>
 
           {/* Inline RPC editor / display for the selected network */}
