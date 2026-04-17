@@ -56,7 +56,7 @@ const NETWORKS = [
   { id: 'bitcoin', name: 'Bitcoin (BTC)', rpc: 'https://mempool.space/api', type: 'bitcoin', explorer: 'https://mempool.space/tx/' },
   { id: 'litecoin', name: 'Litecoin (LTC)', rpc: 'https://litecoinspace.org/api', type: 'bitcoin', explorer: 'https://litecoinspace.org/tx/' },
   { id: 'bitcoincash', name: 'Bitcoin Cash (BCH)', rpc: 'https://rest.bitcoin.com/v2/rawtransactions', type: 'bitcoincash', explorer: 'https://blockchair.com/bitcoin-cash/transaction/' },
-  { id: 'custom-bitcoin', name: 'Custom Bitcoin RPC...', rpc: '', type: 'bitcoin' },
+  { id: 'custom-bitcoin', name: 'Custom Bitcoin/Forks RPC...', rpc: '', type: 'bitcoin' },
   // Cosmos SDK chains — POST /cosmos/tx/v1beta1/txs with { tx_bytes: base64, mode: BROADCAST_MODE_SYNC }
   { id: 'cosmos', name: 'Cosmos Hub — ATOM_COS', rpc: 'https://cosmos-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/cosmos/txs/' },
   { id: 'osmosis', name: 'Osmosis — OSMO', rpc: 'https://osmosis-rest.publicnode.com', type: 'cosmos', explorer: 'https://www.mintscan.io/osmosis/txs/' },
@@ -491,7 +491,7 @@ const NETWORK_CATEGORIES = [
   { key: 'evm',     label: 'EVM',         icon: '⬡',  match: (n) => n.type === 'evm' && !n.isAuto },
   { key: 'cosmos',  label: 'Cosmos SDK',  icon: '⚛️', match: (n) => n.type === 'cosmos' },
   { key: 'solana',  label: 'Solana',      icon: '◎',  match: (n) => n.type === 'solana' },
-  { key: 'bitcoin', label: 'Bitcoin',     icon: '₿',  match: (n) => n.type === 'bitcoin' || n.type === 'bitcoincash' },
+  { key: 'bitcoin', label: 'Bitcoin/Forks', icon: '₿', match: (n) => n.type === 'bitcoin' || n.type === 'bitcoincash' },
   { key: 'xrp',     label: 'XRP',         icon: '✕',  match: (n) => n.type === 'xrp' },
   { key: 'stellar', label: 'Stellar',     icon: '✦',  match: (n) => n.type === 'stellar' },
 ]
