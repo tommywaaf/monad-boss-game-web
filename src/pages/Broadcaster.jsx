@@ -484,10 +484,32 @@ const detectAutoNetworkType = (txPayload) => {
   return null
 }
 
+// Network picker categories (horizontal tabs above the grid). Each category has
+// a matcher that decides which NETWORKS entries belong to it.
+const NETWORK_CATEGORIES = [
+  { key: 'auto',    label: 'Auto',        icon: '🔄', match: (n) => n.isAuto },
+  { key: 'evm',     label: 'EVM',         icon: '⬡',  match: (n) => n.type === 'evm' && !n.isAuto },
+  { key: 'cosmos',  label: 'Cosmos SDK',  icon: '⚛️', match: (n) => n.type === 'cosmos' },
+  { key: 'solana',  label: 'Solana',      icon: '◎',  match: (n) => n.type === 'solana' },
+  { key: 'bitcoin', label: 'Bitcoin',     icon: '₿',  match: (n) => n.type === 'bitcoin' || n.type === 'bitcoincash' },
+  { key: 'xrp',     label: 'XRP',         icon: '✕',  match: (n) => n.type === 'xrp' },
+  { key: 'stellar', label: 'Stellar',     icon: '✦',  match: (n) => n.type === 'stellar' },
+]
+
+function categoryForNetwork(network) {
+  for (const cat of NETWORK_CATEGORIES) {
+    if (cat.match(network)) return cat.key
+  }
+  return 'evm'
+}
+
 function Broadcaster() {
   const [selectedNetwork, setSelectedNetwork] = useState(NETWORKS[0])
   const [customRpc, setCustomRpc] = useState('')
   const [inputText, setInputText] = useState('')
+  // Network picker state — default to the category that matches the selected network
+  const [activeCategory, setActiveCategory] = useState(() => categoryForNetwork(NETWORKS[0]))
+  const [networkSearch, setNetworkSearch] = useState('')
   const [transactions, setTransactions] = useState([])
   const [results, setResults] = useState([])
   const [isBroadcasting, setIsBroadcasting] = useState(false)
@@ -1401,15 +1423,6 @@ function Broadcaster() {
   const successCount = results.filter(r => r.success).length
   const failCount = results.filter(r => !r.success).length
 
-  // Group networks by type for the dropdown
-  const autoNetwork = NETWORKS.filter(n => n.isAuto)
-  const evmNetworks = NETWORKS.filter(n => n.type === 'evm' && !n.isAuto)
-  const solanaNetworks = NETWORKS.filter(n => n.type === 'solana')
-  const xrpNetworks = NETWORKS.filter(n => n.type === 'xrp')
-  const stellarNetworks = NETWORKS.filter(n => n.type === 'stellar')
-  const bitcoinNetworks = NETWORKS.filter(n => n.type === 'bitcoin' || n.type === 'bitcoincash')
-  const cosmosNetworks = NETWORKS.filter(n => n.type === 'cosmos')
-  
   const getNetworkTypeLabel = () => {
     if (isSolana) return 'Solana'
     if (isXrp) return 'XRP Ledger'
@@ -1429,66 +1442,81 @@ function Broadcaster() {
 
         <section className="network-section">
           <label className="section-label">Select Network</label>
-          <div className="network-selector">
-            <select
-              value={selectedNetwork.id}
-              onChange={(e) => {
-                const network = NETWORKS.find(n => n.id === e.target.value)
-                handleNetworkChange(network)
-              }}
-              className="network-dropdown"
-            >
-              <optgroup label="─── Auto">
-                {autoNetwork.map(network => (
-                  <option key={network.id} value={network.id}>
-                    {network.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="─── Solana">
-                {solanaNetworks.map(network => (
-                  <option key={network.id} value={network.id}>
-                    {network.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="─── XRP Ledger">
-                {xrpNetworks.map(network => (
-                  <option key={network.id} value={network.id}>
-                    {network.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="─── Stellar (XLM)">
-                {stellarNetworks.map(network => (
-                  <option key={network.id} value={network.id}>
-                    {network.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="─── Bitcoin & Forks">
-                {bitcoinNetworks.map(network => (
-                  <option key={network.id} value={network.id}>
-                    {network.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="─── Cosmos SDK Chains">
-                {cosmosNetworks.map(network => (
-                  <option key={network.id} value={network.id}>
-                    {network.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="─── EVM Networks">
-                {evmNetworks.map(network => (
-                  <option key={network.id} value={network.id}>
-                    {network.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            
+
+          {/* Selected-network banner — always visible so the user knows what's picked */}
+          <div className="selected-network-banner">
+            <span className="selected-network-label">Selected:</span>
+            <strong className="selected-network-name">{selectedNetwork.name}</strong>
+            <span className="selected-network-type">{getNetworkTypeLabel()}</span>
+          </div>
+
+          {/* Horizontal category tabs with counts */}
+          <div className="network-category-tabs">
+            {NETWORK_CATEGORIES.map(cat => {
+              const count = NETWORKS.filter(cat.match).length
+              if (count === 0) return null
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  className={`network-category-tab ${activeCategory === cat.key ? 'active' : ''}`}
+                  onClick={() => { setActiveCategory(cat.key); setNetworkSearch('') }}
+                >
+                  <span className="network-category-icon">{cat.icon}</span>
+                  <span className="network-category-label">{cat.label}</span>
+                  <span className="network-category-count">{count}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Search input filters the grid below */}
+          <div className="network-search-row">
+            <input
+              type="text"
+              className="network-search-input"
+              value={networkSearch}
+              onChange={(e) => setNetworkSearch(e.target.value)}
+              placeholder={`Filter ${NETWORK_CATEGORIES.find(c => c.key === activeCategory)?.label ?? ''} networks...`}
+            />
+            {networkSearch && (
+              <button type="button" className="network-search-clear" onClick={() => setNetworkSearch('')}>×</button>
+            )}
+          </div>
+
+          {/* Network grid — filtered by category + search. 2–4 columns depending on viewport. */}
+          <div className="network-grid">
+            {(() => {
+              const cat = NETWORK_CATEGORIES.find(c => c.key === activeCategory)
+              const filtered = NETWORKS
+                .filter(n => cat ? cat.match(n) : true)
+                .filter(n => {
+                  if (!networkSearch) return true
+                  const q = networkSearch.toLowerCase()
+                  return n.name.toLowerCase().includes(q) ||
+                         n.id.toLowerCase().includes(q) ||
+                         (n.rpc || '').toLowerCase().includes(q)
+                })
+              if (filtered.length === 0) {
+                return <div className="network-grid-empty">No networks match “{networkSearch}”</div>
+              }
+              return filtered.map(network => (
+                <button
+                  key={network.id}
+                  type="button"
+                  className={`network-card ${selectedNetwork.id === network.id ? 'selected' : ''}`}
+                  onClick={() => handleNetworkChange(network)}
+                  title={network.rpc || network.name}
+                >
+                  <span className="network-card-name">{network.name}</span>
+                  {network.rpc && <span className="network-card-rpc">{network.rpc.replace(/^https?:\/\//, '')}</span>}
+                </button>
+              ))
+            })()}
+          </div>
+
+          {/* Inline RPC editor / display for the selected network */}
+          <div className="network-rpc-row">
             {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp' || selectedNetwork.id === 'custom-bitcoin' || selectedNetwork.id === 'custom-cosmos') ? (
               <input
                 type="text"
