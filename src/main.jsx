@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AppLayout from './layouts/AppLayout'
 import { DynamicContextProvider } from '@dynamic-labs/sdk-react-core'
 import { EthereumWalletConnectors } from '@dynamic-labs/ethereum'
@@ -123,7 +123,9 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <Routes>
+        <Route path="/game" element={<MainApp />} />
         <Route element={<AppLayout />}>
+          <Route index element={<Navigate to="/broadcaster" replace />} />
           <Route path="/broadcaster" element={<Broadcaster />} />
           <Route path="/simulator" element={<Simulator />} />
           <Route path="/ton-details" element={<TonDetails />} />
@@ -140,7 +142,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/easy-cosigner" element={<EasyCosigner />} />
           <Route path="/tx-id-generator" element={<TxIdGenerator />} />
           <Route path="/cosmos-check" element={<CosmosCheck />} />
-          <Route path="/*" element={<MainApp />} />
+          <Route path="*" element={<Navigate to="/broadcaster" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
