@@ -59,22 +59,44 @@ function tokenizeInput(text) {
   return text.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean)
 }
 
+function isPermanentApiError(msg) {
+  const lower = msg.toLowerCase()
+  return (
+    lower.includes('missing/invalid api key') ||
+    lower.includes('invalid api key') ||
+    lower.includes('not supported for this chain') ||
+    lower.includes('upgrade your api plan') ||
+    lower.includes('upgrade to a paid plan') ||
+    lower.includes('chain not supported') ||
+    lower.includes('invalid chainid')
+  )
+}
+
 function interpretTxByHashResponse(json) {
+  if (json?.error && typeof json.error === 'object') {
+    const msg = json.error.message || JSON.stringify(json.error)
+    return { definitive: true, requestSuccess: false, onChain: false, tx: null, error: msg, permanent: isPermanentApiError(msg) }
+  }
   if (json?.result === undefined) {
     return { definitive: false, kind: 'no_result' }
   }
   const r = json.result
+  // Etherscan V2 wrapper error envelope: {status:"0", message:"NOTOK", result:"<reason>"}
+  if (json.status === '0' || json.message === 'NOTOK') {
+    const msg = typeof r === 'string' ? r : (json.message || 'Etherscan API error')
+    const lower = msg.toLowerCase()
+    if (lower.includes('rate limit') || lower.includes('max rate')) {
+      return { definitive: false, kind: 'rate_limit' }
+    }
+    return { definitive: true, requestSuccess: false, onChain: false, tx: null, error: msg, permanent: isPermanentApiError(msg) }
+  }
   if (typeof r === 'string') {
     const lower = r.toLowerCase()
     if (lower.includes('rate limit') || lower.includes('max rate')) {
       return { definitive: false, kind: 'rate_limit' }
     }
-    return {
-      definitive: true,
-      requestSuccess: true,
-      onChain: false,
-      tx: null,
-    }
+    // Unrecognized string result — surface as error rather than silently marking "not found"
+    return { definitive: true, requestSuccess: false, onChain: false, tx: null, error: r, permanent: isPermanentApiError(r) }
   }
   if (r === null) {
     return { definitive: true, requestSuccess: true, onChain: false, tx: null }
@@ -115,6 +137,14 @@ function interpretReceiptStatusResponse(json) {
     return { definitive: false, kind: 'no_result' }
   }
   const r = json.result
+  // Etherscan V2 wrapper error envelope on this endpoint
+  if (json.status === '0' && typeof r === 'string' && r !== '0' && r !== '1') {
+    const lower = r.toLowerCase()
+    if (lower.includes('rate limit') || lower.includes('max rate')) {
+      return { definitive: false, kind: 'rate_limit' }
+    }
+    return { definitive: true, execution: 'unknown', error: r, permanent: isPermanentApiError(r) }
+  }
   if (typeof r === 'string') {
     const lower = r.toLowerCase()
     if (lower.includes('rate limit') || lower.includes('max rate')) {
@@ -180,6 +210,8 @@ async function lookupTxWithBackoff(chainId, txHash, signal, onTransient) {
         requestSuccess: interp.requestSuccess,
         onChain: interp.onChain,
         tx: interp.tx ?? null,
+        error: interp.error,
+        permanent: interp.permanent,
       }
     } catch (e) {
       if (e.name === 'AbortError') throw e
@@ -224,7 +256,7 @@ async function lookupReceiptStatusWithBackoff(chainId, txHash, signal, onTransie
         continue
       }
 
-      return interp.execution
+      return { execution: interp.execution, error: interp.error, permanent: interp.permanent }
     } catch (e) {
       if (e.name === 'AbortError') throw e
       attempt++
@@ -363,6 +395,7 @@ export default function OnChainCheck() {
     })
 
     let transientLogBudget = 80
+    let permanentApiError = null
 
     try {
       outer: for (let i = 0; i < rows.length; i++) {
@@ -389,6 +422,7 @@ export default function OnChainCheck() {
             })
 
             let executionStatus = 'n/a'
+            let receiptError = null
             if (data.onChain) {
               if (!data.tx) {
                 executionStatus = 'n/a'
@@ -396,14 +430,23 @@ export default function OnChainCheck() {
                 executionStatus = 'pending'
               } else {
                 await sleep(DELAY_MS, signal)
-                executionStatus = await lookupReceiptStatusWithBackoff(chainId, txHash, signal, (msg) => {
+                const recv = await lookupReceiptStatusWithBackoff(chainId, txHash, signal, (msg) => {
                   if (transientLogBudget > 0) {
                     transientLogBudget--
                     addLog(`${txHash.slice(0, 10)}… ${msg}`)
                   }
                 })
+                executionStatus = recv.execution
+                receiptError = recv.error
+                if (recv.permanent && !permanentApiError) permanentApiError = recv.error
               }
             }
+
+            const note = data.error
+              ? `API error: ${data.error}`
+              : receiptError
+                ? `Receipt API error: ${receiptError}`
+                : ''
 
             resultsRef.current[i] = {
               rawInput: '',
@@ -411,7 +454,14 @@ export default function OnChainCheck() {
               requestSuccess: data.requestSuccess,
               onChain: data.onChain,
               executionStatus,
-              note: '',
+              note,
+            }
+
+            if (data.permanent && !permanentApiError) permanentApiError = data.error
+            if (permanentApiError) {
+              addLog(`Stopping early — Etherscan returned a permanent error for chain ${selectedNetwork.name} (${chainId}): "${permanentApiError}". Check your VITE_ETHERSCAN_API_KEY / plan.`)
+              progressRef.current = { ...progressRef.current, done: i + 1 }
+              break outer
             }
           }
         } catch (e) {
