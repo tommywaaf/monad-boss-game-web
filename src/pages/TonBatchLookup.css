@@ -485,6 +485,19 @@
 .col-hash   { min-width: 220px; }
 .col-found  { width: 140px; text-align: center; }
 .col-status { width: 140px; text-align: center; }
+.col-reason { min-width: 220px; max-width: 320px; }
+
+.reason-text {
+  display: inline-block;
+  color: #fca5a5;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.reason-empty {
+  color: #3f3f46;
+}
 
 /* ── Hash cell ──────────────────────────────────────────────────────────── */
 
@@ -614,4 +627,6 @@
   .col-num    { display: none; }
   .col-found  { width: 100px; }
   .col-status { width: 100px; }
+  .col-reason { min-width: 160px; max-width: 220px; }
+  .reason-text { font-size: 0.75rem; }
 }

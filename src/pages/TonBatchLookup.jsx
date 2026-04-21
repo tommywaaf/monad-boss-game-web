@@ -105,40 +105,95 @@ async function fetchJson(session, url, params, signal, requestDelayMs) {
 
 // ── Status from transaction description ───────────────────────────────────
 
-function getTxStatus(tx) {
+/**
+ * Inspect a transaction description and return both a status bucket and a
+ * human-readable reason explaining *why* it landed in that bucket.
+ *
+ * Returns { status, reason } where:
+ *   status ∈ 'success' | 'failed' | 'partial' | 'skipped' | 'unknown'
+ *   reason is a short string for the UI, or null when there's nothing to say.
+ */
+function getTxStatusInfo(tx) {
   const desc = tx?.description
-  if (!desc) return 'unknown'
-
-  if (desc.aborted === true) return 'failed'
+  if (!desc) return { status: 'unknown', reason: null }
 
   // Support both TL-B shorthand and possible JSON variants
   const cp = desc.compute_ph ?? desc.compute_phase
+  const ap = desc.action
+
+  const computeReason = () => {
+    if (!cp) return null
+    if (cp.skipped) {
+      return cp.skipped_reason
+        ? `Compute phase skipped (${cp.skipped_reason})`
+        : 'Compute phase skipped'
+    }
+    const code = cp.exit_code != null ? Number(cp.exit_code) : null
+    if (cp.success === false || cp.success === 'false') {
+      return code !== null
+        ? `Compute phase failed (exit code ${code})`
+        : 'Compute phase failed'
+    }
+    if (code !== null && code !== 0 && code !== 1) {
+      return `Compute phase failed (exit code ${code})`
+    }
+    return null
+  }
+
+  const actionReason = () => {
+    if (!ap) return null
+    if (ap.success === false || ap.success === 'false') {
+      return ap.result_code != null
+        ? `Action phase failed (result code ${ap.result_code})`
+        : 'Action phase failed'
+    }
+    if (ap.skipped_actions > 0 && ap.skipped_actions === ap.tot_actions) {
+      return `All ${ap.tot_actions} action${ap.tot_actions === 1 ? '' : 's'} skipped`
+    }
+    if (ap.skipped_actions > 0 && ap.skipped_actions < ap.tot_actions) {
+      return `${ap.skipped_actions} of ${ap.tot_actions} actions skipped`
+    }
+    return null
+  }
+
+  if (desc.aborted === true) {
+    const reason = computeReason() || actionReason() || 'Transaction aborted'
+    return { status: 'failed', reason }
+  }
+
   if (cp) {
-    if (cp.skipped) return 'skipped'
-    // Explicit failure: success is false (e.g. exit code 45)
-    if (cp.success === false || cp.success === 'false') return 'failed'
+    if (cp.skipped) return { status: 'skipped', reason: computeReason() }
+    if (cp.success === false || cp.success === 'false') {
+      return { status: 'failed', reason: computeReason() }
+    }
     // TonCenter can report success:true even when the TVM exit code is non-zero.
     // Only exit codes 0 and 1 are genuine TVM successes (e.g. 45 = contract error).
     const code = cp.exit_code != null ? Number(cp.exit_code) : null
-    if (code !== null && code !== 0 && code !== 1) return 'failed'
+    if (code !== null && code !== 0 && code !== 1) {
+      return { status: 'failed', reason: computeReason() }
+    }
   }
 
-  const ap = desc.action
   if (ap) {
-    if (ap.success === false || ap.success === 'false') return 'failed'
-    // All actions skipped → full failure
-    if (ap.skipped_actions > 0 && ap.skipped_actions === ap.tot_actions) return 'failed'
-    // Some (but not all) actions skipped → partial failure
-    if (ap.skipped_actions > 0 && ap.skipped_actions < ap.tot_actions) return 'partial'
+    if (ap.success === false || ap.success === 'false') {
+      return { status: 'failed', reason: actionReason() }
+    }
+    if (ap.skipped_actions > 0 && ap.skipped_actions === ap.tot_actions) {
+      return { status: 'failed', reason: actionReason() }
+    }
+    if (ap.skipped_actions > 0 && ap.skipped_actions < ap.tot_actions) {
+      return { status: 'partial', reason: actionReason() }
+    }
   }
 
-  // Only treat as success when compute phase explicitly succeeded AND exit code is 0 or 1
   if (cp?.success === true) {
     const code = cp.exit_code != null ? Number(cp.exit_code) : null
-    if (code === null || code === 0 || code === 1) return 'success'
+    if (code === null || code === 0 || code === 1) {
+      return { status: 'success', reason: null }
+    }
   }
 
-  return 'unknown'
+  return { status: 'unknown', reason: null }
 }
 
 // ── Single hash lookup ─────────────────────────────────────────────────────
@@ -178,14 +233,14 @@ async function lookupHash(session, hex64, signal, requestDelayMs) {
     }
   }
 
-  if (!tx) return { found: false, mode: null, status: null }
+  if (!tx) return { found: false, mode: null, status: null, reason: null }
 
   // 3) Check the outer-transaction description (compute + action phase)
-  const txStatus = getTxStatus(tx)
+  const { status: txStatus, reason: txReason } = getTxStatusInfo(tx)
 
   // Already clearly failed at the transaction level — no need to dig deeper
   if (txStatus === 'failed') {
-    return { found: true, mode, status: 'failed' }
+    return { found: true, mode, status: 'failed', reason: txReason }
   }
 
   // 4) Check trace-level actions for inner failures.
@@ -204,9 +259,14 @@ async function lookupHash(session, hex64, signal, requestDelayMs) {
       )
       const actions = actData?.actions || []
       // API returns success: true/false per action, not status: 'failed'
-      const hasFailedAction = actions.some(a => a.success === false || a.success === 'false')
-      if (hasFailedAction) {
-        return { found: true, mode, status: 'failed' }
+      const failedAction = actions.find(a => a.success === false || a.success === 'false')
+      if (failedAction) {
+        const actionType = failedAction.type || failedAction.action_type || 'action'
+        const errCode = failedAction.error_code ?? failedAction.exit_code ?? null
+        const reason = errCode != null
+          ? `Inner action failed: ${actionType} (code ${errCode})`
+          : `Inner action failed: ${actionType}`
+        return { found: true, mode, status: 'failed', reason }
       }
     } catch (e) {
       // Actions fetch failed — fall through to tx-level status
@@ -214,7 +274,7 @@ async function lookupHash(session, hex64, signal, requestDelayMs) {
     }
   }
 
-  return { found: true, mode, status: txStatus }
+  return { found: true, mode, status: txStatus, reason: txReason }
 }
 
 // ── ETA formatting ─────────────────────────────────────────────────────────
@@ -375,9 +435,9 @@ function TonBatchLookup() {
           resultsRef.current[i] = { hash: hashes[i], ...data, error: null }
         } catch (e) {
           if (e.name === 'AbortError') {
-            resultsRef.current[i] = { hash: hashes[i], found: false, mode: null, status: null, error: 'Aborted' }
+            resultsRef.current[i] = { hash: hashes[i], found: false, mode: null, status: null, reason: null, error: 'Aborted' }
           } else {
-            resultsRef.current[i] = { hash: hashes[i], found: false, mode: null, status: null, error: e.message }
+            resultsRef.current[i] = { hash: hashes[i], found: false, mode: null, status: null, reason: null, error: e.message }
           }
         }
 
@@ -510,11 +570,12 @@ function TonBatchLookup() {
   // ── CSV export ────────────────────────────────────────────────────────────
 
   const exportCSV = useCallback(() => {
-    const header = ['Hash', 'Found on Explorer', 'Status', 'Error']
+    const header = ['Hash', 'Found on Explorer', 'Status', 'Failure Reason', 'Error']
     const rows = results.filter(r => r !== null).map(r => [
       r.hash,
       r.found ? 'Yes' : 'No',
       r.status ?? 'N/A',
+      r.reason ?? '',
       r.error ?? '',
     ])
     const csv = [header, ...rows]
@@ -758,6 +819,7 @@ function TonBatchLookup() {
                       <th className="col-hash">Hash</th>
                       <th className="col-found">Found on Explorer</th>
                       <th className="col-status">Status on Chain</th>
+                      <th className="col-reason">Failure Reason</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -790,6 +852,11 @@ function TonBatchLookup() {
                           </td>
                           <td className="col-status">
                             {renderStatusBadge(r.status, r.found)}
+                          </td>
+                          <td className="col-reason" title={r.reason || ''}>
+                            {r.reason
+                              ? <span className="reason-text">{r.reason}</span>
+                              : <span className="reason-empty">—</span>}
                           </td>
                         </tr>
                       )
