@@ -429,6 +429,14 @@ async function analyzeTx(txid, chainCfg) {
     && spentElsewhere.spentConfirmed === true
     && !!spentElsewhere.spentByTxid
 
+  // Hard ground truth #2: if any non-coinbase input UTXO is *definitively
+  // still unspent* on-chain, the checked tx cannot have been mined — a
+  // confirmed tx must have its inputs consumed. BlockCypher sometimes keeps
+  // stale block_height for txs that were dropped/evicted from mempool.
+  const anyInputDefinitelyUnspent = utxoSpendChecks.some(
+    c => c.checked && c.spent === false
+  )
+
   if (spentByOtherConfirmed || (spentElsewhere && !confirmedByAnyProvider)) {
     status = 'REPLACED'
     if (spentElsewhere.spentByTxid && spentElsewhere.spentByTxid !== replacedBy) {
@@ -442,6 +450,8 @@ async function analyzeTx(txid, chainCfg) {
         repMsRes2.ok ? repMsRes2.data : null,
       )
     }
+  } else if (anyInputDefinitelyUnspent) {
+    status = 'UNCONFIRMED'
   } else if (confirmedByAnyProvider) {
     status = 'CONFIRMED'
   }
@@ -465,10 +475,11 @@ async function analyzeTx(txid, chainCfg) {
     providers.blockchainCom = bcData ? 'ok' : (bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`)
   }
 
-  // If UTXO ground truth says the tx was replaced, drop any stale
-  // confirmations/block-height a provider may still be reporting for it.
-  const reportedConfirmations = status === 'REPLACED' ? 0    : confirmations
-  const reportedBlockHeight   = status === 'REPLACED' ? null : blockHeight
+  // If UTXO ground truth says the tx was replaced or never mined, drop any
+  // stale confirmations/block-height a provider may still be reporting.
+  const utxoOverrodeStatus    = status === 'REPLACED' || status === 'UNCONFIRMED'
+  const reportedConfirmations = utxoOverrodeStatus ? 0    : confirmations
+  const reportedBlockHeight   = utxoOverrodeStatus ? null : blockHeight
 
   return {
     status,
