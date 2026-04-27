@@ -256,6 +256,7 @@
 .status-confirmed   { background: rgba(34, 197, 94,  0.15); border: 1px solid rgba(34, 197, 94,  0.4); color: #4ade80; }
 .status-unconfirmed { background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
 .status-replaced    { background: rgba(239, 68,  68,  0.15); border: 1px solid rgba(239, 68,  68,  0.4); color: #f87171; }
+.status-orphaned    { background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #c084fc; }
 .status-notfound    { background: rgba(82,  82, 91,  0.25); border: 1px solid rgba(113,113,122,  0.4); color: #a1a1aa; }
 .status-error       { background: rgba(239, 68,  68,  0.15); border: 1px solid rgba(239, 68,  68,  0.4); color: #f87171; }
 .status-rbf         { background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.4); color: #fb923c; }
@@ -1097,7 +1098,81 @@
 .inp-trace.itc-replaced { border-left-color: #ef4444; background: rgba(239, 68,  68,  0.05); }
 .inp-trace.itc-this     { border-left-color: #22c55e; background: rgba(34,  197, 94,  0.05); }
 .inp-trace.itc-unspent  { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.05); }
+.inp-trace.itc-orphaned { border-left-color: #a855f7; background: rgba(168, 85, 247, 0.06); }
 .inp-trace.itc-unknown  { border-left-color: rgba(113, 113, 122, 0.3); }
+
+.inp-trace-status.itc-status-orphaned {
+  color: #c084fc;
+  font-weight: 600;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* ─── Orphan banner (card-level) ─────────────────────────────────────────────── */
+.orphan-banner {
+  margin: 0.75rem 0 1rem;
+  padding: 0.85rem 1rem;
+  background: rgba(168, 85, 247, 0.08);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  border-left: 4px solid #a855f7;
+  border-radius: 8px;
+}
+.orphan-banner-title {
+  font-weight: 700;
+  color: #c084fc;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+.orphan-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  color: #d4d4d8;
+  font-size: 0.88rem;
+}
+.orphan-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  line-height: 1.45;
+}
+.orphan-step-label {
+  font-weight: 600;
+  color: #c084fc;
+  margin-right: 0.15rem;
+}
+.orphan-winner {
+  margin-top: 0.15rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed rgba(168, 85, 247, 0.25);
+}
+.orphan-explorer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.3rem;
+}
+.orphan-chain {
+  background: rgba(168, 85, 247, 0.06);
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+.orphan-chain-hop {
+  display: inline-flex;
+  align-items: center;
+}
+.orphan-chain-arrow {
+  color: rgba(168, 85, 247, 0.6);
+  margin: 0 0.15rem;
+  font-weight: 700;
+}
 .inp-trace.itc-coinbase { border-left-color: #f7931a; background: rgba(247, 147, 26,  0.05); }
 
 .inp-trace-header {
@@ -1670,6 +1745,7 @@
 /* row tints by status */
 .bsr-confirmed   { border-left: 2px solid rgba(34, 197, 94, 0.5); }
 .bsr-replaced    { border-left: 2px solid rgba(239, 68, 68, 0.5); }
+.bsr-orphaned    { border-left: 2px solid rgba(168, 85, 247, 0.5); }
 .bsr-unconfirmed { border-left: 2px solid rgba(245,158,11, 0.5); }
 .bsr-notfound    { border-left: 2px solid rgba(113,113,122,0.35); }
 .bsr-error       { border-left: 2px solid rgba(239, 68, 68, 0.3); }
@@ -1695,9 +1771,13 @@
 .bsb-confirmed    { background: rgba(34, 197,94, 0.12); border:1px solid rgba(34, 197,94, 0.35); color: #4ade80; }
 .bsb-replaced     { background: rgba(239,68, 68, 0.12); border:1px solid rgba(239,68, 68, 0.35); color: #f87171; }
 .bsb-double_spent { background: rgba(239,68, 68, 0.12); border:1px solid rgba(239,68, 68, 0.35); color: #f87171; }
+.bsb-orphaned     { background: rgba(168,85,247, 0.12); border:1px solid rgba(168,85,247, 0.35); color: #c084fc; }
 .bsb-unconfirmed  { background: rgba(245,158,11, 0.12); border:1px solid rgba(245,158,11, 0.35); color: #fbbf24; }
 .bsb-not_found    { background: rgba(82,82,91, 0.2);   border:1px solid rgba(113,113,122,0.3);  color: #a1a1aa; }
 .bsb-error        { background: rgba(239,68, 68, 0.1);  border:1px solid rgba(239,68, 68, 0.25); color: #f87171; }
+
+.bs-orphaned { color: #c084fc; }
+.bt-via-parent { font-size: 0.78rem; }
 
 /* ─── Batch pagination ────────────────────────────────────────────────────────── */
 .batch-pagination {

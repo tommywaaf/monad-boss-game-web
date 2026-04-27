@@ -135,6 +135,76 @@ function scSats(btcStr) {
   return isNaN(n) ? null : Math.round(n * 1e8)
 }
 
+// ─── Helper: walk up the unconfirmed-ancestor chain looking for a replacement
+// Returns { atTxid, depth, parentInputIndex, grandparentTxid, grandparentVout,
+//           replacingTxid, replacingBlockHeight, replacingBlockTime, chain[] }
+// or null if the chain is healthy / inconclusive within `maxDepth` hops.
+//
+// `chain` lists each ancestor visited from leaf-side down to the replaced one,
+// so the UI can render the full path. Depth 1 == direct parent of the checked
+// tx; depth N == N hops away.
+async function findReplacedAncestor(txid, chainCfg, depth, maxDepth, visited, chain = []) {
+  if (depth > maxDepth) return null
+  const lower = txid.toLowerCase()
+  if (visited.has(lower)) return null
+  visited.add(lower)
+
+  const txRes = await safeFetch(`${chainCfg.mempoolApi}/tx/${lower}`)
+  if (!txRes.ok) return null
+  const tx = txRes.data
+  if (tx?.status?.confirmed === true) return null
+
+  const vins = (tx?.vin || []).filter(v => v?.txid && !v.is_coinbase)
+  if (vins.length === 0) return null
+
+  const outspendResults = await Promise.all(vins.map(v =>
+    safeFetch(`${chainCfg.mempoolApi}/tx/${v.txid}/outspend/${v.vout}`)
+  ))
+
+  // First pass: direct replacement at this layer (cheapest detection)
+  for (let i = 0; i < vins.length; i++) {
+    const v   = vins[i]
+    const r   = outspendResults[i]
+    if (!r.ok) continue
+    const op  = r.data
+    const spenderTxid = op?.txid?.toLowerCase() || null
+    if (
+      op?.spent === true &&
+      spenderTxid &&
+      spenderTxid !== lower &&
+      op?.status?.confirmed === true
+    ) {
+      return {
+        atTxid:               lower,
+        depth,
+        parentInputIndex:     i,
+        grandparentTxid:      v.txid.toLowerCase(),
+        grandparentVout:      v.vout,
+        replacingTxid:        spenderTxid,
+        replacingBlockHeight: op.status.block_height || null,
+        replacingBlockTime:   op.status.block_time   || null,
+        chain:                [...chain, lower],
+      }
+    }
+  }
+
+  // Second pass: recurse into ancestors whose UTXOs appear unspent on-chain
+  // (which usually means the grandparent tx is itself unconfirmed).
+  for (let i = 0; i < vins.length; i++) {
+    const v  = vins[i]
+    const r  = outspendResults[i]
+    if (!r.ok) continue
+    const op = r.data
+    if (op?.spent === false) {
+      const upstream = await findReplacedAncestor(
+        v.txid, chainCfg, depth + 1, maxDepth, visited, [...chain, lower]
+      )
+      if (upstream) return upstream
+    }
+  }
+  return null
+}
+
 // ─── Helper: build a replacingTx object from BlockCypher or mempool-style data
 function buildReplacingTx(cyData, msData) {
   if (cyData) {
@@ -437,6 +507,52 @@ async function analyzeTx(txid, chainCfg) {
     c => c.checked && c.spent === false
   )
 
+  // Hard ground truth #3: orphaned-by-replaced-ancestor. If an input's source
+  // UTXO appears unspent but the parent (or any *deeper* ancestor) is itself
+  // unconfirmed AND has had one of its inputs claimed by a different,
+  // confirmed tx, then the chain is dead and this leaf tx can never confirm.
+  // Walks up to MAX_ORPHAN_DEPTH hops, sharing a `visited` set across leaf-
+  // input checks to avoid duplicate fetches when inputs share ancestors.
+  const MAX_ORPHAN_DEPTH = 8
+  const unspentInputsForOrphanCheck = inputs
+    .map((inp, idx) => ({ inp, idx }))
+    .filter(({ inp }) => {
+      if (inp.isCoinbase || !inp.prevTxid) return false
+      const c = utxoSpendChecks.find(x =>
+        x.checked && x.prevTxid === inp.prevTxid && x.outputIndex === inp.outputIndex
+      )
+      return c && c.spent === false
+    })
+    .slice(0, 5)
+
+  let ancestorReplacement = null
+  if (unspentInputsForOrphanCheck.length > 0 && !spentByOtherConfirmed) {
+    const orphanVisited = new Set()
+    // Sequentially probe each unspent input — sharing the visited set avoids
+    // re-walking shared ancestors. Short-circuit on the first hit found.
+    for (const { inp, idx } of unspentInputsForOrphanCheck) {
+      const upstream = await findReplacedAncestor(
+        inp.prevTxid, chainCfg, 1, MAX_ORPHAN_DEPTH, orphanVisited, []
+      )
+      if (upstream) {
+        ancestorReplacement = {
+          inputIndex:           idx,
+          parentTxid:           inp.prevTxid.toLowerCase(),
+          replacedAtTxid:       upstream.atTxid,
+          replacedAtDepth:      upstream.depth,
+          parentInputIndex:     upstream.parentInputIndex,
+          grandparentTxid:      upstream.grandparentTxid,
+          grandparentVout:      upstream.grandparentVout,
+          replacingTxid:        upstream.replacingTxid,
+          replacingBlockHeight: upstream.replacingBlockHeight,
+          replacingBlockTime:   upstream.replacingBlockTime,
+          chain:                upstream.chain,
+        }
+        break
+      }
+    }
+  }
+
   if (spentByOtherConfirmed || (spentElsewhere && !confirmedByAnyProvider)) {
     status = 'REPLACED'
     if (spentElsewhere.spentByTxid && spentElsewhere.spentByTxid !== replacedBy) {
@@ -450,6 +566,8 @@ async function analyzeTx(txid, chainCfg) {
         repMsRes2.ok ? repMsRes2.data : null,
       )
     }
+  } else if (ancestorReplacement) {
+    status = 'ORPHANED'
   } else if (anyInputDefinitelyUnspent) {
     status = 'UNCONFIRMED'
   } else if (confirmedByAnyProvider) {
@@ -475,9 +593,11 @@ async function analyzeTx(txid, chainCfg) {
     providers.blockchainCom = bcData ? 'ok' : (bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`)
   }
 
-  // If UTXO ground truth says the tx was replaced or never mined, drop any
-  // stale confirmations/block-height a provider may still be reporting.
-  const utxoOverrodeStatus    = status === 'REPLACED' || status === 'UNCONFIRMED'
+  // If UTXO ground truth says the tx was replaced/orphaned/never mined, drop
+  // any stale confirmations/block-height a provider may still be reporting.
+  const utxoOverrodeStatus = status === 'REPLACED'
+                          || status === 'UNCONFIRMED'
+                          || status === 'ORPHANED'
   const reportedConfirmations = utxoOverrodeStatus ? 0    : confirmations
   const reportedBlockHeight   = utxoOverrodeStatus ? null : blockHeight
 
@@ -489,6 +609,7 @@ async function analyzeTx(txid, chainCfg) {
     doubleSpend,
     replacedBy,
     replacingTx,
+    ancestorReplacement,
     rbf,
     inputs,
     outputs,
@@ -513,6 +634,7 @@ function StatusBadge({ status }) {
     UNCONFIRMED:  { label: '⏳ Unconfirmed',  cls: 'status-unconfirmed' },
     REPLACED:     { label: '🔄 Replaced',    cls: 'status-replaced' },
     DOUBLE_SPENT: { label: '⚠ Double-spent', cls: 'status-replaced' },
+    ORPHANED:     { label: '🪦 Orphaned',    cls: 'status-orphaned' },
     NOT_FOUND:    { label: '✗ Not Found',    cls: 'status-notfound' },
   }
   const { label, cls } = MAP[status] || { label: status, cls: '' }
@@ -557,6 +679,8 @@ function TxResultCard({ result, chainCfg }) {
   }
 
   const isReplaced = d.status === 'REPLACED' || d.status === 'DOUBLE_SPENT'
+  const isOrphaned = d.status === 'ORPHANED'
+  const ancestor   = d.ancestorReplacement || null
   const checks     = d.utxoSpendChecks || []
 
   return (
@@ -572,6 +696,76 @@ function TxResultCard({ result, chainCfg }) {
         <button className="copy-btn inline" onClick={() => copyToClipboard(d.txid)}>⧉ txid</button>
       </div>
 
+      {/* ── Orphan banner ── */}
+      {ancestor && (
+        <div className="orphan-banner">
+          <div className="orphan-banner-title">
+            🪦 Orphaned via replaced ancestor{ancestor.replacedAtDepth > 1 ? ` (${ancestor.replacedAtDepth} hops upstream)` : ''} — this transaction can never confirm
+          </div>
+          <div className="orphan-banner-body">
+            <div className="orphan-step">
+              <span className="orphan-step-label">Input #{ancestor.inputIndex}</span> depends on the unconfirmed parent
+              {' '}
+              <a href={`${chainCfg.mempoolSite}/tx/${ancestor.parentTxid}`}
+                 target="_blank" rel="noopener noreferrer" className="hash-link">
+                {shortHash(ancestor.parentTxid)}
+              </a>
+              <button className="copy-btn" onClick={() => copyToClipboard(ancestor.parentTxid)}>⧉</button>
+            </div>
+
+            {/* Show the chain of unconfirmed ancestors when depth > 1 */}
+            {ancestor.chain && ancestor.chain.length > 1 && (
+              <div className="orphan-step orphan-chain">
+                <span className="orphan-step-label">Chain:</span>
+                {ancestor.chain.map((hop, i) => (
+                  <span key={hop} className="orphan-chain-hop">
+                    <a href={`${chainCfg.mempoolSite}/tx/${hop}`} target="_blank" rel="noopener noreferrer" className="hash-link">
+                      {shortHash(hop)}
+                    </a>
+                    {i < ancestor.chain.length - 1 && <span className="orphan-chain-arrow"> ↑ </span>}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="orphan-step">
+              {ancestor.replacedAtDepth > 1 ? (
+                <>
+                  Ancestor{' '}
+                  <a href={`${chainCfg.mempoolSite}/tx/${ancestor.replacedAtTxid}`}
+                     target="_blank" rel="noopener noreferrer" className="hash-link">
+                    {shortHash(ancestor.replacedAtTxid)}
+                  </a>
+                  {' '}tried to spend{' '}
+                </>
+              ) : (
+                <>That parent tried to spend{' '}</>
+              )}
+              <a href={`${chainCfg.mempoolSite}/tx/${ancestor.grandparentTxid}`}
+                 target="_blank" rel="noopener noreferrer" className="hash-link">
+                {shortHash(ancestor.grandparentTxid)}
+              </a>
+              <span className="muted">:{ancestor.grandparentVout}</span>, but that UTXO was claimed by:
+            </div>
+            <div className="orphan-step orphan-winner">
+              <a href={`${chainCfg.mempoolSite}/tx/${ancestor.replacingTxid}`}
+                 target="_blank" rel="noopener noreferrer" className="hash-link">
+                {shortHash(ancestor.replacingTxid)}
+              </a>
+              <button className="copy-btn" onClick={() => copyToClipboard(ancestor.replacingTxid)}>⧉</button>
+              {ancestor.replacingBlockHeight && (
+                <span className="replacement-confirmed-badge">
+                  ✓ block {ancestor.replacingBlockHeight.toLocaleString()}
+                </span>
+              )}
+              <div className="orphan-explorer-links">
+                <a href={`${chainCfg.mempoolSite}/tx/${ancestor.replacingTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 {chainCfg.mempoolLabel}</a>
+                <a href={`${chainCfg.blockcypherExplorer}/tx/${ancestor.replacingTxid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 BlockCypher</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Transaction Flow ── */}
       <div className="txflow">
@@ -617,10 +811,12 @@ function TxResultCard({ result, chainCfg }) {
             const spentElsewhere = check?.checked && check.spent && !check.spentByThisTx
             const spentHere      = check?.checked && check.spentByThisTx
             const utxoUnspent    = check?.checked && !check.spent
-            const cardCls = spentElsewhere ? 'itc-replaced'
-              : spentHere   ? 'itc-this'
-              : utxoUnspent ? 'itc-unspent'
-              :               'itc-unknown'
+            const isOrphanedInput = !!ancestor && ancestor.inputIndex === idx
+            const cardCls = spentElsewhere   ? 'itc-replaced'
+              : spentHere      ? 'itc-this'
+              : isOrphanedInput? 'itc-orphaned'
+              : utxoUnspent    ? 'itc-unspent'
+              :                  'itc-unknown'
 
             const srcTxid = inp.prevTxid || repInput?.prevTxid || null
             const srcIdx  = inp.outputIndex ?? repInput?.outputIndex ?? null
@@ -724,7 +920,14 @@ function TxResultCard({ result, chainCfg }) {
                         ✅ Claimed by this TX{check.spentConfirmed ? ` · confirmed block ${check.spentBlockHeight?.toLocaleString()}` : ' · pending confirmation'}
                       </div>
                     )}
-                    {utxoUnspent && (
+                    {isOrphanedInput && (
+                      <div className="inp-trace-status itc-status-orphaned">
+                        🪦 Orphaned · {ancestor.replacedAtDepth > 1
+                          ? `ancestor ${shortHash(ancestor.replacedAtTxid)} (${ancestor.replacedAtDepth} hops upstream)`
+                          : `parent ${shortHash(ancestor.parentTxid)}`} was replaced — this UTXO will never exist on-chain
+                      </div>
+                    )}
+                    {utxoUnspent && !isOrphanedInput && (
                       <div className="inp-trace-status itc-status-unspent">
                         ⏳ UTXO still unspent
                       </div>
@@ -766,7 +969,7 @@ function TxResultCard({ result, chainCfg }) {
       )}
 
       {/* ── TX explorer links ── */}
-      {!isReplaced && (
+      {!isReplaced && !isOrphaned && (
         <div className="simple-tx-links">
           <span className="explorer-label">TX:</span>
           {d.providers.mempoolSpace  === 'ok' && <a href={`${chainCfg.mempoolSite}/tx/${d.txid}`} target="_blank" rel="noopener noreferrer" className="explorer-btn">🔗 {chainCfg.mempoolLabel}</a>}
@@ -901,9 +1104,18 @@ function BtcSafeToFail() {
         try {
           const txid = extractTxid(item, C)
           const d    = await analyzeTx(txid, C)
-          rowsRef.push({ index: rowIndex, input: item, txid, status: d.status, replacedBy: d.replacedBy || null, blockHeight: d.blockHeight || null, error: null })
+          rowsRef.push({
+            index:               rowIndex,
+            input:               item,
+            txid,
+            status:              d.status,
+            replacedBy:          d.replacedBy || d.ancestorReplacement?.replacingTxid || null,
+            blockHeight:         d.blockHeight || d.ancestorReplacement?.replacingBlockHeight || null,
+            ancestorReplacement: d.ancestorReplacement || null,
+            error:               null,
+          })
         } catch (err) {
-          rowsRef.push({ index: rowIndex, input: item, txid: null, status: 'ERROR', replacedBy: null, blockHeight: null, error: err.message })
+          rowsRef.push({ index: rowIndex, input: item, txid: null, status: 'ERROR', replacedBy: null, blockHeight: null, ancestorReplacement: null, error: err.message })
         }
         completed++
         setBatchProgress({ current: completed, total: items.length })
@@ -957,6 +1169,7 @@ function BtcSafeToFail() {
     CONFIRMED:   'bsr-confirmed',
     REPLACED:    'bsr-replaced',
     DOUBLE_SPENT:'bsr-replaced',
+    ORPHANED:    'bsr-orphaned',
     UNCONFIRMED: 'bsr-unconfirmed',
     NOT_FOUND:   'bsr-notfound',
     ERROR:       'bsr-error',
@@ -1092,6 +1305,7 @@ function BtcSafeToFail() {
                 <span className="bs-total">{batchRows.length} checked</span>
                 <span className="bs-confirmed">{batchRows.filter(r => r.status === 'CONFIRMED').length} confirmed</span>
                 <span className="bs-replaced">{batchRows.filter(r => r.status === 'REPLACED' || r.status === 'DOUBLE_SPENT').length} replaced</span>
+                <span className="bs-orphaned">{batchRows.filter(r => r.status === 'ORPHANED').length} orphaned</span>
                 <span className="bs-unconfirmed">{batchRows.filter(r => r.status === 'UNCONFIRMED').length} unconfirmed</span>
               </div>
               <button className="download-btn" onClick={downloadCSV}>⬇ CSV</button>
@@ -1114,6 +1328,7 @@ function BtcSafeToFail() {
                 <option value="all">All ({batchRows.length})</option>
                 <option value="CONFIRMED">Confirmed ({batchRows.filter(r => r.status === 'CONFIRMED').length})</option>
                 <option value="REPLACED">Replaced ({batchRows.filter(r => r.status === 'REPLACED' || r.status === 'DOUBLE_SPENT').length})</option>
+                <option value="ORPHANED">Orphaned ({batchRows.filter(r => r.status === 'ORPHANED').length})</option>
                 <option value="UNCONFIRMED">Unconfirmed ({batchRows.filter(r => r.status === 'UNCONFIRMED').length})</option>
                 <option value="NOT_FOUND">Not Found ({batchRows.filter(r => r.status === 'NOT_FOUND').length})</option>
                 <option value="ERROR">Error ({batchRows.filter(r => r.status === 'ERROR').length})</option>
@@ -1158,6 +1373,7 @@ function BtcSafeToFail() {
                           {r.status === 'CONFIRMED'    ? '✓ Confirmed'
                          : r.status === 'REPLACED'    ? '↩ Replaced'
                          : r.status === 'DOUBLE_SPENT'? '⚠ Double-spent'
+                         : r.status === 'ORPHANED'    ? '🪦 Orphaned'
                          : r.status === 'UNCONFIRMED' ? '⏳ Unconfirmed'
                          : r.status === 'NOT_FOUND'   ? '✗ Not Found'
                          :                              '✗ Error'}
@@ -1165,7 +1381,10 @@ function BtcSafeToFail() {
                       </td>
                       <td className="bt-spending">
                         {r.replacedBy
-                          ? <a href={`${C.mempoolSite}/tx/${r.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.replacedBy, 10)}</a>
+                          ? <>
+                              <a href={`${C.mempoolSite}/tx/${r.replacedBy}`} target="_blank" rel="noopener noreferrer" className="hash-link">{shortHash(r.replacedBy, 10)}</a>
+                              {r.status === 'ORPHANED' && <span className="muted bt-via-parent"> · via parent</span>}
+                            </>
                           : <span className="muted">—</span>}
                       </td>
                       <td className="bt-block">
