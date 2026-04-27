@@ -419,26 +419,32 @@ async function analyzeTx(txid, chainCfg) {
       c.spentByTxid !== null || c.method === 'blockchain.com'
     )
   )
-  if (spentElsewhere && !confirmedByAnyProvider) {
-    status = 'REPLACED'
-    if (spentElsewhere.spentByTxid) {
-      if (spentElsewhere.spentByTxid !== replacedBy) {
-        replacedBy = spentElsewhere.spentByTxid
-        const [repCyRes2, repMsRes2] = await Promise.all([
-          safeFetch(`${chainCfg.blockcypher}/txs/${replacedBy}?limit=50&includeHex=false`),
-          safeFetch(`${chainCfg.mempoolApi}/tx/${replacedBy}`),
-        ])
-        replacingTx = buildReplacingTx(
-          repCyRes2.ok ? repCyRes2.data : null,
-          repMsRes2.ok ? repMsRes2.data : null,
-        )
-      }
-    } else if (!replacedBy) {
-      replacedBy = null
-    }
-  }
 
-  if (confirmedByAnyProvider) status = 'CONFIRMED'
+  // Hard ground truth: the input was claimed by a *different, confirmed* tx.
+  // A UTXO can only be spent once on-chain, so this beats any provider's
+  // "confirmed" claim for the checked tx — BlockCypher in particular
+  // sometimes returns stale block_height for txs that have since been
+  // replaced/reorged out, while mempool.space already reflects reality.
+  const spentByOtherConfirmed = !!spentElsewhere
+    && spentElsewhere.spentConfirmed === true
+    && !!spentElsewhere.spentByTxid
+
+  if (spentByOtherConfirmed || (spentElsewhere && !confirmedByAnyProvider)) {
+    status = 'REPLACED'
+    if (spentElsewhere.spentByTxid && spentElsewhere.spentByTxid !== replacedBy) {
+      replacedBy = spentElsewhere.spentByTxid
+      const [repCyRes2, repMsRes2] = await Promise.all([
+        safeFetch(`${chainCfg.blockcypher}/txs/${replacedBy}?limit=50&includeHex=false`),
+        safeFetch(`${chainCfg.mempoolApi}/tx/${replacedBy}`),
+      ])
+      replacingTx = buildReplacingTx(
+        repCyRes2.ok ? repCyRes2.data : null,
+        repMsRes2.ok ? repMsRes2.data : null,
+      )
+    }
+  } else if (confirmedByAnyProvider) {
+    status = 'CONFIRMED'
+  }
 
   // ── Step 9: Source address balances ───────────────────────────────────────
   const uniqueInputAddrs = [
@@ -459,11 +465,16 @@ async function analyzeTx(txid, chainCfg) {
     providers.blockchainCom = bcData ? 'ok' : (bcRes.notFound ? 'not found' : `error (${bcRes.error || bcRes.httpStatus})`)
   }
 
+  // If UTXO ground truth says the tx was replaced, drop any stale
+  // confirmations/block-height a provider may still be reporting for it.
+  const reportedConfirmations = status === 'REPLACED' ? 0    : confirmations
+  const reportedBlockHeight   = status === 'REPLACED' ? null : blockHeight
+
   return {
     status,
     txid,
-    confirmations,
-    blockHeight,
+    confirmations: reportedConfirmations,
+    blockHeight:   reportedBlockHeight,
     doubleSpend,
     replacedBy,
     replacingTx,
