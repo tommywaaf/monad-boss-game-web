@@ -513,7 +513,7 @@ async function analyzeTx(txid, chainCfg) {
   // confirmed tx, then the chain is dead and this leaf tx can never confirm.
   // Walks up to MAX_ORPHAN_DEPTH hops, sharing a `visited` set across leaf-
   // input checks to avoid duplicate fetches when inputs share ancestors.
-  const MAX_ORPHAN_DEPTH = 22
+  const MAX_ORPHAN_DEPTH = 50
   const unspentInputsForOrphanCheck = inputs
     .map((inp, idx) => ({ inp, idx }))
     .filter(({ inp }) => {
