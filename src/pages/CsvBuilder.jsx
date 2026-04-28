@@ -120,6 +120,52 @@ function CsvBuilder() {
     })
   }, [colEditorOutput])
 
+  const [dedupeInput, setDedupeInput] = useState('')
+  const [dedupeTrim, setDedupeTrim] = useState(true)
+  const [dedupeCaseInsensitive, setDedupeCaseInsensitive] = useState(false)
+  const [dedupeCopied, setDedupeCopied] = useState(false)
+
+  const dedupeResult = useMemo(() => {
+    if (!dedupeInput) return { output: '', total: 0, unique: 0, dupes: 0 }
+    // Manual split + \r strip is faster than a regex split for large inputs.
+    const lines = dedupeInput.split('\n')
+    const seen = new Set()
+    const out = []
+    let total = 0
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i]
+      // Strip trailing \r from CRLF line endings without allocating a regex.
+      if (line.length > 0 && line.charCodeAt(line.length - 1) === 13) {
+        line = line.slice(0, -1)
+      }
+      if (dedupeTrim) line = line.trim()
+      if (line === '') continue
+      total++
+      const key = dedupeCaseInsensitive ? line.toLowerCase() : line
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(line)
+    }
+    return {
+      output: out.join('\n'),
+      total,
+      unique: out.length,
+      dupes: total - out.length,
+    }
+  }, [dedupeInput, dedupeTrim, dedupeCaseInsensitive])
+
+  const handleDedupeCopy = useCallback(() => {
+    if (!dedupeResult.output) return
+    navigator.clipboard.writeText(dedupeResult.output).then(() => {
+      setDedupeCopied(true)
+      setTimeout(() => setDedupeCopied(false), 2000)
+    })
+  }, [dedupeResult.output])
+
+  const handleDedupeClear = useCallback(() => {
+    setDedupeInput('')
+  }, [])
+
   const handleCopy = useCallback(() => {
     if (!csvPreview) return
     navigator.clipboard.writeText(csvPreview).then(() => {
@@ -400,6 +446,90 @@ function CsvBuilder() {
                 spellCheck={false}
                 onFocus={e => e.target.select()}
                 placeholder="Output will appear here..."
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Deduplicator */}
+        <section className="coleditor-section dedupe-section">
+          <div className="coleditor-header">
+            <h2 className="coleditor-title">Deduplicator</h2>
+            <p className="coleditor-desc">Paste a list of values (one per line) and remove duplicates. Order of first occurrence is preserved. Optimized for 100k+ lines.</p>
+          </div>
+          <div className="coleditor-layout">
+            <div className="coleditor-input-side">
+              <div className="coleditor-controls dedupe-controls">
+                <label className="coleditor-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={dedupeTrim}
+                    onChange={e => setDedupeTrim(e.target.checked)}
+                  />
+                  <span>Trim whitespace</span>
+                </label>
+                <label className="coleditor-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={dedupeCaseInsensitive}
+                    onChange={e => setDedupeCaseInsensitive(e.target.checked)}
+                  />
+                  <span>Case-insensitive</span>
+                </label>
+                {dedupeInput && (
+                  <button
+                    className="coleditor-preset-btn dedupe-clear-btn"
+                    onClick={handleDedupeClear}
+                    title="Clear input"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <label className="col-field-label">
+                Input (1 value per line)
+                {dedupeResult.total > 0 && (
+                  <span className="line-count">
+                    {dedupeResult.total.toLocaleString()} non-empty
+                  </span>
+                )}
+              </label>
+              <textarea
+                className="col-textarea coleditor-textarea"
+                placeholder={"Paste values here...\nOne per line\nDuplicates will be removed"}
+                value={dedupeInput}
+                onChange={e => setDedupeInput(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <div className="coleditor-output-side">
+              <div className="coleditor-output-header">
+                <label className="col-field-label">
+                  Output
+                  {dedupeResult.unique > 0 && (
+                    <span className="line-count">
+                      {dedupeResult.unique.toLocaleString()} unique
+                      {dedupeResult.dupes > 0 && (
+                        <> · {dedupeResult.dupes.toLocaleString()} removed</>
+                      )}
+                    </span>
+                  )}
+                </label>
+                <button
+                  className="copy-csv-btn"
+                  onClick={handleDedupeCopy}
+                  disabled={!dedupeResult.output}
+                >
+                  {dedupeCopied ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <textarea
+                className="col-textarea coleditor-textarea coleditor-output-textarea"
+                value={dedupeResult.output}
+                readOnly
+                spellCheck={false}
+                onFocus={e => e.target.select()}
+                placeholder="Deduplicated output will appear here..."
               />
             </div>
           </div>
