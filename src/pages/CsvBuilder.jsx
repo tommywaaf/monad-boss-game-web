@@ -166,6 +166,46 @@ function CsvBuilder() {
     setDedupeInput('')
   }, [])
 
+  const [uuidInput, setUuidInput] = useState('')
+  const [uuidDedupe, setUuidDedupe] = useState(true)
+  const [uuidLowercase, setUuidLowercase] = useState(true)
+  const [uuidCopied, setUuidCopied] = useState(false)
+
+  const uuidResult = useMemo(() => {
+    if (!uuidInput) return { output: '', total: 0, unique: 0 }
+    // Standard UUID format: 8-4-4-4-12 hex chars. Case-insensitive match.
+    const re = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+    const matches = uuidInput.match(re) || []
+    const total = matches.length
+    let out
+    if (uuidDedupe) {
+      const seen = new Set()
+      out = []
+      for (let i = 0; i < matches.length; i++) {
+        const m = uuidLowercase ? matches[i].toLowerCase() : matches[i]
+        const key = m.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(m)
+      }
+    } else {
+      out = uuidLowercase ? matches.map(m => m.toLowerCase()) : matches
+    }
+    return { output: out.join('\n'), total, unique: out.length }
+  }, [uuidInput, uuidDedupe, uuidLowercase])
+
+  const handleUuidCopy = useCallback(() => {
+    if (!uuidResult.output) return
+    navigator.clipboard.writeText(uuidResult.output).then(() => {
+      setUuidCopied(true)
+      setTimeout(() => setUuidCopied(false), 2000)
+    })
+  }, [uuidResult.output])
+
+  const handleUuidClear = useCallback(() => {
+    setUuidInput('')
+  }, [])
+
   const handleCopy = useCallback(() => {
     if (!csvPreview) return
     navigator.clipboard.writeText(csvPreview).then(() => {
@@ -530,6 +570,90 @@ function CsvBuilder() {
                 spellCheck={false}
                 onFocus={e => e.target.select()}
                 placeholder="Deduplicated output will appear here..."
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* UUID Extractor */}
+        <section className="coleditor-section dedupe-section">
+          <div className="coleditor-header">
+            <h2 className="coleditor-title">UUID Extractor</h2>
+            <p className="coleditor-desc">Paste any text and extract every UUID (8-4-4-4-12 format) found, one per line. Works on logs, JSON, CSV, or any blob of text.</p>
+          </div>
+          <div className="coleditor-layout">
+            <div className="coleditor-input-side">
+              <div className="coleditor-controls dedupe-controls">
+                <label className="coleditor-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={uuidDedupe}
+                    onChange={e => setUuidDedupe(e.target.checked)}
+                  />
+                  <span>Deduplicate</span>
+                </label>
+                <label className="coleditor-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={uuidLowercase}
+                    onChange={e => setUuidLowercase(e.target.checked)}
+                  />
+                  <span>Lowercase</span>
+                </label>
+                {uuidInput && (
+                  <button
+                    className="coleditor-preset-btn dedupe-clear-btn"
+                    onClick={handleUuidClear}
+                    title="Clear input"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <label className="col-field-label">
+                Input (any text)
+                {uuidResult.total > 0 && (
+                  <span className="line-count">
+                    {uuidResult.total.toLocaleString()} found
+                  </span>
+                )}
+              </label>
+              <textarea
+                className="col-textarea coleditor-textarea"
+                placeholder={"Paste anything containing UUIDs...\nLogs, JSON, CSV, SQL, etc.\nAll UUIDs will be extracted"}
+                value={uuidInput}
+                onChange={e => setUuidInput(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+            <div className="coleditor-output-side">
+              <div className="coleditor-output-header">
+                <label className="col-field-label">
+                  Output
+                  {uuidResult.unique > 0 && (
+                    <span className="line-count">
+                      {uuidResult.unique.toLocaleString()} {uuidDedupe ? 'unique' : 'total'}
+                      {uuidDedupe && uuidResult.total > uuidResult.unique && (
+                        <> · {(uuidResult.total - uuidResult.unique).toLocaleString()} removed</>
+                      )}
+                    </span>
+                  )}
+                </label>
+                <button
+                  className="copy-csv-btn"
+                  onClick={handleUuidCopy}
+                  disabled={!uuidResult.output}
+                >
+                  {uuidCopied ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <textarea
+                className="col-textarea coleditor-textarea coleditor-output-textarea"
+                value={uuidResult.output}
+                readOnly
+                spellCheck={false}
+                onFocus={e => e.target.select()}
+                placeholder="Extracted UUIDs will appear here..."
               />
             </div>
           </div>
