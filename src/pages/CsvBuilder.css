@@ -788,6 +788,161 @@
 .uuid-chip-on.uuid-chip-eventGroupId     { background: rgba(244, 182, 200, 0.18); border-color: rgba(244, 182, 200, 0.45); }
 .uuid-chip-on.uuid-chip-destinationId    { background: rgba(190, 242, 100, 0.18); border-color: rgba(190, 242, 100, 0.45); }
 .uuid-chip-on.uuid-chip-tagId            { background: rgba(216, 180, 254, 0.18); border-color: rgba(216, 180, 254, 0.45); }
+
+/* ── UUID Extractor: mode tabs + CSV drop zone ── */
+
+.uuid-mode-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.25rem;
+}
+
+.uuid-mode-tab {
+  flex: 1;
+  padding: 0.45rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #a1a1aa;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.uuid-mode-tab:hover {
+  color: #f4f4f5;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.uuid-mode-tab-active {
+  color: #f4f4f5;
+  background: rgba(168, 85, 247, 0.18);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.uuid-mode-tab-active:hover {
+  background: rgba(168, 85, 247, 0.25);
+}
+
+.uuid-csv-dropzone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 1.5rem;
+  border: 2px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.uuid-csv-dropzone:hover {
+  border-color: rgba(168, 85, 247, 0.45);
+  background: rgba(168, 85, 247, 0.05);
+}
+
+.uuid-csv-dropzone-active {
+  border-color: rgba(168, 85, 247, 0.7);
+  background: rgba(168, 85, 247, 0.12);
+  border-style: solid;
+}
+
+.uuid-csv-dropzone-loaded {
+  min-height: 140px;
+  border-style: solid;
+  border-color: rgba(45, 212, 191, 0.35);
+  background: rgba(45, 212, 191, 0.06);
+}
+
+.uuid-csv-dropzone-loaded:hover {
+  border-color: rgba(45, 212, 191, 0.6);
+  background: rgba(45, 212, 191, 0.1);
+}
+
+.uuid-csv-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.uuid-csv-empty,
+.uuid-csv-loaded {
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.uuid-csv-empty-icon {
+  font-size: 1.8rem;
+  color: #71717a;
+  margin-bottom: 0.2rem;
+}
+
+.uuid-csv-empty-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.uuid-csv-empty-desc {
+  font-size: 0.78rem;
+  color: #71717a;
+  max-width: 480px;
+  line-height: 1.45;
+}
+
+.uuid-csv-empty-desc code {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 0.74rem;
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.uuid-csv-file-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2dd4bf;
+  word-break: break-all;
+}
+
+.uuid-csv-file-meta {
+  font-size: 0.8rem;
+  color: #a1a1aa;
+}
+
+.uuid-csv-replace-hint {
+  font-size: 0.7rem;
+  color: #52525b;
+  margin-top: 0.25rem;
+}
+
+.uuid-csv-error {
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 0.8rem;
+}
 .uuid-chip-on.uuid-chip-unknown          { background: rgba(113, 113, 122, 0.22); border-color: rgba(113, 113, 122, 0.5); }
 
 /* ── Responsive ── */

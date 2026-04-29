@@ -173,10 +173,16 @@ function CsvBuilder() {
   const [uuidGroupHeaders, setUuidGroupHeaders] = useState(true)
   const [uuidCopied, setUuidCopied] = useState(false)
   const [uuidExcluded, setUuidExcluded] = useState(() => new Set())
+  const [uuidMode, setUuidMode] = useState('text')
+  const [uuidCsvText, setUuidCsvText] = useState('')
+  const [uuidCsvFileName, setUuidCsvFileName] = useState('')
+  const [uuidCsvError, setUuidCsvError] = useState('')
+  const [uuidIsDragging, setUuidIsDragging] = useState(false)
 
   const uuidResult = useMemo(() => {
-    if (!uuidInput) {
-      return { groups: [], categoryOrder: [], total: 0 }
+    const activeText = uuidMode === 'csv' ? uuidCsvText : uuidInput
+    if (!activeText) {
+      return { groups: [], categoryOrder: [], total: 0, csvStats: null }
     }
 
     // Maps a normalized alpha-only token to a canonical category name.
@@ -261,7 +267,36 @@ function CsvBuilder() {
       [/\/wallet\/ncw\/$/i, 'tenantId'],
     ]
 
+    // Maps the LAST segment of a structured CSV column name (e.g.
+    // `metadata.requestContext.tenantId` → tenantId) to a canonical category.
+    // Column names are extremely high-confidence evidence — when a UUID sits
+    // in a `…tenantId` column, it IS a tenantId, no guessing required.
+    const COL_CATEGORY = {
+      tenantid: 'tenantId', tenant_id: 'tenantId', 'tenant-id': 'tenantId',
+      userid: 'userId', user_id: 'userId',
+      txid: 'txId', tx_id: 'txId', 'tx-id': 'txId', transactionid: 'txId',
+      requestid: 'requestId', request_id: 'requestId', 'request-id': 'requestId',
+      pipelineid: 'pipelineId', functionid: 'functionId',
+      notificationid: 'notificationId', subscriptionid: 'subscriptionId',
+      eventid: 'eventId', webhookid: 'webhookId', ruleid: 'ruleId',
+      groupid: 'groupId', accountid: 'accountId', resourceid: 'resourceId',
+      transferid: 'transferId', externaltxid: 'externalTxId',
+      websocketuuid: 'webSocketUuid', deviceid: 'deviceId',
+      physicaldeviceid: 'physicalDeviceId', jobid: 'jobId',
+      ticketid: 'ticketId', messageid: 'messageId', apikey: 'apiKey',
+      vaultid: 'vaultId', vaultaccountid: 'vaultId',
+      walletid: 'walletId', eventgroupid: 'eventGroupId',
+      destinationid: 'destinationId', tagid: 'tagId',
+      keyid: 'keyId', queueid: 'queueId', topicid: 'topicId',
+    }
+    const columnCategory = (colName) => {
+      if (!colName) return null
+      const last = colName.split('.').pop().toLowerCase()
+      return COL_CATEGORY[last] || null
+    }
+
     const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+    const UUID_FULL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     const ALPHA_RE = /[A-Za-z]{2,}/g
 
     // Conservative single-occurrence classifier. First tries high-confidence
@@ -293,50 +328,130 @@ function CsvBuilder() {
       return last
     }
 
-    const found = []
-    let m
-    UUID_RE.lastIndex = 0
-    while ((m = UUID_RE.exec(uuidInput)) !== null) {
-      const start = m.index
-      const end = start + m[0].length
-      const prefix = uuidInput.slice(Math.max(0, start - 60), start)
-      const after = uuidInput.slice(end, end + 30)
-      const ctx = (prefix + '⟦UUID⟧' + after).replace(/\s+/g, ' ').trim()
-      found.push({
-        uuid: uuidLowercase ? m[0].toLowerCase() : m[0],
-        keyLower: m[0].toLowerCase(),
-        category: classifyOccurrence(prefix),
-        context: ctx,
-        start,
-        end,
-      })
+    // Scans a single text blob for UUIDs and returns their found-record list,
+    // including the chain-propagation pass for JSON arrays of UUIDs.
+    const SEP_RE = /^["',\s\]\[\\]*$/
+    const scanText = (text, sourceLabel) => {
+      const local = []
+      let m
+      UUID_RE.lastIndex = 0
+      while ((m = UUID_RE.exec(text)) !== null) {
+        const start = m.index
+        const end = start + m[0].length
+        const prefix = text.slice(Math.max(0, start - 60), start)
+        const after = text.slice(end, end + 30)
+        const ctx = (prefix + '⟦UUID⟧' + after).replace(/\s+/g, ' ').trim()
+        local.push({
+          uuid: uuidLowercase ? m[0].toLowerCase() : m[0],
+          keyLower: m[0].toLowerCase(),
+          category: classifyOccurrence(prefix),
+          context: sourceLabel ? `[${sourceLabel}] ${ctx}` : ctx,
+          start, end,
+        })
+      }
+      // Chain propagation for JSON arrays of UUIDs.
+      for (let i = 1; i < local.length; i++) {
+        const cur = local[i]
+        if (cur.category) continue
+        const prev = local[i - 1]
+        const between = text.slice(prev.end, cur.start)
+        if (between.length === 0) continue
+        const cleaned = between.replace(/%(?:22|2C|20)/gi, ' ')
+        if (cleaned.length <= 12 && SEP_RE.test(cleaned) && prev.category) {
+          cur.category = prev.category
+        }
+      }
+      return local
     }
 
-    // Chain-propagation pass: handles JSON arrays of UUIDs like
-    // `"tenantIds":["U1","U2","U3",...]` where only U1 has the array label
-    // immediately before it. If a UUID has no label and its prefix between the
-    // end of the previous UUID and its own start is just an array separator
-    // (e.g. `","`, `", "`, `,`, escaped `\\",\\"`, URL-encoded `%22%2C%22`),
-    // inherit the previous UUID's category.
-    const SEP_RE = /^["',\s\]\[\\]*$/
-    for (let i = 1; i < found.length; i++) {
-      const cur = found[i]
-      if (cur.category) continue
-      const prev = found[i - 1]
-      const between = uuidInput.slice(prev.end, cur.start)
-      if (between.length === 0) continue
-      const cleaned = between.replace(/%(?:22|2C|20)/gi, ' ')
-      if (cleaned.length <= 12 && SEP_RE.test(cleaned) && prev.category) {
-        cur.category = prev.category
+    // Minimal RFC-4180 CSV parser. Handles quoted fields, escaped double-quotes
+    // (""), embedded commas, and embedded newlines (CR/LF). Iterator-style: yields
+    // arrays of fields per row to keep memory bounded for large files.
+    const parseCsv = (text) => {
+      const rows = []
+      let field = '', row = [], inQuotes = false
+      const len = text.length
+      for (let i = 0; i < len; i++) {
+        const c = text.charCodeAt(i)
+        if (inQuotes) {
+          if (c === 34 /* " */) {
+            if (i + 1 < len && text.charCodeAt(i + 1) === 34) { field += '"'; i++ }
+            else inQuotes = false
+          } else {
+            field += text[i]
+          }
+        } else {
+          if (c === 34) inQuotes = true
+          else if (c === 44 /* , */) { row.push(field); field = '' }
+          else if (c === 10 /* \n */) { row.push(field); rows.push(row); row = []; field = '' }
+          else if (c === 13 /* \r */) { /* skip — handled by the \n that follows or trailing \r */ }
+          else field += text[i]
+        }
       }
+      if (field !== '' || row.length > 0) { row.push(field); rows.push(row) }
+      return rows
+    }
+
+    const found = []
+    let csvStats = null
+
+    if (uuidMode === 'csv') {
+      const rows = parseCsv(activeText)
+      if (rows.length === 0) {
+        return { groups: [], categoryOrder: [], total: 0, csvStats: { rows: 0, cols: 0, classifiedCols: 0 } }
+      }
+      const headers = rows[0]
+      const colCats = headers.map(columnCategory)
+      const classifiedCols = colCats.filter(Boolean).length
+      csvStats = { rows: rows.length - 1, cols: headers.length, classifiedCols }
+
+      // Track a synthetic position so chain-propagation can still work within
+      // free-text cells. We process each free-text cell independently and add
+      // its UUIDs to `found`. For column-classified UUIDs, we add a record
+      // with the column's category as high-confidence evidence.
+      let posCursor = 0
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r]
+        for (let c = 0; c < row.length; c++) {
+          const val = row[c]
+          if (!val) continue
+          const colName = headers[c] || ''
+          const colCat = colCats[c]
+          // Whole-cell UUID with classifying column → direct high-confidence record.
+          if (colCat && UUID_FULL_RE.test(val.trim().replace(/^"|"$/g, ''))) {
+            const u = val.trim().replace(/^"|"$/g, '')
+            found.push({
+              uuid: uuidLowercase ? u.toLowerCase() : u,
+              keyLower: u.toLowerCase(),
+              category: colCat,
+              context: `[col: ${colName}]`,
+              start: posCursor, end: posCursor + 36,
+            })
+            posCursor += 40
+            continue
+          }
+          // Free-text cell (or non-UUID value in classified col) — scan for embedded UUIDs.
+          if (val.indexOf('-') === -1) continue // tiny optimization: UUIDs always have hyphens
+          const cellFound = scanText(val, colName)
+          for (const it of cellFound) {
+            it.start += posCursor; it.end += posCursor
+            // If the cell sits in a classified column, prefer the column
+            // category over any text-derived guess for whole-cell-ish matches.
+            // Otherwise keep the text-derived category.
+            found.push(it)
+          }
+          posCursor += val.length + 1
+        }
+      }
+    } else {
+      const local = scanText(activeText)
+      for (const it of local) found.push(it)
     }
 
     // Cross-reference pass: if a UUID is confidently classified in any
-    // occurrence, propagate that label to every occurrence of that UUID. This
-    // resolves cases like `Validating update data with params ...,true,UUID`
-    // where the local context is ambiguous but the same UUID appears elsewhere
-    // as `tenantId":"UUID"`. If multiple confident labels exist, pick the most
-    // common one (ties broken by first-seen).
+    // occurrence, propagate that label to every occurrence of that UUID. If
+    // multiple confident labels exist, pick the most common one (ties broken
+    // by first-seen).
     const labelVotes = new Map()
     for (const it of found) {
       if (!it.category) continue
@@ -376,8 +491,8 @@ function CsvBuilder() {
     })
 
     const groups = categoryOrder.map(c => groupsMap.get(c))
-    return { groups, categoryOrder, total: found.length }
-  }, [uuidInput, uuidDedupe, uuidLowercase])
+    return { groups, categoryOrder, total: found.length, csvStats }
+  }, [uuidMode, uuidInput, uuidCsvText, uuidDedupe, uuidLowercase])
 
   const uuidOutput = useMemo(() => {
     const selectedGroups = uuidResult.groups.filter(g => !uuidExcluded.has(g.category))
@@ -424,6 +539,57 @@ function CsvBuilder() {
 
   const handleUuidClear = useCallback(() => {
     setUuidInput('')
+  }, [])
+
+  const handleUuidCsvFile = useCallback((file) => {
+    if (!file) return
+    setUuidCsvError('')
+    const isCsvName = /\.csv$/i.test(file.name)
+    const isCsvType = file.type === 'text/csv' || file.type === 'application/vnd.ms-excel' || file.type === ''
+    if (!isCsvName && !isCsvType) {
+      setUuidCsvError(`"${file.name}" doesn't look like a CSV file.`)
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = String(e.target.result || '')
+      setUuidCsvText(text)
+      setUuidCsvFileName(file.name)
+      setUuidMode('csv')
+    }
+    reader.onerror = () => setUuidCsvError(`Failed to read "${file.name}".`)
+    reader.readAsText(file)
+  }, [])
+
+  const handleUuidCsvInputChange = useCallback((e) => {
+    const file = e.target.files && e.target.files[0]
+    handleUuidCsvFile(file)
+    e.target.value = ''
+  }, [handleUuidCsvFile])
+
+  const handleUuidDragOver = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    setUuidIsDragging(true)
+  }, [])
+  const handleUuidDragLeave = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setUuidIsDragging(false)
+  }, [])
+  const handleUuidDrop = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setUuidIsDragging(false)
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]
+    handleUuidCsvFile(file)
+  }, [handleUuidCsvFile])
+
+  const handleUuidCsvUnload = useCallback(() => {
+    setUuidCsvText('')
+    setUuidCsvFileName('')
+    setUuidCsvError('')
   }, [])
 
   const toggleUuidCategory = useCallback((category) => {
@@ -817,6 +983,23 @@ function CsvBuilder() {
           </div>
           <div className="coleditor-layout">
             <div className="coleditor-input-side">
+              <div className="uuid-mode-tabs">
+                <button
+                  className={`uuid-mode-tab${uuidMode === 'text' ? ' uuid-mode-tab-active' : ''}`}
+                  onClick={() => setUuidMode('text')}
+                  type="button"
+                >
+                  Paste Text
+                </button>
+                <button
+                  className={`uuid-mode-tab${uuidMode === 'csv' ? ' uuid-mode-tab-active' : ''}`}
+                  onClick={() => setUuidMode('csv')}
+                  type="button"
+                  title="Drop a CSV file — column names like 'requestContext.tenantId' become high-confidence classifiers"
+                >
+                  CSV File
+                </button>
+              </div>
               <div className="coleditor-controls dedupe-controls">
                 <label className="coleditor-checkbox">
                   <input
@@ -852,7 +1035,7 @@ function CsvBuilder() {
                     <span>Show context (unknown)</span>
                   </label>
                 )}
-                {uuidInput && (
+                {uuidMode === 'text' && uuidInput && (
                   <button
                     className="coleditor-preset-btn dedupe-clear-btn"
                     onClick={handleUuidClear}
@@ -861,22 +1044,84 @@ function CsvBuilder() {
                     Clear
                   </button>
                 )}
-              </div>
-              <label className="col-field-label">
-                Input (any text)
-                {uuidResult.total > 0 && (
-                  <span className="line-count">
-                    {uuidResult.total.toLocaleString()} found
-                  </span>
+                {uuidMode === 'csv' && uuidCsvFileName && (
+                  <button
+                    className="coleditor-preset-btn dedupe-clear-btn"
+                    onClick={handleUuidCsvUnload}
+                    title="Unload CSV"
+                  >
+                    Unload CSV
+                  </button>
                 )}
-              </label>
-              <textarea
-                className="col-textarea coleditor-textarea"
-                placeholder={"Paste anything containing UUIDs...\nLogs, JSON, CSV, SQL, etc.\nUUIDs are classified by context (tenantId, userId, txId, ...)"}
-                value={uuidInput}
-                onChange={e => setUuidInput(e.target.value)}
-                spellCheck={false}
-              />
+              </div>
+              {uuidMode === 'text' ? (
+                <>
+                  <label className="col-field-label">
+                    Input (any text)
+                    {uuidResult.total > 0 && (
+                      <span className="line-count">
+                        {uuidResult.total.toLocaleString()} found
+                      </span>
+                    )}
+                  </label>
+                  <textarea
+                    className="col-textarea coleditor-textarea"
+                    placeholder={"Paste anything containing UUIDs...\nLogs, JSON, CSV, SQL, etc.\nUUIDs are classified by context (tenantId, userId, txId, ...)"}
+                    value={uuidInput}
+                    onChange={e => setUuidInput(e.target.value)}
+                    spellCheck={false}
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="col-field-label">
+                    CSV file
+                    {uuidResult.csvStats && (
+                      <span className="line-count">
+                        {uuidResult.csvStats.rows.toLocaleString()} rows · {uuidResult.csvStats.cols} cols ·{' '}
+                        {uuidResult.csvStats.classifiedCols} classified
+                      </span>
+                    )}
+                  </label>
+                  <label
+                    className={`uuid-csv-dropzone${uuidIsDragging ? ' uuid-csv-dropzone-active' : ''}${uuidCsvFileName ? ' uuid-csv-dropzone-loaded' : ''}`}
+                    onDragOver={handleUuidDragOver}
+                    onDragEnter={handleUuidDragOver}
+                    onDragLeave={handleUuidDragLeave}
+                    onDrop={handleUuidDrop}
+                  >
+                    <input
+                      type="file"
+                      accept=".csv,text/csv"
+                      onChange={handleUuidCsvInputChange}
+                      className="uuid-csv-input"
+                    />
+                    {uuidCsvFileName ? (
+                      <div className="uuid-csv-loaded">
+                        <div className="uuid-csv-file-name">📄 {uuidCsvFileName}</div>
+                        <div className="uuid-csv-file-meta">
+                          {uuidResult.csvStats
+                            ? `${uuidResult.csvStats.rows.toLocaleString()} rows · ${uuidResult.csvStats.classifiedCols} of ${uuidResult.csvStats.cols} columns auto-classified`
+                            : 'Parsing...'}
+                        </div>
+                        <div className="uuid-csv-replace-hint">Drop another CSV or click to replace</div>
+                      </div>
+                    ) : (
+                      <div className="uuid-csv-empty">
+                        <div className="uuid-csv-empty-icon">⬇</div>
+                        <div className="uuid-csv-empty-title">Drop a CSV here, or click to browse</div>
+                        <div className="uuid-csv-empty-desc">
+                          Column names like <code>requestContext.tenantId</code>,{' '}
+                          <code>metadata.txId</code>, <code>nginx.tenant_id</code> are used as
+                          high-confidence classifiers. Free-text columns (e.g. <code>message</code>)
+                          are still scanned with the regular classifier.
+                        </div>
+                      </div>
+                    )}
+                  </label>
+                  {uuidCsvError && <div className="uuid-csv-error">{uuidCsvError}</div>}
+                </>
+              )}
             </div>
             <div className="coleditor-output-side">
               {uuidResult.groups.length > 0 && (
