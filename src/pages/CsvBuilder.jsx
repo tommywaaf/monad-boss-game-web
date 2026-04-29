@@ -183,12 +183,16 @@ function CsvBuilder() {
     // Multiple aliases per category capture the variations seen across services.
     const LABEL_MAP = {
       tenantid: 'tenantId', tenant: 'tenantId', tenants: 'tenantId',
+      tenantids: 'tenantId',
       workspaceid: 'tenantId', workspace: 'tenantId',
-      userid: 'userId', user: 'userId', createdby: 'userId',
-      rejectedby: 'userId', signedby: 'userId', initiatorid: 'userId',
+      userid: 'userId', user: 'userId', users: 'userId',
+      createdby: 'userId', rejectedby: 'userId', signedby: 'userId',
+      initiatorid: 'userId', initiator: 'userId',
       getusercertificate: 'userId', mobileuser: 'userId',
+      signers: 'userId', approvedby: 'userId', triggeredby: 'userId',
       txid: 'txId', tx: 'txId', transactionid: 'txId',
-      transaction: 'txId', requestedtxid: 'txId',
+      transaction: 'txId', requestedtxid: 'txId', parenttxid: 'txId',
+      generatedtxid: 'txId',
       requestid: 'requestId', xamznrequestid: 'requestId',
       nginxrequestid: 'requestId', requestcontext: 'requestId',
       idempotency: 'idempotencyKey', idempotencyheader: 'idempotencyKey',
@@ -199,9 +203,11 @@ function CsvBuilder() {
       subscriptionid: 'subscriptionId', subscription: 'subscriptionId',
       eventid: 'eventId',
       webhookid: 'webhookId',
-      ruleid: 'ruleId', vruleid: 'ruleId',
-      groupid: 'groupId', group: 'groupId',
-      accountid: 'accountId',
+      ruleid: 'ruleId', vruleid: 'ruleId', externaldescriptor: 'ruleId',
+      capturedrule: 'ruleId',
+      groupid: 'groupId', group: 'groupId', groups: 'groupId',
+      approvalgroups: 'groupId',
+      accountid: 'accountId', connectedaccountid: 'accountId',
       resourceid: 'resourceId',
       transferid: 'transferId',
       externaltxid: 'externalTxId',
@@ -213,22 +219,66 @@ function CsvBuilder() {
       messageid: 'messageId',
       apikey: 'apiKey',
       vaultid: 'vaultId',
+      keyid: 'keyId',
+      queue: 'queueId', queuename: 'queueId', queueid: 'queueId',
+      topic: 'topicId', topicid: 'topicId',
     }
+
+    // High-confidence prefix patterns checked BEFORE token classification.
+    // Each maps a regex (matched against the prefix string ending immediately
+    // before the UUID) to a canonical category. These exist for cases where
+    // the closest token alone is too ambiguous (e.g., bare 'key' could be
+    // keyId, apiKey, or a tenantId-as-cache-key) but the surrounding phrase
+    // is unmistakable.
+    const PATTERN_PREFIXES = [
+      // CMP secret-service load_key entry
+      [/load key \(\s*$/i, 'keyId'],
+      // CMP Toggle: ... Key: <UUID>
+      [/(?:^|[\s,])Key:\s*$/, 'keyId'],
+      // API key <UUID>
+      [/\bAPI key\s+$/i, 'apiKey'],
+      // UTXO label='<tenantId>:<vaultId>'
+      [/label='$/i, 'tenantId'],
+      // BTC/LTC/DOGE confirmation requests "for <txhash> and <tenantId>:<vaultId>"
+      [/\bconfirmations request for [0-9a-f]+ and $/i, 'tenantId'],
+      // Exchange-connectivity internal route
+      [/\/connected-accounts\/internal\/$/i, 'accountId'],
+      // PoolMutex Bitcoin-secretServiceAccessLock locks (key here is tenantId)
+      [/\b(?:Destroyed|Locked|Called) (?:try-)?lock for key\s+$/i, 'tenantId'],
+      // Off-exchange tenant cache key
+      [/\boff-exchange-tenant:\s*$/i, 'tenantId'],
+      // Job groupKey "updateBalance/<tenantId>;..."
+      [/\bgroupKey:\s+\w+\/$/i, 'tenantId'],
+    ]
 
     const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
     const ALPHA_RE = /[A-Za-z]{2,}/g
 
-    // Conservative single-occurrence classifier: only labels within ~30 chars of
-    // the UUID count. This prevents a "tenantId" appearing 50 chars earlier from
-    // hijacking the classification of a different UUID nearby.
+    // Conservative single-occurrence classifier. First tries high-confidence
+    // prefix regex patterns, then falls back to closest-token lookup within the
+    // last 30 chars (so a label far away cannot hijack a nearby UUID). Prefix
+    // text is normalized: URL-encoded entities are decoded so URLs like
+    // `?tenantId%3D<uuid>` classify as tenantId, and runs of backslashes are
+    // collapsed so escaped JSON-in-JSON chains still tokenize cleanly.
+    const normalizePrefix = (raw) => {
+      let s = raw.replace(/\\+/g, '')
+      if (s.indexOf('%') !== -1) {
+        try { s = decodeURIComponent(s) } catch { /* leave as-is on bad escape */ }
+      }
+      return s
+    }
     const classifyOccurrence = (prefix) => {
-      const close = prefix.slice(-30).replace(UUID_RE, ' ')
+      const norm = normalizePrefix(prefix)
+      for (const [re, cat] of PATTERN_PREFIXES) {
+        if (re.test(norm)) return cat
+      }
+      const close = norm.slice(-30).replace(UUID_RE, ' ')
       let last = null
       let m
       ALPHA_RE.lastIndex = 0
       while ((m = ALPHA_RE.exec(close)) !== null) {
-        const norm = m[0].toLowerCase()
-        if (LABEL_MAP[norm]) last = LABEL_MAP[norm]
+        const tok = m[0].toLowerCase()
+        if (LABEL_MAP[tok]) last = LABEL_MAP[tok]
       }
       return last
     }
@@ -238,15 +288,37 @@ function CsvBuilder() {
     UUID_RE.lastIndex = 0
     while ((m = UUID_RE.exec(uuidInput)) !== null) {
       const start = m.index
+      const end = start + m[0].length
       const prefix = uuidInput.slice(Math.max(0, start - 60), start)
-      const after = uuidInput.slice(start + m[0].length, start + m[0].length + 30)
+      const after = uuidInput.slice(end, end + 30)
       const ctx = (prefix + '⟦UUID⟧' + after).replace(/\s+/g, ' ').trim()
       found.push({
         uuid: uuidLowercase ? m[0].toLowerCase() : m[0],
         keyLower: m[0].toLowerCase(),
         category: classifyOccurrence(prefix),
         context: ctx,
+        start,
+        end,
       })
+    }
+
+    // Chain-propagation pass: handles JSON arrays of UUIDs like
+    // `"tenantIds":["U1","U2","U3",...]` where only U1 has the array label
+    // immediately before it. If a UUID has no label and its prefix between the
+    // end of the previous UUID and its own start is just an array separator
+    // (e.g. `","`, `", "`, `,`, escaped `\\",\\"`, URL-encoded `%22%2C%22`),
+    // inherit the previous UUID's category.
+    const SEP_RE = /^["',\s\]\[\\]*$/
+    for (let i = 1; i < found.length; i++) {
+      const cur = found[i]
+      if (cur.category) continue
+      const prev = found[i - 1]
+      const between = uuidInput.slice(prev.end, cur.start)
+      if (between.length === 0) continue
+      const cleaned = between.replace(/%(?:22|2C|20)/gi, ' ')
+      if (cleaned.length <= 12 && SEP_RE.test(cleaned) && prev.category) {
+        cur.category = prev.category
+      }
     }
 
     // Cross-reference pass: if a UUID is confidently classified in any
