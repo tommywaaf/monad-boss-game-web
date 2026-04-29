@@ -784,6 +784,10 @@
 .uuid-chip-on.uuid-chip-keyId            { background: rgba(253, 224, 71, 0.18); border-color: rgba(253, 224, 71, 0.45); }
 .uuid-chip-on.uuid-chip-queueId          { background: rgba(94, 234, 212, 0.18); border-color: rgba(94, 234, 212, 0.45); }
 .uuid-chip-on.uuid-chip-topicId          { background: rgba(134, 239, 172, 0.18); border-color: rgba(134, 239, 172, 0.45); }
+.uuid-chip-on.uuid-chip-walletId         { background: rgba(192, 132, 252, 0.18); border-color: rgba(192, 132, 252, 0.45); }
+.uuid-chip-on.uuid-chip-eventGroupId     { background: rgba(244, 182, 200, 0.18); border-color: rgba(244, 182, 200, 0.45); }
+.uuid-chip-on.uuid-chip-destinationId    { background: rgba(190, 242, 100, 0.18); border-color: rgba(190, 242, 100, 0.45); }
+.uuid-chip-on.uuid-chip-tagId            { background: rgba(216, 180, 254, 0.18); border-color: rgba(216, 180, 254, 0.45); }
 .uuid-chip-on.uuid-chip-unknown          { background: rgba(113, 113, 122, 0.22); border-color: rgba(113, 113, 122, 0.5); }
 
 /* ── Responsive ── */

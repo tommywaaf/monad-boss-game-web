@@ -183,7 +183,7 @@ function CsvBuilder() {
     // Multiple aliases per category capture the variations seen across services.
     const LABEL_MAP = {
       tenantid: 'tenantId', tenant: 'tenantId', tenants: 'tenantId',
-      tenantids: 'tenantId',
+      tenantids: 'tenantId', tenanat: 'tenantId',
       workspaceid: 'tenantId', workspace: 'tenantId',
       userid: 'userId', user: 'userId', users: 'userId',
       createdby: 'userId', rejectedby: 'userId', signedby: 'userId',
@@ -192,7 +192,7 @@ function CsvBuilder() {
       signers: 'userId', approvedby: 'userId', triggeredby: 'userId',
       txid: 'txId', tx: 'txId', transactionid: 'txId',
       transaction: 'txId', requestedtxid: 'txId', parenttxid: 'txId',
-      generatedtxid: 'txId',
+      generatedtxid: 'txId', fbtx: 'txId',
       requestid: 'requestId', xamznrequestid: 'requestId',
       nginxrequestid: 'requestId', requestcontext: 'requestId',
       idempotency: 'idempotencyKey', idempotencyheader: 'idempotencyKey',
@@ -222,6 +222,10 @@ function CsvBuilder() {
       keyid: 'keyId',
       queue: 'queueId', queuename: 'queueId', queueid: 'queueId',
       topic: 'topicId', topicid: 'topicId',
+      walletid: 'walletId', wallets: 'walletId',
+      eventgroupid: 'eventGroupId',
+      destinationid: 'destinationId',
+      tagid: 'tagId', tagids: 'tagId',
     }
 
     // High-confidence prefix patterns checked BEFORE token classification.
@@ -249,6 +253,12 @@ function CsvBuilder() {
       [/\boff-exchange-tenant:\s*$/i, 'tenantId'],
       // Job groupKey "updateBalance/<tenantId>;..."
       [/\bgroupKey:\s+\w+\/$/i, 'tenantId'],
+      // Balance service end_user_wallet route: first UUID is tenantId
+      // (the second UUID after another '/' is the walletId, but it gets
+      // resolved by cross-reference or by `walletId":"<uuid>"` elsewhere).
+      [/_user_wallet\/$/i, 'tenantId'],
+      // NCW wallet-service route: /v1/wallet/ncw/<tenantId>/...
+      [/\/wallet\/ncw\/$/i, 'tenantId'],
     ]
 
     const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
