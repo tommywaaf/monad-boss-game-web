@@ -169,42 +169,168 @@ function CsvBuilder() {
   const [uuidInput, setUuidInput] = useState('')
   const [uuidDedupe, setUuidDedupe] = useState(true)
   const [uuidLowercase, setUuidLowercase] = useState(true)
+  const [uuidShowContext, setUuidShowContext] = useState(false)
+  const [uuidGroupHeaders, setUuidGroupHeaders] = useState(true)
   const [uuidCopied, setUuidCopied] = useState(false)
+  const [uuidExcluded, setUuidExcluded] = useState(() => new Set())
 
   const uuidResult = useMemo(() => {
-    if (!uuidInput) return { output: '', total: 0, unique: 0 }
-    // Standard UUID format: 8-4-4-4-12 hex chars. Case-insensitive match.
-    const re = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
-    const matches = uuidInput.match(re) || []
-    const total = matches.length
-    let out
-    if (uuidDedupe) {
-      const seen = new Set()
-      out = []
-      for (let i = 0; i < matches.length; i++) {
-        const m = uuidLowercase ? matches[i].toLowerCase() : matches[i]
-        const key = m.toLowerCase()
-        if (seen.has(key)) continue
-        seen.add(key)
-        out.push(m)
-      }
-    } else {
-      out = uuidLowercase ? matches.map(m => m.toLowerCase()) : matches
+    if (!uuidInput) {
+      return { groups: [], categoryOrder: [], total: 0 }
     }
-    return { output: out.join('\n'), total, unique: out.length }
+
+    // Maps a normalized alpha-only token to a canonical category name.
+    // Multiple aliases per category capture the variations seen across services.
+    const LABEL_MAP = {
+      tenantid: 'tenantId', tenant: 'tenantId', tenants: 'tenantId',
+      workspaceid: 'tenantId', workspace: 'tenantId',
+      userid: 'userId', user: 'userId', createdby: 'userId',
+      rejectedby: 'userId', signedby: 'userId', initiatorid: 'userId',
+      getusercertificate: 'userId', mobileuser: 'userId',
+      txid: 'txId', tx: 'txId', transactionid: 'txId',
+      transaction: 'txId', requestedtxid: 'txId',
+      requestid: 'requestId', xamznrequestid: 'requestId',
+      nginxrequestid: 'requestId', requestcontext: 'requestId',
+      idempotency: 'idempotencyKey', idempotencyheader: 'idempotencyKey',
+      pipelineid: 'pipelineId', pipeline: 'pipelineId',
+      pipelinecontext: 'pipelineId',
+      functionid: 'functionId',
+      notificationid: 'notificationId', notification: 'notificationId',
+      subscriptionid: 'subscriptionId', subscription: 'subscriptionId',
+      eventid: 'eventId',
+      webhookid: 'webhookId',
+      ruleid: 'ruleId', vruleid: 'ruleId',
+      groupid: 'groupId', group: 'groupId',
+      accountid: 'accountId',
+      resourceid: 'resourceId',
+      transferid: 'transferId',
+      externaltxid: 'externalTxId',
+      websocketuuid: 'webSocketUuid',
+      deviceid: 'deviceId', device: 'deviceId',
+      physicaldeviceid: 'physicalDeviceId',
+      jobid: 'jobId',
+      ticketid: 'ticketId',
+      messageid: 'messageId',
+      apikey: 'apiKey',
+      vaultid: 'vaultId',
+    }
+
+    const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+    const ALPHA_RE = /[A-Za-z]{2,}/g
+
+    const classify = (prefix) => {
+      // Strip embedded UUIDs from the prefix so labels don't get hidden inside cache keys.
+      const cleaned = prefix.replace(UUID_RE, ' ')
+      let last = null
+      let m
+      ALPHA_RE.lastIndex = 0
+      while ((m = ALPHA_RE.exec(cleaned)) !== null) {
+        const norm = m[0].toLowerCase()
+        if (LABEL_MAP[norm]) last = LABEL_MAP[norm]
+      }
+      return last || 'unknown'
+    }
+
+    // Walk every UUID in the input and classify it by its preceding context.
+    const found = []
+    let m
+    UUID_RE.lastIndex = 0
+    while ((m = UUID_RE.exec(uuidInput)) !== null) {
+      const start = m.index
+      const prefix = uuidInput.slice(Math.max(0, start - 60), start)
+      const after = uuidInput.slice(m.index + m[0].length, m.index + m[0].length + 30)
+      const ctx = (prefix + '⟦UUID⟧' + after).replace(/\s+/g, ' ').trim()
+      found.push({
+        uuid: uuidLowercase ? m[0].toLowerCase() : m[0],
+        category: classify(prefix),
+        context: ctx,
+      })
+    }
+
+    // Group by category. Optionally dedupe within category (case-insensitive key).
+    const groupsMap = new Map()
+    for (const item of found) {
+      if (!groupsMap.has(item.category)) {
+        groupsMap.set(item.category, { category: item.category, items: [], seen: new Set() })
+      }
+      const g = groupsMap.get(item.category)
+      const key = item.uuid.toLowerCase()
+      if (uuidDedupe && g.seen.has(key)) continue
+      g.seen.add(key)
+      g.items.push(item)
+    }
+
+    // Sort categories: known categories alphabetically, unknown last.
+    const categoryOrder = Array.from(groupsMap.keys()).sort((a, b) => {
+      if (a === 'unknown') return 1
+      if (b === 'unknown') return -1
+      return a.localeCompare(b)
+    })
+
+    const groups = categoryOrder.map(c => groupsMap.get(c))
+    return { groups, categoryOrder, total: found.length }
   }, [uuidInput, uuidDedupe, uuidLowercase])
 
+  const uuidOutput = useMemo(() => {
+    const selectedGroups = uuidResult.groups.filter(g => !uuidExcluded.has(g.category))
+    if (selectedGroups.length === 0) return ''
+    const showHeaders = uuidGroupHeaders && selectedGroups.length > 1
+    const parts = []
+    for (const g of selectedGroups) {
+      if (showHeaders) {
+        parts.push(`# ${g.category} (${g.items.length})`)
+      }
+      for (const it of g.items) {
+        if (uuidShowContext && g.category === 'unknown') {
+          parts.push(`${it.uuid}  // ${it.context}`)
+        } else {
+          parts.push(it.uuid)
+        }
+      }
+      if (showHeaders) parts.push('')
+    }
+    return parts.join('\n').replace(/\n+$/, '')
+  }, [uuidResult.groups, uuidExcluded, uuidGroupHeaders, uuidShowContext])
+
+  const uuidSelectedCount = useMemo(
+    () => uuidResult.groups
+      .filter(g => !uuidExcluded.has(g.category))
+      .reduce((sum, g) => sum + g.items.length, 0),
+    [uuidResult.groups, uuidExcluded]
+  )
+
   const handleUuidCopy = useCallback(() => {
-    if (!uuidResult.output) return
-    navigator.clipboard.writeText(uuidResult.output).then(() => {
+    if (!uuidOutput) return
+    navigator.clipboard.writeText(uuidOutput).then(() => {
       setUuidCopied(true)
       setTimeout(() => setUuidCopied(false), 2000)
     })
-  }, [uuidResult.output])
+  }, [uuidOutput])
+
+  const handleUuidCopyCategory = useCallback((category) => {
+    const g = uuidResult.groups.find(gr => gr.category === category)
+    if (!g) return
+    const text = g.items.map(it => it.uuid).join('\n')
+    navigator.clipboard.writeText(text)
+  }, [uuidResult.groups])
 
   const handleUuidClear = useCallback(() => {
     setUuidInput('')
   }, [])
+
+  const toggleUuidCategory = useCallback((category) => {
+    setUuidExcluded(prev => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }, [])
+
+  const handleUuidSelectAll = useCallback(() => setUuidExcluded(new Set()), [])
+  const handleUuidSelectNone = useCallback(() => {
+    setUuidExcluded(new Set(uuidResult.categoryOrder))
+  }, [uuidResult.categoryOrder])
 
   const handleCopy = useCallback(() => {
     if (!csvPreview) return
@@ -576,10 +702,10 @@ function CsvBuilder() {
         </section>
 
         {/* UUID Extractor */}
-        <section className="coleditor-section dedupe-section">
+        <section className="coleditor-section dedupe-section uuid-section">
           <div className="coleditor-header">
             <h2 className="coleditor-title">UUID Extractor</h2>
-            <p className="coleditor-desc">Paste any text and extract every UUID (8-4-4-4-12 format) found, one per line. Works on logs, JSON, CSV, or any blob of text.</p>
+            <p className="coleditor-desc">Paste any text and extract every UUID found, one per line. Smart-classifies each UUID by surrounding context (tenantId, userId, txId, deviceId, physicalDeviceId, requestId, pipelineId, and more). Toggle categories to page-in just the IDs you need.</p>
           </div>
           <div className="coleditor-layout">
             <div className="coleditor-input-side">
@@ -600,6 +726,24 @@ function CsvBuilder() {
                   />
                   <span>Lowercase</span>
                 </label>
+                <label className="coleditor-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={uuidGroupHeaders}
+                    onChange={e => setUuidGroupHeaders(e.target.checked)}
+                  />
+                  <span>Group headers</span>
+                </label>
+                {uuidResult.groups.some(g => g.category === 'unknown') && (
+                  <label className="coleditor-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={uuidShowContext}
+                      onChange={e => setUuidShowContext(e.target.checked)}
+                    />
+                    <span>Show context (unknown)</span>
+                  </label>
+                )}
                 {uuidInput && (
                   <button
                     className="coleditor-preset-btn dedupe-clear-btn"
@@ -620,21 +764,59 @@ function CsvBuilder() {
               </label>
               <textarea
                 className="col-textarea coleditor-textarea"
-                placeholder={"Paste anything containing UUIDs...\nLogs, JSON, CSV, SQL, etc.\nAll UUIDs will be extracted"}
+                placeholder={"Paste anything containing UUIDs...\nLogs, JSON, CSV, SQL, etc.\nUUIDs are classified by context (tenantId, userId, txId, ...)"}
                 value={uuidInput}
                 onChange={e => setUuidInput(e.target.value)}
                 spellCheck={false}
               />
             </div>
             <div className="coleditor-output-side">
+              {uuidResult.groups.length > 0 && (
+                <div className="uuid-chips-bar">
+                  <div className="uuid-chips-header">
+                    <span className="uuid-chips-label">Categories</span>
+                    <div className="uuid-chips-actions">
+                      <button className="uuid-chips-action" onClick={handleUuidSelectAll}>All</button>
+                      <button className="uuid-chips-action" onClick={handleUuidSelectNone}>None</button>
+                    </div>
+                  </div>
+                  <div className="uuid-chips">
+                    {uuidResult.groups.map(g => {
+                      const selected = !uuidExcluded.has(g.category)
+                      return (
+                        <div
+                          key={g.category}
+                          className={`uuid-chip uuid-chip-${g.category}${selected ? ' uuid-chip-on' : ''}`}
+                        >
+                          <button
+                            className="uuid-chip-toggle"
+                            onClick={() => toggleUuidCategory(g.category)}
+                            title={selected ? 'Click to hide' : 'Click to show'}
+                          >
+                            <span className="uuid-chip-name">{g.category}</span>
+                            <span className="uuid-chip-count">{g.items.length}</span>
+                          </button>
+                          <button
+                            className="uuid-chip-copy"
+                            onClick={() => handleUuidCopyCategory(g.category)}
+                            title={`Copy all ${g.category}s to clipboard`}
+                          >
+                            ⎘
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="coleditor-output-header">
                 <label className="col-field-label">
                   Output
-                  {uuidResult.unique > 0 && (
+                  {uuidSelectedCount > 0 && (
                     <span className="line-count">
-                      {uuidResult.unique.toLocaleString()} {uuidDedupe ? 'unique' : 'total'}
-                      {uuidDedupe && uuidResult.total > uuidResult.unique && (
-                        <> · {(uuidResult.total - uuidResult.unique).toLocaleString()} removed</>
+                      {uuidSelectedCount.toLocaleString()} {uuidDedupe ? 'unique' : 'total'}
+                      {uuidResult.total > uuidSelectedCount && (
+                        <> · {(uuidResult.total - uuidSelectedCount).toLocaleString()} hidden</>
                       )}
                     </span>
                   )}
@@ -642,18 +824,18 @@ function CsvBuilder() {
                 <button
                   className="copy-csv-btn"
                   onClick={handleUuidCopy}
-                  disabled={!uuidResult.output}
+                  disabled={!uuidOutput}
                 >
                   {uuidCopied ? '✓ Copied' : 'Copy'}
                 </button>
               </div>
               <textarea
                 className="col-textarea coleditor-textarea coleditor-output-textarea"
-                value={uuidResult.output}
+                value={uuidOutput}
                 readOnly
                 spellCheck={false}
                 onFocus={e => e.target.select()}
-                placeholder="Extracted UUIDs will appear here..."
+                placeholder="Extracted UUIDs will appear here, grouped by classification..."
               />
             </div>
           </div>

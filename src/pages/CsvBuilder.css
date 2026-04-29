@@ -639,6 +639,150 @@
   border-color: rgba(248, 113, 113, 0.5);
 }
 
+/* ── UUID Extractor ── */
+
+.uuid-chips-bar {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.5rem;
+}
+
+.uuid-chips-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.uuid-chips-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #71717a;
+  font-weight: 600;
+}
+
+.uuid-chips-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.uuid-chips-action {
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: #a1a1aa;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.uuid-chips-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f4f5;
+}
+
+.uuid-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.uuid-chip {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  opacity: 0.45;
+  transition: all 0.12s;
+}
+
+.uuid-chip.uuid-chip-on {
+  opacity: 1;
+}
+
+.uuid-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.55rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: inherit;
+}
+
+.uuid-chip-name {
+  color: #e4e4e7;
+}
+
+.uuid-chip-count {
+  background: rgba(0, 0, 0, 0.35);
+  color: #a1a1aa;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  min-width: 1.3em;
+  text-align: center;
+}
+
+.uuid-chip-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.45rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: none;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  color: #71717a;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.uuid-chip-copy:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e4e4e7;
+}
+
+/* Per-category accent colors (only visible when chip is selected). */
+.uuid-chip-on.uuid-chip-tenantId         { background: rgba(168, 85, 247, 0.18); border-color: rgba(168, 85, 247, 0.45); }
+.uuid-chip-on.uuid-chip-userId           { background: rgba(45, 212, 191, 0.18); border-color: rgba(45, 212, 191, 0.45); }
+.uuid-chip-on.uuid-chip-txId             { background: rgba(96, 165, 250, 0.18); border-color: rgba(96, 165, 250, 0.45); }
+.uuid-chip-on.uuid-chip-deviceId         { background: rgba(251, 191, 36, 0.18); border-color: rgba(251, 191, 36, 0.45); }
+.uuid-chip-on.uuid-chip-physicalDeviceId { background: rgba(249, 115, 22, 0.18); border-color: rgba(249, 115, 22, 0.45); }
+.uuid-chip-on.uuid-chip-requestId        { background: rgba(244, 114, 182, 0.18); border-color: rgba(244, 114, 182, 0.45); }
+.uuid-chip-on.uuid-chip-pipelineId       { background: rgba(132, 204, 22, 0.18); border-color: rgba(132, 204, 22, 0.45); }
+.uuid-chip-on.uuid-chip-functionId       { background: rgba(34, 197, 94, 0.18);  border-color: rgba(34, 197, 94, 0.45); }
+.uuid-chip-on.uuid-chip-notificationId   { background: rgba(167, 139, 250, 0.18); border-color: rgba(167, 139, 250, 0.45); }
+.uuid-chip-on.uuid-chip-subscriptionId   { background: rgba(56, 189, 248, 0.18); border-color: rgba(56, 189, 248, 0.45); }
+.uuid-chip-on.uuid-chip-eventId          { background: rgba(236, 72, 153, 0.18); border-color: rgba(236, 72, 153, 0.45); }
+.uuid-chip-on.uuid-chip-webhookId        { background: rgba(139, 92, 246, 0.18); border-color: rgba(139, 92, 246, 0.45); }
+.uuid-chip-on.uuid-chip-ruleId           { background: rgba(217, 70, 239, 0.18); border-color: rgba(217, 70, 239, 0.45); }
+.uuid-chip-on.uuid-chip-groupId          { background: rgba(20, 184, 166, 0.18); border-color: rgba(20, 184, 166, 0.45); }
+.uuid-chip-on.uuid-chip-accountId        { background: rgba(74, 222, 128, 0.18); border-color: rgba(74, 222, 128, 0.45); }
+.uuid-chip-on.uuid-chip-resourceId       { background: rgba(251, 113, 133, 0.18); border-color: rgba(251, 113, 133, 0.45); }
+.uuid-chip-on.uuid-chip-transferId       { background: rgba(125, 211, 252, 0.18); border-color: rgba(125, 211, 252, 0.45); }
+.uuid-chip-on.uuid-chip-externalTxId     { background: rgba(147, 197, 253, 0.18); border-color: rgba(147, 197, 253, 0.45); }
+.uuid-chip-on.uuid-chip-webSocketUuid    { background: rgba(186, 230, 253, 0.18); border-color: rgba(186, 230, 253, 0.45); }
+.uuid-chip-on.uuid-chip-jobId            { background: rgba(254, 215, 170, 0.18); border-color: rgba(254, 215, 170, 0.45); }
+.uuid-chip-on.uuid-chip-ticketId         { background: rgba(165, 243, 252, 0.18); border-color: rgba(165, 243, 252, 0.45); }
+.uuid-chip-on.uuid-chip-messageId        { background: rgba(196, 181, 253, 0.18); border-color: rgba(196, 181, 253, 0.45); }
+.uuid-chip-on.uuid-chip-idempotencyKey   { background: rgba(254, 240, 138, 0.18); border-color: rgba(254, 240, 138, 0.45); }
+.uuid-chip-on.uuid-chip-apiKey           { background: rgba(252, 165, 165, 0.18); border-color: rgba(252, 165, 165, 0.45); }
+.uuid-chip-on.uuid-chip-vaultId          { background: rgba(110, 231, 183, 0.18); border-color: rgba(110, 231, 183, 0.45); }
+.uuid-chip-on.uuid-chip-unknown          { background: rgba(113, 113, 122, 0.22); border-color: rgba(113, 113, 122, 0.5); }
+
 /* ── Responsive ── */
 
 @media (max-width: 900px) {
