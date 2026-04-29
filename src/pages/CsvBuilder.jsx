@@ -210,7 +210,8 @@ function CsvBuilder() {
       eventid: 'eventId',
       webhookid: 'webhookId',
       ruleid: 'ruleId', vruleid: 'ruleId', externaldescriptor: 'ruleId',
-      capturedrule: 'ruleId',
+      capturedrule: 'ruleId', signerids: 'userId',
+      reportid: 'reportId',
       groupid: 'groupId', group: 'groupId', groups: 'groupId',
       approvalgroups: 'groupId',
       accountid: 'accountId', connectedaccountid: 'accountId',
@@ -265,34 +266,72 @@ function CsvBuilder() {
       [/_user_wallet\/$/i, 'tenantId'],
       // NCW wallet-service route: /v1/wallet/ncw/<tenantId>/...
       [/\/wallet\/ncw\/$/i, 'tenantId'],
+      // Policy verdict rule arrays: `…policyEngineVersion":"v?"},{"id":"<UUID>"`
+      // Each subsequent rule object's id is also a ruleId.
+      [/policyEngineVersion[":\s\w}]+,\{[":\s]*id[":]+\s*$/i, 'ruleId'],
     ]
 
-    // Maps the LAST segment of a structured CSV column name (e.g.
-    // `metadata.requestContext.tenantId` → tenantId) to a canonical category.
-    // Column names are extremely high-confidence evidence — when a UUID sits
-    // in a `…tenantId` column, it IS a tenantId, no guessing required.
+    // Maps a normalized CSV column-name segment (lowercased, with `_`/`-`
+    // collapsed for matching) to a canonical category. Column names are
+    // extremely high-confidence evidence — when a UUID sits in a `…tenantId`
+    // column, it IS a tenantId, no guessing required.
     const COL_CATEGORY = {
-      tenantid: 'tenantId', tenant_id: 'tenantId', 'tenant-id': 'tenantId',
-      userid: 'userId', user_id: 'userId',
-      txid: 'txId', tx_id: 'txId', 'tx-id': 'txId', transactionid: 'txId',
-      requestid: 'requestId', request_id: 'requestId', 'request-id': 'requestId',
-      pipelineid: 'pipelineId', functionid: 'functionId',
-      notificationid: 'notificationId', subscriptionid: 'subscriptionId',
-      eventid: 'eventId', webhookid: 'webhookId', ruleid: 'ruleId',
-      groupid: 'groupId', accountid: 'accountId', resourceid: 'resourceId',
-      transferid: 'transferId', externaltxid: 'externalTxId',
-      websocketuuid: 'webSocketUuid', deviceid: 'deviceId',
-      physicaldeviceid: 'physicalDeviceId', jobid: 'jobId',
-      ticketid: 'ticketId', messageid: 'messageId', apikey: 'apiKey',
+      tenantid: 'tenantId', tenantids: 'tenantId',
+      workspaceid: 'tenantId',
+      userid: 'userId', userids: 'userId',
+      createdby: 'userId', rejectedby: 'userId', signedby: 'userId',
+      initiatorid: 'userId', initiator: 'userId',
+      signerid: 'userId', signers: 'userId',
+      txid: 'txId', transactionid: 'txId',
+      generatedtxid: 'txId', requestedtxid: 'txId', parenttxid: 'txId',
+      requestid: 'requestId', internalrequestid: 'requestId',
+      pipelineid: 'pipelineId', sourcepipelineid: 'pipelineId',
+      functionid: 'functionId',
+      notificationid: 'notificationId', notificationdeduplicationid: 'notificationId',
+      subscriptionid: 'subscriptionId',
+      eventid: 'eventId', eventdeduplicationid: 'eventId',
+      webhookid: 'webhookId',
+      ruleid: 'ruleId',
+      groupid: 'groupId',
+      accountid: 'accountId', sourcethirdpartyaccountid: 'accountId',
+      resourceid: 'resourceId',
+      transferid: 'transferId',
+      externaltxid: 'externalTxId',
+      websocketuuid: 'webSocketUuid',
+      deviceid: 'deviceId',
+      physicaldeviceid: 'physicalDeviceId',
+      jobid: 'jobId',
+      ticketid: 'ticketId',
+      messageid: 'messageId',
+      topicmessageid: 'messageId', sqsmessageid: 'messageId',
+      apikey: 'apiKey', httpxapikey: 'apiKey',
       vaultid: 'vaultId', vaultaccountid: 'vaultId',
-      walletid: 'walletId', eventgroupid: 'eventGroupId',
-      destinationid: 'destinationId', tagid: 'tagId',
-      keyid: 'keyId', queueid: 'queueId', topicid: 'topicId',
+      walletid: 'walletId', walletcontainerid: 'walletId',
+      eventgroupid: 'eventGroupId',
+      destinationid: 'destinationId', dstid: 'destinationId',
+      tagid: 'tagId',
+      keyid: 'keyId',
+      queueid: 'queueId',
+      topicid: 'topicId',
+      taskid: 'taskId',
+      traceid: 'traceId', spanid: 'traceId',
+      pipelinepath: 'pipelineId',
+      reportid: 'reportId',
     }
+    // Walks column segments from right to left, skipping purely-numeric
+    // segments (e.g. flattened JSON array indices like `tenantIds.5`).
+    // Compares each candidate with `_` and `-` removed so `tenant_id`,
+    // `tenant-id`, `tenantId`, and `tenantID` all match the same key.
     const columnCategory = (colName) => {
       if (!colName) return null
-      const last = colName.split('.').pop().toLowerCase()
-      return COL_CATEGORY[last] || null
+      const segments = colName.split('.')
+      for (let i = segments.length - 1; i >= 0; i--) {
+        const seg = segments[i]
+        if (!seg || /^\d+$/.test(seg)) continue
+        const norm = seg.toLowerCase().replace(/[_-]/g, '')
+        if (COL_CATEGORY[norm]) return COL_CATEGORY[norm]
+      }
+      return null
     }
 
     const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi

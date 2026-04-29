@@ -788,6 +788,9 @@
 .uuid-chip-on.uuid-chip-eventGroupId     { background: rgba(244, 182, 200, 0.18); border-color: rgba(244, 182, 200, 0.45); }
 .uuid-chip-on.uuid-chip-destinationId    { background: rgba(190, 242, 100, 0.18); border-color: rgba(190, 242, 100, 0.45); }
 .uuid-chip-on.uuid-chip-tagId            { background: rgba(216, 180, 254, 0.18); border-color: rgba(216, 180, 254, 0.45); }
+.uuid-chip-on.uuid-chip-taskId           { background: rgba(253, 186, 116, 0.18); border-color: rgba(253, 186, 116, 0.45); }
+.uuid-chip-on.uuid-chip-traceId          { background: rgba(125, 211, 252, 0.18); border-color: rgba(125, 211, 252, 0.45); }
+.uuid-chip-on.uuid-chip-reportId         { background: rgba(245, 158, 11, 0.18); border-color: rgba(245, 158, 11, 0.45); }
 
 /* ── UUID Extractor: mode tabs + CSV drop zone ── */
 
