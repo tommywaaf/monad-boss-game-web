@@ -946,6 +946,17 @@
   color: #fca5a5;
   font-size: 0.8rem;
 }
+
+.uuid-pending {
+  color: #fbbf24 !important;
+  font-style: italic;
+  animation: uuid-pending-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes uuid-pending-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
 .uuid-chip-on.uuid-chip-unknown          { background: rgba(113, 113, 122, 0.22); border-color: rgba(113, 113, 122, 0.5); }
 
 /* ── Responsive ── */

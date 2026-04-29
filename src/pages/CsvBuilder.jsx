@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useDeferredValue } from 'react'
 import ToolInfoPanel from '../components/ToolInfoPanel'
 import './CsvBuilder.css'
 
@@ -10,6 +10,233 @@ function escapeCsvCell(value) {
     return '"' + value.replace(/"/g, '""') + '"'
   }
   return value
+}
+
+// =====================================================================
+// UUID Extractor classifier — module-scope constants & helpers.
+// Hoisted out of the component so they aren't re-allocated on every
+// input change (was a major source of GC churn / paste lag).
+// =====================================================================
+
+// Maps a normalized alpha-only token to a canonical category name.
+const UUID_LABEL_MAP = {
+  tenantid: 'tenantId', tenant: 'tenantId', tenants: 'tenantId',
+  tenantids: 'tenantId', tenanat: 'tenantId',
+  workspaceid: 'tenantId', workspace: 'tenantId',
+  userid: 'userId', user: 'userId', users: 'userId',
+  createdby: 'userId', rejectedby: 'userId', signedby: 'userId',
+  initiatorid: 'userId', initiator: 'userId',
+  getusercertificate: 'userId', mobileuser: 'userId',
+  signers: 'userId', signerids: 'userId',
+  approvedby: 'userId', triggeredby: 'userId',
+  txid: 'txId', tx: 'txId', transactionid: 'txId',
+  transaction: 'txId', requestedtxid: 'txId', parenttxid: 'txId',
+  generatedtxid: 'txId', fbtx: 'txId',
+  requestid: 'requestId', xamznrequestid: 'requestId',
+  nginxrequestid: 'requestId', requestcontext: 'requestId',
+  idempotency: 'idempotencyKey', idempotencyheader: 'idempotencyKey',
+  pipelineid: 'pipelineId', pipeline: 'pipelineId',
+  pipelinecontext: 'pipelineId',
+  functionid: 'functionId',
+  notificationid: 'notificationId', notification: 'notificationId',
+  subscriptionid: 'subscriptionId', subscription: 'subscriptionId',
+  eventid: 'eventId',
+  webhookid: 'webhookId',
+  ruleid: 'ruleId', vruleid: 'ruleId', externaldescriptor: 'ruleId',
+  capturedrule: 'ruleId',
+  reportid: 'reportId',
+  groupid: 'groupId', group: 'groupId', groups: 'groupId',
+  approvalgroups: 'groupId',
+  accountid: 'accountId', connectedaccountid: 'accountId',
+  resourceid: 'resourceId',
+  transferid: 'transferId',
+  externaltxid: 'externalTxId',
+  websocketuuid: 'webSocketUuid',
+  deviceid: 'deviceId', device: 'deviceId',
+  physicaldeviceid: 'physicalDeviceId',
+  jobid: 'jobId',
+  ticketid: 'ticketId',
+  messageid: 'messageId',
+  apikey: 'apiKey',
+  vaultid: 'vaultId',
+  keyid: 'keyId',
+  queue: 'queueId', queuename: 'queueId', queueid: 'queueId',
+  topic: 'topicId', topicid: 'topicId',
+  walletid: 'walletId', wallets: 'walletId',
+  eventgroupid: 'eventGroupId',
+  destinationid: 'destinationId',
+  tagid: 'tagId', tagids: 'tagId',
+}
+
+// High-confidence prefix patterns checked BEFORE token classification.
+const UUID_PATTERN_PREFIXES = [
+  [/load key \(\s*$/i, 'keyId'],
+  [/(?:^|[\s,])Key:\s*$/, 'keyId'],
+  [/\bAPI key\s+$/i, 'apiKey'],
+  [/label='$/i, 'tenantId'],
+  [/\bconfirmations request for [0-9a-f]+ and $/i, 'tenantId'],
+  [/\/connected-accounts\/internal\/$/i, 'accountId'],
+  [/\b(?:Destroyed|Locked|Called) (?:try-)?lock for key\s+$/i, 'tenantId'],
+  [/\boff-exchange-tenant:\s*$/i, 'tenantId'],
+  [/\bgroupKey:\s+\w+\/$/i, 'tenantId'],
+  [/_user_wallet\/$/i, 'tenantId'],
+  [/\/wallet\/ncw\/$/i, 'tenantId'],
+  [/policyEngineVersion[":\s\w}]+,\{[":\s]*id[":]+\s*$/i, 'ruleId'],
+]
+
+// Maps a normalized CSV column-name segment to a canonical category.
+const UUID_COL_CATEGORY = {
+  tenantid: 'tenantId', tenantids: 'tenantId',
+  workspaceid: 'tenantId',
+  userid: 'userId', userids: 'userId',
+  createdby: 'userId', rejectedby: 'userId', signedby: 'userId',
+  initiatorid: 'userId', initiator: 'userId',
+  signerid: 'userId', signers: 'userId',
+  txid: 'txId', transactionid: 'txId',
+  generatedtxid: 'txId', requestedtxid: 'txId', parenttxid: 'txId',
+  requestid: 'requestId', internalrequestid: 'requestId',
+  pipelineid: 'pipelineId', sourcepipelineid: 'pipelineId',
+  pipelinepath: 'pipelineId',
+  functionid: 'functionId',
+  notificationid: 'notificationId', notificationdeduplicationid: 'notificationId',
+  subscriptionid: 'subscriptionId',
+  eventid: 'eventId', eventdeduplicationid: 'eventId',
+  webhookid: 'webhookId',
+  ruleid: 'ruleId',
+  groupid: 'groupId',
+  accountid: 'accountId', sourcethirdpartyaccountid: 'accountId',
+  resourceid: 'resourceId',
+  transferid: 'transferId',
+  externaltxid: 'externalTxId',
+  websocketuuid: 'webSocketUuid',
+  deviceid: 'deviceId',
+  physicaldeviceid: 'physicalDeviceId',
+  jobid: 'jobId',
+  ticketid: 'ticketId',
+  messageid: 'messageId',
+  topicmessageid: 'messageId', sqsmessageid: 'messageId',
+  apikey: 'apiKey', httpxapikey: 'apiKey',
+  vaultid: 'vaultId', vaultaccountid: 'vaultId',
+  walletid: 'walletId', walletcontainerid: 'walletId',
+  eventgroupid: 'eventGroupId',
+  destinationid: 'destinationId', dstid: 'destinationId',
+  tagid: 'tagId',
+  keyid: 'keyId',
+  queueid: 'queueId',
+  topicid: 'topicId',
+  taskid: 'taskId',
+  traceid: 'traceId', spanid: 'traceId',
+  reportid: 'reportId',
+}
+
+// IMPORTANT: Two distinct regex objects to avoid lastIndex aliasing.
+// `String.prototype.replace` with a global RegExp resets that regex's
+// lastIndex to 0 on completion (per ES spec), which would corrupt any
+// concurrent `exec()` loop using the same regex object — that previously
+// caused an infinite loop and froze the page on UUID-bearing input.
+const UUID_RE_SCAN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+const UUID_RE_STRIP = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+const UUID_RE_FULL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID_ALPHA_RE = /[A-Za-z]{2,}/g
+const UUID_SEP_RE = /^["',\s\]\[\\]*$/
+
+const uuidNormalizePrefix = (raw) => {
+  let s = raw.replace(/\\+/g, '')
+  if (s.indexOf('%') !== -1) {
+    try { s = decodeURIComponent(s) } catch { /* leave as-is on bad escape */ }
+  }
+  return s
+}
+
+const uuidClassifyOccurrence = (prefix) => {
+  const norm = uuidNormalizePrefix(prefix)
+  for (let p = 0; p < UUID_PATTERN_PREFIXES.length; p++) {
+    if (UUID_PATTERN_PREFIXES[p][0].test(norm)) return UUID_PATTERN_PREFIXES[p][1]
+  }
+  const close = norm.slice(-30).replace(UUID_RE_STRIP, ' ')
+  let last = null
+  let m
+  UUID_ALPHA_RE.lastIndex = 0
+  while ((m = UUID_ALPHA_RE.exec(close)) !== null) {
+    const tok = m[0].toLowerCase()
+    if (UUID_LABEL_MAP[tok]) last = UUID_LABEL_MAP[tok]
+  }
+  return last
+}
+
+// Walks column segments right-to-left, skipping numeric ones.
+const uuidColumnCategory = (colName) => {
+  if (!colName) return null
+  const segments = colName.split('.')
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i]
+    if (!seg || /^\d+$/.test(seg)) continue
+    const norm = seg.toLowerCase().replace(/[_-]/g, '')
+    if (UUID_COL_CATEGORY[norm]) return UUID_COL_CATEGORY[norm]
+  }
+  return null
+}
+
+// Scans a single text blob for UUIDs. Uses `matchAll` which internally
+// clones the regex, so it is immune to lastIndex aliasing with the
+// strip-regex used inside `uuidClassifyOccurrence`.
+const uuidScanText = (text, sourceLabel, lowercase) => {
+  const local = []
+  const matches = text.matchAll(UUID_RE_SCAN)
+  for (const m of matches) {
+    const start = m.index
+    const end = start + m[0].length
+    const prefix = text.slice(Math.max(0, start - 60), start)
+    const after = text.slice(end, end + 30)
+    const ctx = (prefix + '⟦UUID⟧' + after).replace(/\s+/g, ' ').trim()
+    local.push({
+      uuid: lowercase ? m[0].toLowerCase() : m[0],
+      keyLower: m[0].toLowerCase(),
+      category: uuidClassifyOccurrence(prefix),
+      context: sourceLabel ? `[${sourceLabel}] ${ctx}` : ctx,
+      start, end,
+    })
+  }
+  // Chain propagation for JSON arrays of UUIDs.
+  for (let i = 1; i < local.length; i++) {
+    const cur = local[i]
+    if (cur.category) continue
+    const prev = local[i - 1]
+    const between = text.slice(prev.end, cur.start)
+    if (between.length === 0) continue
+    const cleaned = between.replace(/%(?:22|2C|20)/gi, ' ')
+    if (cleaned.length <= 12 && UUID_SEP_RE.test(cleaned) && prev.category) {
+      cur.category = prev.category
+    }
+  }
+  return local
+}
+
+// Minimal RFC-4180-ish CSV parser. Handles quoted fields, escaped
+// double-quotes (""), embedded commas, and embedded newlines.
+const uuidParseCsv = (text) => {
+  const rows = []
+  let field = '', row = [], inQuotes = false
+  const len = text.length
+  for (let i = 0; i < len; i++) {
+    const c = text.charCodeAt(i)
+    if (inQuotes) {
+      if (c === 34 /* " */) {
+        if (i + 1 < len && text.charCodeAt(i + 1) === 34) { field += '"'; i++ }
+        else inQuotes = false
+      } else {
+        field += text[i]
+      }
+    } else {
+      if (c === 34) inQuotes = true
+      else if (c === 44 /* , */) { row.push(field); field = '' }
+      else if (c === 10 /* \n */) { row.push(field); rows.push(row); row = []; field = '' }
+      else if (c === 13 /* \r */) { /* skip */ }
+      else field += text[i]
+    }
+  }
+  if (field !== '' || row.length > 0) { row.push(field); rows.push(row) }
+  return rows
 }
 
 function CsvBuilder() {
@@ -180,275 +407,34 @@ function CsvBuilder() {
   const [uuidIsDragging, setUuidIsDragging] = useState(false)
   const [uuidFileType, setUuidFileType] = useState('csv')
 
+  // useDeferredValue lets React keep the textarea responsive during a
+  // big paste — the heavy classification work runs in the background and
+  // can be interrupted by further keystrokes instead of blocking input.
+  const deferredUuidInput = useDeferredValue(uuidInput)
+  const deferredUuidCsvText = useDeferredValue(uuidCsvText)
+  const uuidIsPending =
+    (uuidMode === 'text' && deferredUuidInput !== uuidInput) ||
+    (uuidMode === 'file' && deferredUuidCsvText !== uuidCsvText)
+
   const uuidResult = useMemo(() => {
-    const activeText = uuidMode === 'file' ? uuidCsvText : uuidInput
+    const activeText = uuidMode === 'file' ? deferredUuidCsvText : deferredUuidInput
     if (!activeText) {
       return { groups: [], categoryOrder: [], total: 0, csvStats: null }
-    }
-
-    // Maps a normalized alpha-only token to a canonical category name.
-    // Multiple aliases per category capture the variations seen across services.
-    const LABEL_MAP = {
-      tenantid: 'tenantId', tenant: 'tenantId', tenants: 'tenantId',
-      tenantids: 'tenantId', tenanat: 'tenantId',
-      workspaceid: 'tenantId', workspace: 'tenantId',
-      userid: 'userId', user: 'userId', users: 'userId',
-      createdby: 'userId', rejectedby: 'userId', signedby: 'userId',
-      initiatorid: 'userId', initiator: 'userId',
-      getusercertificate: 'userId', mobileuser: 'userId',
-      signers: 'userId', approvedby: 'userId', triggeredby: 'userId',
-      txid: 'txId', tx: 'txId', transactionid: 'txId',
-      transaction: 'txId', requestedtxid: 'txId', parenttxid: 'txId',
-      generatedtxid: 'txId', fbtx: 'txId',
-      requestid: 'requestId', xamznrequestid: 'requestId',
-      nginxrequestid: 'requestId', requestcontext: 'requestId',
-      idempotency: 'idempotencyKey', idempotencyheader: 'idempotencyKey',
-      pipelineid: 'pipelineId', pipeline: 'pipelineId',
-      pipelinecontext: 'pipelineId',
-      functionid: 'functionId',
-      notificationid: 'notificationId', notification: 'notificationId',
-      subscriptionid: 'subscriptionId', subscription: 'subscriptionId',
-      eventid: 'eventId',
-      webhookid: 'webhookId',
-      ruleid: 'ruleId', vruleid: 'ruleId', externaldescriptor: 'ruleId',
-      capturedrule: 'ruleId', signerids: 'userId',
-      reportid: 'reportId',
-      groupid: 'groupId', group: 'groupId', groups: 'groupId',
-      approvalgroups: 'groupId',
-      accountid: 'accountId', connectedaccountid: 'accountId',
-      resourceid: 'resourceId',
-      transferid: 'transferId',
-      externaltxid: 'externalTxId',
-      websocketuuid: 'webSocketUuid',
-      deviceid: 'deviceId', device: 'deviceId',
-      physicaldeviceid: 'physicalDeviceId',
-      jobid: 'jobId',
-      ticketid: 'ticketId',
-      messageid: 'messageId',
-      apikey: 'apiKey',
-      vaultid: 'vaultId',
-      keyid: 'keyId',
-      queue: 'queueId', queuename: 'queueId', queueid: 'queueId',
-      topic: 'topicId', topicid: 'topicId',
-      walletid: 'walletId', wallets: 'walletId',
-      eventgroupid: 'eventGroupId',
-      destinationid: 'destinationId',
-      tagid: 'tagId', tagids: 'tagId',
-    }
-
-    // High-confidence prefix patterns checked BEFORE token classification.
-    // Each maps a regex (matched against the prefix string ending immediately
-    // before the UUID) to a canonical category. These exist for cases where
-    // the closest token alone is too ambiguous (e.g., bare 'key' could be
-    // keyId, apiKey, or a tenantId-as-cache-key) but the surrounding phrase
-    // is unmistakable.
-    const PATTERN_PREFIXES = [
-      // CMP secret-service load_key entry
-      [/load key \(\s*$/i, 'keyId'],
-      // CMP Toggle: ... Key: <UUID>
-      [/(?:^|[\s,])Key:\s*$/, 'keyId'],
-      // API key <UUID>
-      [/\bAPI key\s+$/i, 'apiKey'],
-      // UTXO label='<tenantId>:<vaultId>'
-      [/label='$/i, 'tenantId'],
-      // BTC/LTC/DOGE confirmation requests "for <txhash> and <tenantId>:<vaultId>"
-      [/\bconfirmations request for [0-9a-f]+ and $/i, 'tenantId'],
-      // Exchange-connectivity internal route
-      [/\/connected-accounts\/internal\/$/i, 'accountId'],
-      // PoolMutex Bitcoin-secretServiceAccessLock locks (key here is tenantId)
-      [/\b(?:Destroyed|Locked|Called) (?:try-)?lock for key\s+$/i, 'tenantId'],
-      // Off-exchange tenant cache key
-      [/\boff-exchange-tenant:\s*$/i, 'tenantId'],
-      // Job groupKey "updateBalance/<tenantId>;..."
-      [/\bgroupKey:\s+\w+\/$/i, 'tenantId'],
-      // Balance service end_user_wallet route: first UUID is tenantId
-      // (the second UUID after another '/' is the walletId, but it gets
-      // resolved by cross-reference or by `walletId":"<uuid>"` elsewhere).
-      [/_user_wallet\/$/i, 'tenantId'],
-      // NCW wallet-service route: /v1/wallet/ncw/<tenantId>/...
-      [/\/wallet\/ncw\/$/i, 'tenantId'],
-      // Policy verdict rule arrays: `…policyEngineVersion":"v?"},{"id":"<UUID>"`
-      // Each subsequent rule object's id is also a ruleId.
-      [/policyEngineVersion[":\s\w}]+,\{[":\s]*id[":]+\s*$/i, 'ruleId'],
-    ]
-
-    // Maps a normalized CSV column-name segment (lowercased, with `_`/`-`
-    // collapsed for matching) to a canonical category. Column names are
-    // extremely high-confidence evidence — when a UUID sits in a `…tenantId`
-    // column, it IS a tenantId, no guessing required.
-    const COL_CATEGORY = {
-      tenantid: 'tenantId', tenantids: 'tenantId',
-      workspaceid: 'tenantId',
-      userid: 'userId', userids: 'userId',
-      createdby: 'userId', rejectedby: 'userId', signedby: 'userId',
-      initiatorid: 'userId', initiator: 'userId',
-      signerid: 'userId', signers: 'userId',
-      txid: 'txId', transactionid: 'txId',
-      generatedtxid: 'txId', requestedtxid: 'txId', parenttxid: 'txId',
-      requestid: 'requestId', internalrequestid: 'requestId',
-      pipelineid: 'pipelineId', sourcepipelineid: 'pipelineId',
-      functionid: 'functionId',
-      notificationid: 'notificationId', notificationdeduplicationid: 'notificationId',
-      subscriptionid: 'subscriptionId',
-      eventid: 'eventId', eventdeduplicationid: 'eventId',
-      webhookid: 'webhookId',
-      ruleid: 'ruleId',
-      groupid: 'groupId',
-      accountid: 'accountId', sourcethirdpartyaccountid: 'accountId',
-      resourceid: 'resourceId',
-      transferid: 'transferId',
-      externaltxid: 'externalTxId',
-      websocketuuid: 'webSocketUuid',
-      deviceid: 'deviceId',
-      physicaldeviceid: 'physicalDeviceId',
-      jobid: 'jobId',
-      ticketid: 'ticketId',
-      messageid: 'messageId',
-      topicmessageid: 'messageId', sqsmessageid: 'messageId',
-      apikey: 'apiKey', httpxapikey: 'apiKey',
-      vaultid: 'vaultId', vaultaccountid: 'vaultId',
-      walletid: 'walletId', walletcontainerid: 'walletId',
-      eventgroupid: 'eventGroupId',
-      destinationid: 'destinationId', dstid: 'destinationId',
-      tagid: 'tagId',
-      keyid: 'keyId',
-      queueid: 'queueId',
-      topicid: 'topicId',
-      taskid: 'taskId',
-      traceid: 'traceId', spanid: 'traceId',
-      pipelinepath: 'pipelineId',
-      reportid: 'reportId',
-    }
-    // Walks column segments from right to left, skipping purely-numeric
-    // segments (e.g. flattened JSON array indices like `tenantIds.5`).
-    // Compares each candidate with `_` and `-` removed so `tenant_id`,
-    // `tenant-id`, `tenantId`, and `tenantID` all match the same key.
-    const columnCategory = (colName) => {
-      if (!colName) return null
-      const segments = colName.split('.')
-      for (let i = segments.length - 1; i >= 0; i--) {
-        const seg = segments[i]
-        if (!seg || /^\d+$/.test(seg)) continue
-        const norm = seg.toLowerCase().replace(/[_-]/g, '')
-        if (COL_CATEGORY[norm]) return COL_CATEGORY[norm]
-      }
-      return null
-    }
-
-    const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
-    const UUID_FULL_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    const ALPHA_RE = /[A-Za-z]{2,}/g
-
-    // Conservative single-occurrence classifier. First tries high-confidence
-    // prefix regex patterns, then falls back to closest-token lookup within the
-    // last 30 chars (so a label far away cannot hijack a nearby UUID). Prefix
-    // text is normalized: URL-encoded entities are decoded so URLs like
-    // `?tenantId%3D<uuid>` classify as tenantId, and runs of backslashes are
-    // collapsed so escaped JSON-in-JSON chains still tokenize cleanly.
-    const normalizePrefix = (raw) => {
-      let s = raw.replace(/\\+/g, '')
-      if (s.indexOf('%') !== -1) {
-        try { s = decodeURIComponent(s) } catch { /* leave as-is on bad escape */ }
-      }
-      return s
-    }
-    const classifyOccurrence = (prefix) => {
-      const norm = normalizePrefix(prefix)
-      for (const [re, cat] of PATTERN_PREFIXES) {
-        if (re.test(norm)) return cat
-      }
-      const close = norm.slice(-30).replace(UUID_RE, ' ')
-      let last = null
-      let m
-      ALPHA_RE.lastIndex = 0
-      while ((m = ALPHA_RE.exec(close)) !== null) {
-        const tok = m[0].toLowerCase()
-        if (LABEL_MAP[tok]) last = LABEL_MAP[tok]
-      }
-      return last
-    }
-
-    // Scans a single text blob for UUIDs and returns their found-record list,
-    // including the chain-propagation pass for JSON arrays of UUIDs.
-    const SEP_RE = /^["',\s\]\[\\]*$/
-    const scanText = (text, sourceLabel) => {
-      const local = []
-      let m
-      UUID_RE.lastIndex = 0
-      while ((m = UUID_RE.exec(text)) !== null) {
-        const start = m.index
-        const end = start + m[0].length
-        const prefix = text.slice(Math.max(0, start - 60), start)
-        const after = text.slice(end, end + 30)
-        const ctx = (prefix + '⟦UUID⟧' + after).replace(/\s+/g, ' ').trim()
-        local.push({
-          uuid: uuidLowercase ? m[0].toLowerCase() : m[0],
-          keyLower: m[0].toLowerCase(),
-          category: classifyOccurrence(prefix),
-          context: sourceLabel ? `[${sourceLabel}] ${ctx}` : ctx,
-          start, end,
-        })
-      }
-      // Chain propagation for JSON arrays of UUIDs.
-      for (let i = 1; i < local.length; i++) {
-        const cur = local[i]
-        if (cur.category) continue
-        const prev = local[i - 1]
-        const between = text.slice(prev.end, cur.start)
-        if (between.length === 0) continue
-        const cleaned = between.replace(/%(?:22|2C|20)/gi, ' ')
-        if (cleaned.length <= 12 && SEP_RE.test(cleaned) && prev.category) {
-          cur.category = prev.category
-        }
-      }
-      return local
-    }
-
-    // Minimal RFC-4180 CSV parser. Handles quoted fields, escaped double-quotes
-    // (""), embedded commas, and embedded newlines (CR/LF). Iterator-style: yields
-    // arrays of fields per row to keep memory bounded for large files.
-    const parseCsv = (text) => {
-      const rows = []
-      let field = '', row = [], inQuotes = false
-      const len = text.length
-      for (let i = 0; i < len; i++) {
-        const c = text.charCodeAt(i)
-        if (inQuotes) {
-          if (c === 34 /* " */) {
-            if (i + 1 < len && text.charCodeAt(i + 1) === 34) { field += '"'; i++ }
-            else inQuotes = false
-          } else {
-            field += text[i]
-          }
-        } else {
-          if (c === 34) inQuotes = true
-          else if (c === 44 /* , */) { row.push(field); field = '' }
-          else if (c === 10 /* \n */) { row.push(field); rows.push(row); row = []; field = '' }
-          else if (c === 13 /* \r */) { /* skip — handled by the \n that follows or trailing \r */ }
-          else field += text[i]
-        }
-      }
-      if (field !== '' || row.length > 0) { row.push(field); rows.push(row) }
-      return rows
     }
 
     const found = []
     let csvStats = null
 
     if (uuidMode === 'file' && uuidFileType === 'csv') {
-      const rows = parseCsv(activeText)
+      const rows = uuidParseCsv(activeText)
       if (rows.length === 0) {
         return { groups: [], categoryOrder: [], total: 0, csvStats: { rows: 0, cols: 0, classifiedCols: 0 } }
       }
       const headers = rows[0]
-      const colCats = headers.map(columnCategory)
+      const colCats = headers.map(uuidColumnCategory)
       const classifiedCols = colCats.filter(Boolean).length
       csvStats = { rows: rows.length - 1, cols: headers.length, classifiedCols }
 
-      // Track a synthetic position so chain-propagation can still work within
-      // free-text cells. We process each free-text cell independently and add
-      // its UUIDs to `found`. For column-classified UUIDs, we add a record
-      // with the column's category as high-confidence evidence.
       let posCursor = 0
       for (let r = 1; r < rows.length; r++) {
         const row = rows[r]
@@ -458,7 +444,7 @@ function CsvBuilder() {
           const colName = headers[c] || ''
           const colCat = colCats[c]
           // Whole-cell UUID with classifying column → direct high-confidence record.
-          if (colCat && UUID_FULL_RE.test(val.trim().replace(/^"|"$/g, ''))) {
+          if (colCat && UUID_RE_FULL.test(val.trim().replace(/^"|"$/g, ''))) {
             const u = val.trim().replace(/^"|"$/g, '')
             found.push({
               uuid: uuidLowercase ? u.toLowerCase() : u,
@@ -471,13 +457,11 @@ function CsvBuilder() {
             continue
           }
           // Free-text cell (or non-UUID value in classified col) — scan for embedded UUIDs.
-          if (val.indexOf('-') === -1) continue // tiny optimization: UUIDs always have hyphens
-          const cellFound = scanText(val, colName)
+          if (val.indexOf('-') === -1) continue
+          const cellFound = uuidScanText(val, colName, uuidLowercase)
           for (const it of cellFound) {
-            it.start += posCursor; it.end += posCursor
-            // If the cell sits in a classified column, prefer the column
-            // category over any text-derived guess for whole-cell-ish matches.
-            // Otherwise keep the text-derived category.
+            it.start += posCursor
+            it.end += posCursor
             found.push(it)
           }
           posCursor += val.length + 1
@@ -487,7 +471,7 @@ function CsvBuilder() {
       // Text mode OR file mode with a JSON file. JSON pretty-printed has the
       // labels embedded as keys (`"tenantId": "<uuid>"`), which the existing
       // free-text classifier already handles perfectly.
-      const local = scanText(activeText)
+      const local = uuidScanText(activeText, '', uuidLowercase)
       for (const it of local) found.push(it)
     }
 
@@ -535,7 +519,7 @@ function CsvBuilder() {
 
     const groups = categoryOrder.map(c => groupsMap.get(c))
     return { groups, categoryOrder, total: found.length, csvStats }
-  }, [uuidMode, uuidFileType, uuidInput, uuidCsvText, uuidDedupe, uuidLowercase])
+  }, [uuidMode, uuidFileType, deferredUuidInput, deferredUuidCsvText, uuidDedupe, uuidLowercase])
 
   const uuidOutput = useMemo(() => {
     const selectedGroups = uuidResult.groups.filter(g => !uuidExcluded.has(g.category))
@@ -1226,6 +1210,9 @@ function CsvBuilder() {
               <div className="coleditor-output-header">
                 <label className="col-field-label">
                   Output
+                  {uuidIsPending && (
+                    <span className="line-count uuid-pending">Computing…</span>
+                  )}
                   {uuidSelectedCount > 0 && (
                     <span className="line-count">
                       {uuidSelectedCount.toLocaleString()} {uuidDedupe ? 'unique' : 'total'}
