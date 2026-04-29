@@ -178,9 +178,10 @@ function CsvBuilder() {
   const [uuidCsvFileName, setUuidCsvFileName] = useState('')
   const [uuidCsvError, setUuidCsvError] = useState('')
   const [uuidIsDragging, setUuidIsDragging] = useState(false)
+  const [uuidFileType, setUuidFileType] = useState('csv')
 
   const uuidResult = useMemo(() => {
-    const activeText = uuidMode === 'csv' ? uuidCsvText : uuidInput
+    const activeText = uuidMode === 'file' ? uuidCsvText : uuidInput
     if (!activeText) {
       return { groups: [], categoryOrder: [], total: 0, csvStats: null }
     }
@@ -434,7 +435,7 @@ function CsvBuilder() {
     const found = []
     let csvStats = null
 
-    if (uuidMode === 'csv') {
+    if (uuidMode === 'file' && uuidFileType === 'csv') {
       const rows = parseCsv(activeText)
       if (rows.length === 0) {
         return { groups: [], categoryOrder: [], total: 0, csvStats: { rows: 0, cols: 0, classifiedCols: 0 } }
@@ -483,6 +484,9 @@ function CsvBuilder() {
         }
       }
     } else {
+      // Text mode OR file mode with a JSON file. JSON pretty-printed has the
+      // labels embedded as keys (`"tenantId": "<uuid>"`), which the existing
+      // free-text classifier already handles perfectly.
       const local = scanText(activeText)
       for (const it of local) found.push(it)
     }
@@ -531,7 +535,7 @@ function CsvBuilder() {
 
     const groups = categoryOrder.map(c => groupsMap.get(c))
     return { groups, categoryOrder, total: found.length, csvStats }
-  }, [uuidMode, uuidInput, uuidCsvText, uuidDedupe, uuidLowercase])
+  }, [uuidMode, uuidFileType, uuidInput, uuidCsvText, uuidDedupe, uuidLowercase])
 
   const uuidOutput = useMemo(() => {
     const selectedGroups = uuidResult.groups.filter(g => !uuidExcluded.has(g.category))
@@ -584,9 +588,14 @@ function CsvBuilder() {
     if (!file) return
     setUuidCsvError('')
     const isCsvName = /\.csv$/i.test(file.name)
-    const isCsvType = file.type === 'text/csv' || file.type === 'application/vnd.ms-excel' || file.type === ''
-    if (!isCsvName && !isCsvType) {
-      setUuidCsvError(`"${file.name}" doesn't look like a CSV file.`)
+    const isJsonName = /\.json$/i.test(file.name)
+    const isCsvType = file.type === 'text/csv' || file.type === 'application/vnd.ms-excel'
+    const isJsonType = file.type === 'application/json'
+    let fileType = null
+    if (isCsvName || isCsvType) fileType = 'csv'
+    else if (isJsonName || isJsonType) fileType = 'json'
+    if (!fileType) {
+      setUuidCsvError(`"${file.name}" doesn't look like a CSV or JSON file.`)
       return
     }
     const reader = new FileReader()
@@ -594,7 +603,8 @@ function CsvBuilder() {
       const text = String(e.target.result || '')
       setUuidCsvText(text)
       setUuidCsvFileName(file.name)
-      setUuidMode('csv')
+      setUuidFileType(fileType)
+      setUuidMode('file')
     }
     reader.onerror = () => setUuidCsvError(`Failed to read "${file.name}".`)
     reader.readAsText(file)
@@ -1031,12 +1041,12 @@ function CsvBuilder() {
                   Paste Text
                 </button>
                 <button
-                  className={`uuid-mode-tab${uuidMode === 'csv' ? ' uuid-mode-tab-active' : ''}`}
-                  onClick={() => setUuidMode('csv')}
+                  className={`uuid-mode-tab${uuidMode === 'file' ? ' uuid-mode-tab-active' : ''}`}
+                  onClick={() => setUuidMode('file')}
                   type="button"
-                  title="Drop a CSV file — column names like 'requestContext.tenantId' become high-confidence classifiers"
+                  title='Drop a CSV or JSON file. CSV column names like "requestContext.tenantId" become high-confidence classifiers; JSON keys like "tenantId": do the same in the free-text classifier.'
                 >
-                  CSV File
+                  Drop File
                 </button>
               </div>
               <div className="coleditor-controls dedupe-controls">
@@ -1083,13 +1093,13 @@ function CsvBuilder() {
                     Clear
                   </button>
                 )}
-                {uuidMode === 'csv' && uuidCsvFileName && (
+                {uuidMode === 'file' && uuidCsvFileName && (
                   <button
                     className="coleditor-preset-btn dedupe-clear-btn"
                     onClick={handleUuidCsvUnload}
-                    title="Unload CSV"
+                    title="Unload file"
                   >
-                    Unload CSV
+                    Unload File
                   </button>
                 )}
               </div>
@@ -1114,11 +1124,16 @@ function CsvBuilder() {
               ) : (
                 <>
                   <label className="col-field-label">
-                    CSV file
+                    {uuidFileType === 'json' ? 'JSON file' : 'CSV file'}
                     {uuidResult.csvStats && (
                       <span className="line-count">
                         {uuidResult.csvStats.rows.toLocaleString()} rows · {uuidResult.csvStats.cols} cols ·{' '}
                         {uuidResult.csvStats.classifiedCols} classified
+                      </span>
+                    )}
+                    {!uuidResult.csvStats && uuidFileType === 'json' && uuidCsvText && (
+                      <span className="line-count">
+                        {(uuidCsvText.length / 1024).toFixed(1).toLocaleString()} KB
                       </span>
                     )}
                   </label>
@@ -1131,29 +1146,36 @@ function CsvBuilder() {
                   >
                     <input
                       type="file"
-                      accept=".csv,text/csv"
+                      accept=".csv,.json,text/csv,application/json"
                       onChange={handleUuidCsvInputChange}
                       className="uuid-csv-input"
                     />
                     {uuidCsvFileName ? (
                       <div className="uuid-csv-loaded">
-                        <div className="uuid-csv-file-name">📄 {uuidCsvFileName}</div>
-                        <div className="uuid-csv-file-meta">
-                          {uuidResult.csvStats
-                            ? `${uuidResult.csvStats.rows.toLocaleString()} rows · ${uuidResult.csvStats.classifiedCols} of ${uuidResult.csvStats.cols} columns auto-classified`
-                            : 'Parsing...'}
+                        <div className="uuid-csv-file-name">
+                          {uuidFileType === 'json' ? '🗎' : '📄'} {uuidCsvFileName}
                         </div>
-                        <div className="uuid-csv-replace-hint">Drop another CSV or click to replace</div>
+                        <div className="uuid-csv-file-meta">
+                          {uuidFileType === 'json'
+                            ? `JSON file (${(uuidCsvText.length / (1024 * 1024)).toFixed(2)} MB) — keys like "tenantId":, "txId": are auto-classified`
+                            : (uuidResult.csvStats
+                                ? `${uuidResult.csvStats.rows.toLocaleString()} rows · ${uuidResult.csvStats.classifiedCols} of ${uuidResult.csvStats.cols} columns auto-classified`
+                                : 'Parsing...')}
+                        </div>
+                        <div className="uuid-csv-replace-hint">Drop another file or click to replace</div>
                       </div>
                     ) : (
                       <div className="uuid-csv-empty">
                         <div className="uuid-csv-empty-icon">⬇</div>
-                        <div className="uuid-csv-empty-title">Drop a CSV here, or click to browse</div>
+                        <div className="uuid-csv-empty-title">Drop a CSV or JSON file here, or click to browse</div>
                         <div className="uuid-csv-empty-desc">
-                          Column names like <code>requestContext.tenantId</code>,{' '}
-                          <code>metadata.txId</code>, <code>nginx.tenant_id</code> are used as
-                          high-confidence classifiers. Free-text columns (e.g. <code>message</code>)
-                          are still scanned with the regular classifier.
+                          <strong>CSV:</strong> column names like <code>requestContext.tenantId</code>,{' '}
+                          <code>metadata.txId</code>, <code>nginx.tenant_id</code> become high-confidence
+                          classifiers; free-text columns (e.g. <code>message</code>) are still scanned
+                          for embedded UUIDs.<br />
+                          <strong>JSON:</strong> pretty-printed log entries with keys like{' '}
+                          <code>"tenantId":</code>, <code>"txId":</code>, <code>"requestId":</code> are
+                          classified directly by the free-text classifier.
                         </div>
                       </div>
                     )}
