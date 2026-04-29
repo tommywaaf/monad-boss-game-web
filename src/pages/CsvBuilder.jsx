@@ -218,33 +218,60 @@ function CsvBuilder() {
     const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
     const ALPHA_RE = /[A-Za-z]{2,}/g
 
-    const classify = (prefix) => {
-      // Strip embedded UUIDs from the prefix so labels don't get hidden inside cache keys.
-      const cleaned = prefix.replace(UUID_RE, ' ')
+    // Conservative single-occurrence classifier: only labels within ~30 chars of
+    // the UUID count. This prevents a "tenantId" appearing 50 chars earlier from
+    // hijacking the classification of a different UUID nearby.
+    const classifyOccurrence = (prefix) => {
+      const close = prefix.slice(-30).replace(UUID_RE, ' ')
       let last = null
       let m
       ALPHA_RE.lastIndex = 0
-      while ((m = ALPHA_RE.exec(cleaned)) !== null) {
+      while ((m = ALPHA_RE.exec(close)) !== null) {
         const norm = m[0].toLowerCase()
         if (LABEL_MAP[norm]) last = LABEL_MAP[norm]
       }
-      return last || 'unknown'
+      return last
     }
 
-    // Walk every UUID in the input and classify it by its preceding context.
     const found = []
     let m
     UUID_RE.lastIndex = 0
     while ((m = UUID_RE.exec(uuidInput)) !== null) {
       const start = m.index
       const prefix = uuidInput.slice(Math.max(0, start - 60), start)
-      const after = uuidInput.slice(m.index + m[0].length, m.index + m[0].length + 30)
+      const after = uuidInput.slice(start + m[0].length, start + m[0].length + 30)
       const ctx = (prefix + '⟦UUID⟧' + after).replace(/\s+/g, ' ').trim()
       found.push({
         uuid: uuidLowercase ? m[0].toLowerCase() : m[0],
-        category: classify(prefix),
+        keyLower: m[0].toLowerCase(),
+        category: classifyOccurrence(prefix),
         context: ctx,
       })
+    }
+
+    // Cross-reference pass: if a UUID is confidently classified in any
+    // occurrence, propagate that label to every occurrence of that UUID. This
+    // resolves cases like `Validating update data with params ...,true,UUID`
+    // where the local context is ambiguous but the same UUID appears elsewhere
+    // as `tenantId":"UUID"`. If multiple confident labels exist, pick the most
+    // common one (ties broken by first-seen).
+    const labelVotes = new Map()
+    for (const it of found) {
+      if (!it.category) continue
+      let votes = labelVotes.get(it.keyLower)
+      if (!votes) { votes = new Map(); labelVotes.set(it.keyLower, votes) }
+      votes.set(it.category, (votes.get(it.category) || 0) + 1)
+    }
+    const consensus = new Map()
+    for (const [uuidKey, votes] of labelVotes) {
+      let bestCat = null, bestN = 0
+      for (const [cat, n] of votes) {
+        if (n > bestN) { bestN = n; bestCat = cat }
+      }
+      consensus.set(uuidKey, bestCat)
+    }
+    for (const it of found) {
+      it.category = consensus.get(it.keyLower) || it.category || 'unknown'
     }
 
     // Group by category. Optionally dedupe within category (case-insensitive key).
@@ -254,9 +281,8 @@ function CsvBuilder() {
         groupsMap.set(item.category, { category: item.category, items: [], seen: new Set() })
       }
       const g = groupsMap.get(item.category)
-      const key = item.uuid.toLowerCase()
-      if (uuidDedupe && g.seen.has(key)) continue
-      g.seen.add(key)
+      if (uuidDedupe && g.seen.has(item.keyLower)) continue
+      g.seen.add(item.keyLower)
       g.items.push(item)
     }
 
