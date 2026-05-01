@@ -96,6 +96,22 @@ function EventBubble({ event, isExpanded, onToggle, rules }) {
     : null
   const summaryDetail = [detail, flow].filter(Boolean).join(' · ')
 
+  const requestType = event.requestType || 'tx_sign'
+  const requestTypeLabel = {
+    tx_sign: 'TX SIGN',
+    tx_approval: 'TX APPROVAL',
+    config_change_sign: 'CONFIG SIGN',
+    config_change_approval: 'CONFIG APPROVAL',
+  }[requestType] || requestType.toUpperCase()
+  const requestTypeClass = requestType.startsWith('config') ? 'cbt-rt-config' : 'cbt-rt-tx'
+
+  const dotClass = actionLower === 'approve' ? 'approved'
+    : actionLower === 'ignore' ? 'ignored'
+    : 'rejected'
+  const actionBadgeClass = actionLower === 'approve' ? 'approve'
+    : actionLower === 'ignore' ? 'ignore'
+    : 'reject'
+
   const externalTxId = event.rawPayload?.externalTxId ?? null
 
   // Auto-derive verify key from the first enabled rule that has externalTxIdPublicKey configured
@@ -114,9 +130,10 @@ function EventBubble({ event, isExpanded, onToggle, rules }) {
   return (
     <div className={`cbt-bubble ${isExpanded ? 'expanded' : ''}`}>
       <button className="cbt-bubble-summary" onClick={onToggle}>
-        <span className={`cbt-bubble-dot ${actionLower === 'approve' ? 'approved' : 'rejected'}`} />
+        <span className={`cbt-bubble-dot ${dotClass}`} />
+        <span className={`cbt-bubble-rt ${requestTypeClass}`}>{requestTypeLabel}</span>
         <span className="cbt-bubble-operation">{event.operation || 'UNKNOWN'}</span>
-        <span className={`cbt-bubble-action ${actionLower === 'approve' ? 'approve' : 'reject'}`}>
+        <span className={`cbt-bubble-action ${actionBadgeClass}`}>
           {event.action}
         </span>
         {summaryDetail && <span className="cbt-bubble-detail">{summaryDetail}</span>}
@@ -133,6 +150,12 @@ function EventBubble({ event, isExpanded, onToggle, rules }) {
           {/* Request from Co-Signer */}
           <div className="cbt-detail-section-header request">Request from Co-Signer</div>
           <div className="cbt-detail-meta">
+            <div className="cbt-detail-row">
+              <span className="cbt-detail-label">Request Type</span>
+              <span className="cbt-detail-value">
+                <code>/v2/{requestType}_request</code>
+              </span>
+            </div>
             <div className="cbt-detail-row">
               <span className="cbt-detail-label">Request ID</span>
               <span className="cbt-detail-value">{event.requestId || '—'}</span>
@@ -780,6 +803,7 @@ function CallbackHandler() {
             callbackUrl: h.callbackUrl,
             callbackPublicKey: h.callbackPublicKey,
             action: h.action || 'REJECT',
+            approvalAction: h.approvalAction || 'REJECT',
             rules: h.rules || [],
             createdAt: h.createdAt,
           }
@@ -823,6 +847,7 @@ function CallbackHandler() {
           callbackUrl: data.callbackUrl,
           callbackPublicKey: data.callbackPublicKey,
           action: data.action || 'REJECT',
+          approvalAction: data.approvalAction || 'REJECT',
           rules: data.rules || [],
           createdAt: new Date().toISOString(),
         }
@@ -868,6 +893,21 @@ function CallbackHandler() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: newAction }),
+      })
+    } catch { /* best effort — UI already updated optimistically */ }
+  }
+
+  async function handleApprovalActionChange(handlerId, newAction) {
+    setHandlers(prev => ({
+      ...prev,
+      [handlerId]: { ...prev[handlerId], approvalAction: newAction }
+    }))
+    try {
+      await fetch(`${API_BASE}/cbt/action/${handlerId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalAction: newAction }),
       })
     } catch { /* best effort — UI already updated optimistically */ }
   }
@@ -1147,24 +1187,51 @@ function CallbackHandler() {
                   )}
                 </div>
 
-                {/* Default action (fallback when no rule matches) */}
+                {/* Default actions — fallbacks for signing (when no rule matches) and approvals */}
                 <div className="cbt-action-toggle">
-                  <span className="cbt-action-label">Default Action:</span>
-                  <div className="cbt-toggle-group">
-                    <button
-                      className={`cbt-toggle-opt ${activeData?.action === 'APPROVE' ? 'active-approve' : ''}`}
-                      onClick={() => handleActionChange(selectedHandler, 'APPROVE')}
-                    >
-                      APPROVE
-                    </button>
-                    <button
-                      className={`cbt-toggle-opt ${activeData?.action === 'REJECT' ? 'active-reject' : ''}`}
-                      onClick={() => handleActionChange(selectedHandler, 'REJECT')}
-                    >
-                      REJECT
-                    </button>
+                  <div className="cbt-action-row">
+                    <span className="cbt-action-label">Signing Default:</span>
+                    <div className="cbt-toggle-group">
+                      <button
+                        className={`cbt-toggle-opt ${activeData?.action === 'APPROVE' ? 'active-approve' : ''}`}
+                        onClick={() => handleActionChange(selectedHandler, 'APPROVE')}
+                      >
+                        APPROVE
+                      </button>
+                      <button
+                        className={`cbt-toggle-opt ${activeData?.action === 'REJECT' ? 'active-reject' : ''}`}
+                        onClick={() => handleActionChange(selectedHandler, 'REJECT')}
+                      >
+                        REJECT
+                      </button>
+                    </div>
+                    <span className="cbt-default-action-sub">tx_sign / config_change_sign · used when no rule matches</span>
                   </div>
-                  <span className="cbt-default-action-sub">when no rule matches</span>
+                  <div className="cbt-action-row">
+                    <span className="cbt-action-label">Approvals Default:</span>
+                    <div className="cbt-toggle-group">
+                      <button
+                        className={`cbt-toggle-opt ${activeData?.approvalAction === 'APPROVE' ? 'active-approve' : ''}`}
+                        onClick={() => handleApprovalActionChange(selectedHandler, 'APPROVE')}
+                      >
+                        APPROVE
+                      </button>
+                      <button
+                        className={`cbt-toggle-opt ${activeData?.approvalAction === 'REJECT' ? 'active-reject' : ''}`}
+                        onClick={() => handleApprovalActionChange(selectedHandler, 'REJECT')}
+                      >
+                        REJECT
+                      </button>
+                      <button
+                        className={`cbt-toggle-opt ${activeData?.approvalAction === 'IGNORE' ? 'active-ignore' : ''}`}
+                        onClick={() => handleApprovalActionChange(selectedHandler, 'IGNORE')}
+                        title="Dismiss without denying — other quorum approvers may still act"
+                      >
+                        IGNORE
+                      </button>
+                    </div>
+                    <span className="cbt-default-action-sub">tx_approval / config_change_approval</span>
+                  </div>
                 </div>
 
                 {error && (

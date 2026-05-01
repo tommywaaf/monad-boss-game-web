@@ -638,11 +638,18 @@
 
 .cbt-action-toggle {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 1.25rem;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.7rem 1.25rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.015);
+}
+
+.cbt-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
 }
 
 .cbt-action-label {
@@ -650,6 +657,7 @@
   font-weight: 500;
   color: #71717a;
   flex-shrink: 0;
+  min-width: 130px;
 }
 
 .cbt-toggle-group {
@@ -671,8 +679,8 @@
   color: #52525b;
 }
 
-.cbt-toggle-opt:first-child {
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+.cbt-toggle-opt + .cbt-toggle-opt {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .cbt-toggle-opt.active-approve {
@@ -685,7 +693,12 @@
   color: #f87171;
 }
 
-.cbt-toggle-opt:hover:not(.active-approve):not(.active-reject) {
+.cbt-toggle-opt.active-ignore {
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+}
+
+.cbt-toggle-opt:hover:not(.active-approve):not(.active-reject):not(.active-ignore) {
   background: rgba(255, 255, 255, 0.06);
   color: #a1a1aa;
 }
@@ -789,6 +802,32 @@
   background: #ef4444;
 }
 
+.cbt-bubble-dot.ignored {
+  background: #eab308;
+}
+
+.cbt-bubble-rt {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.4rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+
+.cbt-bubble-rt.cbt-rt-tx {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.10);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.cbt-bubble-rt.cbt-rt-config {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.10);
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
 .cbt-bubble-operation {
   font-size: 0.8rem;
   font-weight: 600;
@@ -816,6 +855,11 @@
 .cbt-bubble-action.reject {
   color: #f87171;
   background: rgba(239, 68, 68, 0.12);
+}
+
+.cbt-bubble-action.ignore {
+  color: #facc15;
+  background: rgba(234, 179, 8, 0.12);
 }
 
 .cbt-bubble-detail {
@@ -904,6 +948,11 @@
 
 .cbt-detail-value.reject {
   color: #f87171;
+  font-weight: 600;
+}
+
+.cbt-detail-value.ignore {
+  color: #facc15;
   font-weight: 600;
 }
 
