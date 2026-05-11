@@ -614,16 +614,19 @@ function Broadcaster() {
 
   useEffect(() => {
     if (!isSui) return
-    const txTrim = suiTx.trim()
-    const sigTrim = suiSig.trim()
-    if (!txTrim || !sigTrim) {
+    // Strip whitespace anywhere in the field — hex and base64 never contain
+    // spaces/newlines, but pasted values often do. Also unescape `\/` since
+    // Fireblocks JSON-escapes forward slashes in its base64 signatures.
+    const txClean = suiTx.replace(/\s+/g, '').replace(/\\\//g, '/')
+    const sigClean = suiSig.replace(/\s+/g, '').replace(/\\\//g, '/')
+    if (!txClean || !sigClean) {
       setTransactions([])
       setSuiTxError(null)
       return
     }
-    let txB64 = txTrim
-    if (looksLikeHex(txTrim)) {
-      const converted = hexToBase64(txTrim)
+    let txB64 = txClean
+    if (looksLikeHex(txClean)) {
+      const converted = hexToBase64(txClean)
       if (!converted) {
         setTransactions([])
         setSuiTxError('Invalid hex for tx bytes')
@@ -632,7 +635,7 @@ function Broadcaster() {
       txB64 = converted
     }
     setSuiTxError(null)
-    setTransactions([JSON.stringify({ tx: txB64, sig: sigTrim })])
+    setTransactions([JSON.stringify({ tx: txB64, sig: sigClean })])
   }, [isSui, suiTx, suiSig])
   
   // Filter and paginate results
@@ -1911,7 +1914,7 @@ function Broadcaster() {
                   <textarea
                     value={suiTx}
                     onChange={(e) => setSuiTx(e.target.value)}
-                    placeholder="0000020008007cd7e4e7d9000000203af64f6ed08b7e7376899017edc1f1e8f02213d2d18823564dda2a1bbb636c54..."
+                    placeholder="e.g. 000002000800abcdef0123456789aabbccddeeff1122334455667788... (BCS-encoded tx)"
                     className={`sui-input ${suiTxError ? 'sui-input-error' : ''}`}
                     rows={4}
                     spellCheck={false}
@@ -1927,7 +1930,7 @@ function Broadcaster() {
                   <textarea
                     value={suiSig}
                     onChange={(e) => setSuiSig(e.target.value)}
-                    placeholder="APiecotmUrsxtsOvZYCmFZK0ezDVf/8ZuuNx9vQuKHFHa7bd6p975nX7iJZOsLDySRD0W9VE5PiAg3UXG5h1yAe5RWDOT8+Ag3QR5ZO299I5dz1L9xI3r5KdpqABmnW11g=="
+                    placeholder="e.g. AExampleBase64SignatureWithSchemePrefix...PubKeyAppended== (Ed25519/Secp256k1/Secp256r1)"
                     className="sui-input"
                     rows={3}
                     spellCheck={false}
