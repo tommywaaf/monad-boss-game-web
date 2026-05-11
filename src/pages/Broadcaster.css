@@ -205,6 +205,101 @@ section {
   color: #a5b4fc;
 }
 
+.network-type-badge.sui {
+  background: linear-gradient(135deg, rgba(77, 162, 255, 0.15) 0%, rgba(56, 189, 248, 0.18) 100%);
+  border: 1px solid rgba(77, 162, 255, 0.35);
+  color: #93c5fd;
+}
+
+/* ── Sui-only two-field input ─────────────────────────────────────────────── */
+
+.sui-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.sui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sui-field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #a1a1aa;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sui-field-hint {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  background: rgba(77, 162, 255, 0.12);
+  border: 1px solid rgba(77, 162, 255, 0.25);
+  color: #93c5fd;
+}
+
+.sui-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 0.85rem;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #e4e4e7;
+  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.5;
+  transition: all 0.2s ease;
+  word-break: break-all;
+}
+
+.sui-input:hover {
+  border-color: rgba(77, 162, 255, 0.3);
+}
+
+.sui-input:focus {
+  outline: none;
+  border-color: #4da2ff;
+  background: rgba(77, 162, 255, 0.04);
+  box-shadow: 0 0 0 3px rgba(77, 162, 255, 0.12);
+}
+
+.sui-input::placeholder {
+  color: #3f3f46;
+}
+
+.sui-input-error {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.sui-input-error:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.sui-error {
+  font-size: 0.75rem;
+  color: #ef4444;
+}
+
+.sui-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 /* ── Network picker (dropdown trigger + popup with tabs + multi-col grid) ── */
 
 .network-dropdown-wrapper {

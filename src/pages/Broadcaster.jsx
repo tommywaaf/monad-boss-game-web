@@ -5,7 +5,7 @@ import './Broadcaster.css'
 
 const NETWORKS = [
   // EVM Networks
-  { id: 'auto-evm', name: '🔄 Auto (Detect Chain)', rpc: '', type: 'evm', isAuto: true },
+  { id: 'auto-evm', name: 'Auto (Detect Chain)', rpc: '', type: 'evm', isAuto: true },
   { id: 'ethereum', name: 'Ethereum', rpc: 'https://ethereum-rpc.publicnode.com', type: 'evm', chainId: 1, explorer: 'https://etherscan.io/tx/' },
   { id: 'eth-test5', name: 'ETH_TEST5 (Sepolia)', rpc: 'https://ethereum-sepolia-rpc.publicnode.com', type: 'evm', chainId: 11155111, explorer: 'https://sepolia.etherscan.io/tx/' },
   { id: 'custom-evm', name: 'Custom EVM RPC...', rpc: '', type: 'evm' },
@@ -53,6 +53,11 @@ const NETWORKS = [
   { id: 'xrp', name: 'XRP Mainnet', rpc: 'https://xrplcluster.com/', type: 'xrp', explorer: 'https://xrpscan.com/tx/' },
   // Stellar (XLM)
   { id: 'stellar', name: 'Stellar Mainnet', rpc: 'https://horizon.stellar.org', type: 'stellar', explorer: 'https://stellar.expert/explorer/public/tx/' },
+  // Sui
+  { id: 'sui', name: 'Sui Mainnet', rpc: 'https://fullnode.mainnet.sui.io:443', type: 'sui', explorer: 'https://suiscan.xyz/mainnet/tx/' },
+  { id: 'sui-testnet', name: 'Sui Testnet', rpc: 'https://fullnode.testnet.sui.io:443', type: 'sui', explorer: 'https://suiscan.xyz/testnet/tx/' },
+  { id: 'sui-devnet', name: 'Sui Devnet', rpc: 'https://fullnode.devnet.sui.io:443', type: 'sui', explorer: 'https://suiscan.xyz/devnet/tx/' },
+  { id: 'custom-sui', name: 'Custom Sui RPC...', rpc: '', type: 'sui' },
   // Bitcoin-style chains
   { id: 'bitcoin', name: 'Bitcoin (BTC)', rpc: 'https://mempool.space/api', type: 'bitcoin', explorer: 'https://mempool.space/tx/' },
   { id: 'litecoin', name: 'Litecoin (LTC)', rpc: 'https://litecoinspace.org/api', type: 'bitcoin', explorer: 'https://litecoinspace.org/tx/' },
@@ -359,6 +364,24 @@ const detectSolanaEncoding = (input) => {
   }
 }
 
+// ── Sui helpers ─────────────────────────────────────────────────────────────
+// Convert a hex string (with or without 0x prefix) to a standard base64 string.
+// Sui's sui_executeTransactionBlock RPC expects tx_bytes as base64.
+const hexToBase64 = (hex) => {
+  const cleaned = (hex.startsWith('0x') || hex.startsWith('0X')) ? hex.slice(2) : hex
+  if (cleaned.length === 0 || cleaned.length % 2 !== 0) return null
+  if (!/^[0-9a-fA-F]+$/.test(cleaned)) return null
+  const bytes = new Uint8Array(cleaned.length / 2)
+  for (let i = 0; i < cleaned.length; i += 2) {
+    bytes[i / 2] = parseInt(cleaned.slice(i, i + 2), 16)
+  }
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
+const looksLikeHex = (s) => /^(?:0x)?[0-9a-fA-F]+$/.test(s) && (s.startsWith('0x') ? (s.length - 2) % 2 === 0 : s.length % 2 === 0)
+
 // UTXO chain candidates for auto-detection of bitcoin-style transactions
 const UTXO_CHAINS = [
   { rpc: 'https://mempool.space/api', chainName: 'Bitcoin (BTC)', explorer: 'https://mempool.space/tx/' },
@@ -498,6 +521,7 @@ const NETWORK_CATEGORIES = [
   { key: 'bitcoin', label: 'Bitcoin/Forks', icon: '₿', match: (n) => n.type === 'bitcoin' || n.type === 'bitcoincash' },
   { key: 'xrp',     label: 'XRP',         icon: '✕',  match: (n) => n.type === 'xrp' },
   { key: 'stellar', label: 'Stellar',     icon: '✦',  match: (n) => n.type === 'stellar' },
+  { key: 'sui',     label: 'Sui',         icon: '💧', match: (n) => n.type === 'sui' },
 ]
 
 function categoryForNetwork(network) {
@@ -577,7 +601,39 @@ function Broadcaster() {
   const isStellar = selectedNetwork.type === 'stellar'
   const isBitcoin = selectedNetwork.type === 'bitcoin' || selectedNetwork.type === 'bitcoincash'
   const isCosmos = selectedNetwork.type === 'cosmos'
+  const isSui = selectedNetwork.type === 'sui'
   const isAutoMode = selectedNetwork.id === 'auto-evm'
+
+  // Sui has its own dedicated UI: two separate inputs (tx bytes + signature)
+  // instead of the shared multi-line textarea. The internal pipeline still
+  // expects `transactions` to be a list of opaque payload strings, so we build
+  // a single-item list whenever both fields are filled and valid.
+  const [suiTx, setSuiTx] = useState('')
+  const [suiSig, setSuiSig] = useState('')
+  const [suiTxError, setSuiTxError] = useState(null)
+
+  useEffect(() => {
+    if (!isSui) return
+    const txTrim = suiTx.trim()
+    const sigTrim = suiSig.trim()
+    if (!txTrim || !sigTrim) {
+      setTransactions([])
+      setSuiTxError(null)
+      return
+    }
+    let txB64 = txTrim
+    if (looksLikeHex(txTrim)) {
+      const converted = hexToBase64(txTrim)
+      if (!converted) {
+        setTransactions([])
+        setSuiTxError('Invalid hex for tx bytes')
+        return
+      }
+      txB64 = converted
+    }
+    setSuiTxError(null)
+    setTransactions([JSON.stringify({ tx: txB64, sig: sigTrim })])
+  }, [isSui, suiTx, suiSig])
   
   // Filter and paginate results
   const filteredResults = results.filter(r => {
@@ -690,6 +746,9 @@ function Broadcaster() {
       // For Stellar, return the base64 encoded transaction as-is
       return trimmed
     }
+
+    // Sui is handled outside the textarea flow — see suiTx/suiSig state and the
+    // dedicated two-input section in the render below.
     
     if (networkType === 'bitcoin' || networkType === 'bitcoincash') {
       // For Bitcoin-style chains, return raw hex (strip 0x if present)
@@ -766,8 +825,17 @@ function Broadcaster() {
   // Re-parse transactions when network type changes
   const handleNetworkChange = (network) => {
     setSelectedNetwork(network)
+    if (network.type === 'sui') {
+      // Sui uses its own two-input UI — the shared textarea is hidden, and
+      // the suiTx/suiSig effect will rebuild `transactions` on its own.
+      setInputText('')
+      setTransactions([])
+      return
+    }
     if (inputText) {
       setTransactions(parseTransactions(inputText, network.type))
+    } else {
+      setTransactions([])
     }
   }
 
@@ -780,6 +848,9 @@ function Broadcaster() {
     setInputText('')
     setTransactions([])
     setResults([])
+    setSuiTx('')
+    setSuiSig('')
+    setSuiTxError(null)
   }
 
   const getRpcUrl = () => {
@@ -787,7 +858,8 @@ function Broadcaster() {
       selectedNetwork.id === 'custom-evm' ||
       selectedNetwork.id === 'custom-solana' ||
       selectedNetwork.id === 'custom-bitcoin' ||
-      selectedNetwork.id === 'custom-cosmos'
+      selectedNetwork.id === 'custom-cosmos' ||
+      selectedNetwork.id === 'custom-sui'
     ) {
       return customRpc
     }
@@ -942,6 +1014,7 @@ function Broadcaster() {
     const effectiveStellar = effectiveType === 'stellar'
     const effectiveBitcoin = effectiveType === 'bitcoin' || effectiveType === 'bitcoincash'
     const effectiveCosmos  = effectiveType === 'cosmos'
+    const effectiveSui     = effectiveType === 'sui'
     
     if (!rpcUrl) {
       return {
@@ -1148,7 +1221,99 @@ function Broadcaster() {
       }
 
       let body
-      
+
+      if (effectiveSui) {
+        // Sui RPC: sui_executeTransactionBlock(tx_bytes_b64, [signature_b64], options, requestType).
+        // The internal payload is `{"tx":"...","sig":"..."}` produced by normalizeTransaction.
+        let parsedPayload
+        try {
+          parsedPayload = JSON.parse(txPayload)
+        } catch {
+          return {
+            success: false,
+            error: 'Invalid Sui payload (expected JSON {tx, sig})',
+            txHash: null,
+            retryable: false,
+            httpStatus: null,
+          }
+        }
+        if (!parsedPayload?.tx || !parsedPayload?.sig) {
+          return {
+            success: false,
+            error: 'Sui payload missing tx or signature',
+            txHash: null,
+            retryable: false,
+            httpStatus: null,
+          }
+        }
+
+        const suiBody = {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sui_executeTransactionBlock',
+          params: [
+            parsedPayload.tx,
+            [parsedPayload.sig],
+            { showEffects: true, showEvents: true },
+            'WaitForLocalExecution',
+          ],
+        }
+
+        response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(suiBody),
+          signal,
+        })
+
+        const httpStatus = response.status
+        let data
+        try {
+          data = await response.json()
+        } catch {
+          const text = await response.text().catch(() => '')
+          return {
+            success: false,
+            error: text || `HTTP ${httpStatus}: non-JSON response`,
+            txHash: null,
+            retryable: isRetryableError(text || `HTTP ${httpStatus}`, httpStatus),
+            httpStatus,
+          }
+        }
+
+        if (data.error) {
+          const errorMsg = data.error.message || JSON.stringify(data.error)
+          return {
+            success: false,
+            error: errorMsg,
+            txHash: null,
+            retryable: isRetryableError(errorMsg, httpStatus),
+            httpStatus,
+          }
+        }
+
+        const digest = data.result?.digest || null
+        // Sui surfaces execution failures inside effects.status even when JSON-RPC returns 200.
+        const effStatus = data.result?.effects?.status
+        if (effStatus && effStatus.status && effStatus.status !== 'success') {
+          return {
+            success: false,
+            error: effStatus.error || `Execution status: ${effStatus.status}`,
+            txHash: digest,
+            retryable: false,
+            httpStatus,
+          }
+        }
+
+        return {
+          success: !!digest,
+          error: digest ? null : 'No digest in response',
+          txHash: digest,
+          retryable: false,
+          httpStatus,
+        }
+      }
+
       if (effectiveSolana) {
         // Detect encoding for Solana transactions
         const { payload, encoding } = detectSolanaEncoding(txPayload)
@@ -1453,6 +1618,7 @@ function Broadcaster() {
     if (isStellar) return 'Stellar (XLM)'
     if (isBitcoin) return 'Bitcoin'
     if (isCosmos) return 'Cosmos LCD'
+    if (isSui) return 'Sui'
     return 'EVM'
   }
 
@@ -1566,7 +1732,7 @@ function Broadcaster() {
 
           {/* Inline RPC editor / display for the selected network */}
           <div className="network-rpc-row">
-            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp' || selectedNetwork.id === 'custom-bitcoin' || selectedNetwork.id === 'custom-cosmos') ? (
+            {(selectedNetwork.id === 'custom-evm' || selectedNetwork.id === 'custom-solana' || selectedNetwork.id === 'custom-xrp' || selectedNetwork.id === 'custom-bitcoin' || selectedNetwork.id === 'custom-cosmos' || selectedNetwork.id === 'custom-sui') ? (
               <input
                 type="text"
                 value={customRpc}
@@ -1614,6 +1780,12 @@ function Broadcaster() {
           {isCosmos && (
             <div className="network-type-badge cosmos">
               ⚛️ Cosmos SDK Mode
+            </div>
+          )}
+
+          {isSui && (
+            <div className="network-type-badge sui">
+              💧 Sui Mode
             </div>
           )}
           
@@ -1721,81 +1893,149 @@ function Broadcaster() {
 
         <section className="input-section">
           <label className="section-label">Transaction Input</label>
-          <p className="input-hint">
-            {isSolana 
-              ? 'Paste signed Solana transactions (one per line) - supports base64, base58, or hex format'
-              : isXrp
-                ? 'Paste signed XRP transaction blobs (one per line) - hex format'
-                : isStellar
-                  ? 'Paste signed Stellar transactions (one per line) - base64 XDR format'
-                  : isBitcoin
-                    ? 'Paste signed Bitcoin transactions (one per line) - raw hex format'
+
+          {isSui ? (
+            <>
+              <p className="input-hint">
+                Provide the tx bytes and signature separately. The tx field accepts
+                either hex (from Fireblocks <code>tx</code>) or base64 — it will be
+                converted automatically. The signature must be base64.
+              </p>
+
+              <div className="sui-fields">
+                <div className="sui-field">
+                  <label className="sui-field-label">
+                    TX bytes
+                    <span className="sui-field-hint">hex or base64</span>
+                  </label>
+                  <textarea
+                    value={suiTx}
+                    onChange={(e) => setSuiTx(e.target.value)}
+                    placeholder="0000020008007cd7e4e7d9000000203af64f6ed08b7e7376899017edc1f1e8f02213d2d18823564dda2a1bbb636c54..."
+                    className={`sui-input ${suiTxError ? 'sui-input-error' : ''}`}
+                    rows={4}
+                    spellCheck={false}
+                  />
+                  {suiTxError && <span className="sui-error">{suiTxError}</span>}
+                </div>
+
+                <div className="sui-field">
+                  <label className="sui-field-label">
+                    Signature
+                    <span className="sui-field-hint">base64</span>
+                  </label>
+                  <textarea
+                    value={suiSig}
+                    onChange={(e) => setSuiSig(e.target.value)}
+                    placeholder="APiecotmUrsxtsOvZYCmFZK0ezDVf/8ZuuNx9vQuKHFHa7bd6p975nX7iJZOsLDySRD0W9VE5PiAg3UXG5h1yAe5RWDOT8+Ag3QR5ZO299I5dz1L9xI3r5KdpqABmnW11g=="
+                    className="sui-input"
+                    rows={3}
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div className="sui-actions">
+                  <button
+                    onClick={clearAll}
+                    className="action-btn clear-btn"
+                    disabled={!suiTx && !suiSig && results.length === 0}
+                  >
+                    🗑️ Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="tx-count">
+                {transactions.length > 0 ? (
+                  <span className="count-badge">Ready to broadcast</span>
+                ) : (
+                  <span className="count-empty">
+                    {suiTx.trim() && suiSig.trim()
+                      ? 'Invalid tx — check the hex/base64'
+                      : 'Provide tx bytes and signature'}
+                  </span>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="input-hint">
+                {isSolana
+                  ? 'Paste signed Solana transactions (one per line) - supports base64, base58, or hex format'
+                  : isXrp
+                    ? 'Paste signed XRP transaction blobs (one per line) - hex format'
+                    : isStellar
+                      ? 'Paste signed Stellar transactions (one per line) - base64 XDR format'
+                      : isBitcoin
+                        ? 'Paste signed Bitcoin transactions (one per line) - raw hex format'
+                        : isCosmos
+                          ? 'Paste signed Cosmos SDK transactions (one per line) - base64 protobuf (cosmos.tx.v1beta1.Tx)'
+                          : isAutoMode
+                            ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
+                            : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
+                }
+              </p>
+
+              <div className="input-actions">
+                <button
+                  onClick={handlePasteFromClipboard}
+                  className="action-btn paste-btn"
+                >
+                  📋 Paste from Clipboard
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="action-btn file-btn"
+                >
+                  📁 Upload File
+                </button>
+                <button
+                  onClick={clearAll}
+                  className="action-btn clear-btn"
+                  disabled={!inputText && results.length === 0}
+                >
+                  🗑️ Clear All
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".txt,.csv"
+                  onChange={handleFileUpload}
+                  style={{ display: 'none' }}
+                />
+              </div>
+
+              <div
+                className="textarea-wrapper"
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+              >
+                <textarea
+                  value={inputText}
+                  onChange={handleInputChange}
+                  placeholder={isSolana
+                    ? "Paste or drop your signed Solana transactions here...\n\nBase64: AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAdNz...\nBase58: 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bES...\nHex: 010000000000000000000000..."
                     : isCosmos
-                      ? 'Paste signed Cosmos SDK transactions (one per line) - base64 protobuf (cosmos.tx.v1beta1.Tx)'
-                      : isAutoMode
-                        ? 'Paste RLP-encoded transactions from ANY chain (one per line) - chain will be auto-detected'
-                        : 'Paste RLP-encoded transactions (one per line), with or without 0x prefix'
-            }
-          </p>
-          
-          <div className="input-actions">
-            <button
-              onClick={handlePasteFromClipboard}
-              className="action-btn paste-btn"
-            >
-              📋 Paste from Clipboard
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="action-btn file-btn"
-            >
-              📁 Upload File
-            </button>
-            <button
-              onClick={clearAll}
-              className="action-btn clear-btn"
-              disabled={!inputText && results.length === 0}
-            >
-              🗑️ Clear All
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".txt,.csv"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-          </div>
+                      ? "Paste or drop your signed Cosmos transactions here (base64)...\n\nCpkBCpEBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnEKLW...\nCrMBCpUBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnUKL2..."
+                      : "Paste or drop your RLP values here...\n\n0x02f86d01832e559d...\n02f8b18201e08259e9...\n0x02f8b00a82837c..."
+                  }
+                  className="tx-input"
+                  rows={8}
+                />
+                <div className="drop-overlay">Drop file here</div>
+              </div>
 
-          <div
-            className="textarea-wrapper"
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-          >
-            <textarea
-              value={inputText}
-              onChange={handleInputChange}
-              placeholder={isSolana
-                ? "Paste or drop your signed Solana transactions here...\n\nBase64: AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAdNz...\nBase58: 4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bES...\nHex: 010000000000000000000000..."
-                : isCosmos
-                  ? "Paste or drop your signed Cosmos transactions here (base64)...\n\nCpkBCpEBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnEKLW...\nCrMBCpUBChwvY29zbW9zLmJhbmsudjFiZXRhMS5Nc2dTZW5kEnUKL2..."
-                  : "Paste or drop your RLP values here...\n\n0x02f86d01832e559d...\n02f8b18201e08259e9...\n0x02f8b00a82837c..."
-              }
-              className="tx-input"
-              rows={8}
-            />
-            <div className="drop-overlay">Drop file here</div>
-          </div>
-
-          <div className="tx-count">
-            {transactions.length > 0 ? (
-              <span className="count-badge">
-                {transactions.length} transaction{transactions.length !== 1 ? 's' : ''} loaded
-              </span>
-            ) : (
-              <span className="count-empty">No transactions loaded</span>
-            )}
-          </div>
+              <div className="tx-count">
+                {transactions.length > 0 ? (
+                  <span className="count-badge">
+                    {transactions.length} transaction{transactions.length !== 1 ? 's' : ''} loaded
+                  </span>
+                ) : (
+                  <span className="count-empty">No transactions loaded</span>
+                )}
+              </div>
+            </>
+          )}
         </section>
 
         <section className="broadcast-section">
