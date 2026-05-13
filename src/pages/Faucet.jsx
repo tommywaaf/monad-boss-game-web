@@ -55,6 +55,17 @@ const NETWORKS = [
     placeholder: 'Base58 address...',
     addressType: 'Solana',
   },
+  {
+    id: 'sui-testnet',
+    name: 'Sui Testnet',
+    icon: '🌊',
+    assets: [
+      { assetId: 'SUI_TEST', symbol: 'SUI', amount: '0.1', icon: '🌊' },
+    ],
+    validateAddress: (addr) => /^0x[0-9a-fA-F]{64}$/.test(addr),
+    placeholder: '0x... (32-byte hex)',
+    addressType: 'Sui',
+  },
 ]
 
 function AssetCard({ asset, network }) {
