@@ -66,6 +66,28 @@ const NETWORKS = [
     placeholder: '0x... (32-byte hex)',
     addressType: 'Sui',
   },
+  {
+    id: 'xrp-testnet',
+    name: 'XRP Testnet',
+    icon: '✕',
+    assets: [
+      { assetId: 'XRP_TEST', symbol: 'XRP', amount: '20', icon: '✕' },
+    ],
+    validateAddress: (addr) => /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(addr),
+    placeholder: 'r...',
+    addressType: 'XRP',
+  },
+  {
+    id: 'stellar-testnet',
+    name: 'Stellar Testnet',
+    icon: '🚀',
+    assets: [
+      { assetId: 'XLM_TEST', symbol: 'XLM', amount: '200', icon: '🚀' },
+    ],
+    validateAddress: (addr) => /^G[A-Z2-7]{55}$/.test(addr),
+    placeholder: 'G... (56-char public key)',
+    addressType: 'Stellar',
+  },
 ]
 
 function AssetCard({ asset, network }) {
