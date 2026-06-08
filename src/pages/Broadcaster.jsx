@@ -8,6 +8,7 @@ const NETWORKS = [
   { id: 'auto-evm', name: 'Auto (Detect Chain)', rpc: '', type: 'evm', isAuto: true },
   { id: 'ethereum', name: 'Ethereum', rpc: 'https://ethereum-rpc.publicnode.com', type: 'evm', chainId: 1, explorer: 'https://etherscan.io/tx/' },
   { id: 'eth-test5', name: 'ETH_TEST5 (Sepolia)', rpc: 'https://ethereum-sepolia-rpc.publicnode.com', type: 'evm', chainId: 11155111, explorer: 'https://sepolia.etherscan.io/tx/' },
+  { id: 'eth-test6', name: 'ETH_TEST6 (Hoodi)', rpc: 'https://ethereum-hoodi-rpc.publicnode.com', type: 'evm', chainId: 560048, explorer: 'https://hoodi.etherscan.io/tx/' },
   { id: 'custom-evm', name: 'Custom EVM RPC...', rpc: '', type: 'evm' },
   { id: 'arbitrum', name: 'Arbitrum One', rpc: 'https://arb1.arbitrum.io/rpc', type: 'evm', chainId: 42161, explorer: 'https://arbiscan.io/tx/' },
   { id: 'astar', name: 'Astar', rpc: 'https://evm.astar.network', type: 'evm', chainId: 592, explorer: 'https://astar.blockscout.com/tx/' },
@@ -98,6 +99,7 @@ const COSMOS_CORS_PROXY = 'https://corsproxy.io/?url='
 const CHAIN_ID_MAP = {
   1: { name: 'Ethereum', rpc: 'https://ethereum-rpc.publicnode.com', explorer: 'https://etherscan.io/tx/' },
   11155111: { name: 'ETH_TEST5 (Sepolia)', rpc: 'https://ethereum-sepolia-rpc.publicnode.com', explorer: 'https://sepolia.etherscan.io/tx/' },
+  560048: { name: 'ETH_TEST6 (Hoodi)', rpc: 'https://ethereum-hoodi-rpc.publicnode.com', explorer: 'https://hoodi.etherscan.io/tx/' },
   10: { name: 'Optimism', rpc: 'https://mainnet.optimism.io', explorer: 'https://optimistic.etherscan.io/tx/' },
   19: { name: 'Songbird', rpc: 'https://songbird-api.flare.network/ext/C/rpc', explorer: 'https://songbird-explorer.flare.network/tx/' },
   21: { name: 'Cortex', rpc: 'https://security.cortexlabs.ai:30088', explorer: 'https://cerebro.cortexlabs.ai/tx/' },
